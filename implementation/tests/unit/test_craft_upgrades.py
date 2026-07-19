@@ -441,6 +441,20 @@ async def test_unauditable_beats_get_one_rewrite_instead_of_zero_score():
     assert ok3 is False
 
 
+def test_ritual_coda_slot_is_assigned_to_the_first_story_only():
+    """Three consecutive live runs (self-storage 1947, mall 0108) died with the
+    shared-ritual-coda gate firing: writers cannot avoid duplicating the coda
+    because each only sees its own story. The slot is now assigned at write
+    time — only story_1's prompt permits the ritual coda."""
+    first = _story_plan(1)
+    later = _story_plan(2)
+    p1 = np._story_prompt(first, 750, "cold open", _horror())
+    p2 = np._story_prompt(later, 750, "cold open", _horror())
+    assert "RESERVED for the first story" not in p1
+    assert "RESERVED for the first story" in p2
+    assert "do NOT close on a ritual or habit change" in p2
+
+
 def test_escape_clauses_must_be_timestampable_events():
     """Live 2026-07-20 (airport shuttle 0018, 5th unauditable-beats case): the
     plan's escape chain sandwiched a continuous state ('keeps to the main

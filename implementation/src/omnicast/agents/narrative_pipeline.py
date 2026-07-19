@@ -2995,7 +2995,13 @@ kitchen.") does NOT count as trailing explanation and may stand inside the final
 beats; it must name the declared recipient in plain words (police/911, or the parent,
 boss, named neighbour, or witness the plan declared). The STOP rule bans reflection,
 interpretation, and lessons — never the locked safety response.
-Do not print beat labels, a checklist, self-review, or compliance JSON.
+{'''CLOSING MOVE: the changed-ritual coda ("I still ...", "Now I always ...", "Ever
+since, I ...") is RESERVED for the first story in the lineup — you are not writing the
+first story, so do NOT close on a ritual or habit change. Close on a concrete image,
+an unanswered detail, or a flat report instead. Two ritual codas in one compilation
+read as one author and block release; each writer only sees its own story, so the slot
+is assigned here.
+''' if not plan.story_id.endswith("_1") else ''}Do not print beat labels, a checklist, self-review, or compliance JSON.
 
 HUMAN-RESPONSE PLAUSIBILITY (a release property, not a style choice): once the narrator
 reaches safety from an active human threat, they use readily available help (police,
