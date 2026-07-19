@@ -307,6 +307,18 @@ def test_plan_prompt_varies_recognition_point_and_routes_lens_through_voice_rule
     assert "only that role would notice" in prompt
 
 
+def test_escape_dependent_props_must_be_planted_in_the_plan():
+    """Live 2026-07-19 self-storage (2 attempts, 0 prose): three prop_staging
+    blockers of one shape — escape hinged on a fire door propped 'generally',
+    a manual release lever never introduced, a fence service gap no ledger
+    entry established. The planner was told not to over-stuff the ledger but
+    never told the inverse: plant every prop the escape depends on."""
+    prompt = np._plan_prompt(_brief(), 3, 2250, None, "", _horror())
+    assert "DEPENDS on" in prompt
+    assert "manual release lever" in prompt
+    assert "staging contradiction" in prompt
+
+
 def test_trusted_adult_obligation_names_who_counts():
     """Build 20260718_0213: the plan locked trusted_adult_or_witness and the
     writer delivered a gas-station clerk — a bystander the gate correctly

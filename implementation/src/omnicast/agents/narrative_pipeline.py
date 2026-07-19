@@ -2622,6 +2622,11 @@ page before danger (who they are, where, doing what). setting and continuity_led
 private continuity constraints the story must never contradict, but they are NOT
 exposition obligations — do not put an exact unit, floor, exit, or prop into
 setup_requirement unless it affects the threat, a choice, the escape, or the ending.
+The inverse is a hard rule: EVERY object, opening, or mechanism the escape_action or
+ending_shape DEPENDS on (a propped fire door, a manual release lever, a service gap
+in a fence) MUST already be planted in setup_requirement or a continuity_ledger entry
+as an established fact for THAT night — an escape through a door the plan never
+propped is a staging contradiction the audit rejects.
 IDs must be
 story_1..story_{story_count}. Give each
 story a physically coherent continuity ledger, different narrator life context and
