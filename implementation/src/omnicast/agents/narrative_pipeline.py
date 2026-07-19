@@ -1348,7 +1348,10 @@ _RESPONSIBLE_ADULT_RE = re.compile(
     # "partner" matches business partners.
     r"(?:my|our)\s+(?:husband|wife|spouse|fianc[ée]e?|partner)|"
     r"teacher|principal|counselor|coach|nurse|"
+    # "shift lead" is the standing figure on overnight crews (live 2026-07-19:
+    # a story that told the shift lead everything failed the gate on the word).
     r"boss|manager|supervisor|foreman|dispatch|employer|landlord|"
+    r"(?:shift|crew|team|site|store)[\s-]+lead(?:er)?|crew\s+chief|"
     r"mrs\.?\s+\w+|mr\.?\s+\w+|ms\.?\s+\w+|"
     r"neighbou?r|witness)\b",
     re.I,
@@ -1483,6 +1486,13 @@ _RATIONED_TICS = (
     )),
     ("un-hurried / not hurrying", re.compile(r"\bun-?hurried\b|\bnot hurrying\b", re.I)),
     ("pulse in my ears", re.compile(r"\bpulse (?:in|behind) my ears\b", re.I)),
+    # "I like the quiet part of the job" / "I like the night shift best" — the
+    # narrator-preference declaration. One narrator may own it; two sharing it
+    # read as one author (live 2026-07-19 mall attempt 2, challenger blocker).
+    # Adjacency ("I like") naturally skips negations ("I didn't like the...").
+    ("'I like the ...' preference declaration", re.compile(
+        r"\bI\s+(?:like|love)d?\s+the\b", re.I,
+    )),
 )
 
 _THE_WAY_COMPARISON_RE = re.compile(

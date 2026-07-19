@@ -349,6 +349,19 @@ def test_spouse_counts_as_a_trusted_adult_but_bare_partner_does_not():
     assert not np._RESPONSIBLE_ADULT_RE.search("Nobody's husband, nobody's brother.")
 
 
+def test_shift_lead_counts_as_someone_with_standing():
+    """Live 2026-07-19 (mall attempt 1, 83): the narrator called the shift lead
+    and told her everything — the standing figure on an overnight crew — and the
+    gate failed the story because the matcher knew 'supervisor' but not 'shift
+    lead'. The re-audit judged the callback fully satisfying; the false positive
+    still poisoned the attempt."""
+    assert np._RESPONSIBLE_ADULT_RE.search("I called my shift lead first thing.")
+    assert np._RESPONSIBLE_ADULT_RE.search("Our crew chief walked the wing with me.")
+    assert np._RESPONSIBLE_ADULT_RE.search("I texted the site leader before I clocked out.")
+    # Bare 'lead' carries no standing ('the lead story', 'lead me out').
+    assert not np._RESPONSIBLE_ADULT_RE.search("The lead story on the news that night.")
+
+
 def test_plan_landmarks_are_coordinates_not_suggestions():
     """Third occurrence of one drift class (1635 call-timing, 1903 station
     lights, 2014 turn-at-the-wash): the writer treats a locked place/ordering
