@@ -451,6 +451,20 @@ def test_plan_prompt_rations_the_no_record_aftermath():
     assert "one device worn three ways" in prompt
 
 
+def test_escape_and_ending_must_not_share_an_event():
+    """Live 2026-07-20 (self-storage 0232, 6th unauditable-beats case): the
+    plan put the SAME moment in escape_action ('flags down the deputy as the
+    man slips through a fence gap') and ending_shape ('deputies arrive as the
+    man slips through a gap') — one span cannot serve two beats, so the story
+    was unauditable no matter how it was written and the rescue rewrite could
+    not save it. The aliasing is a plan defect; the rule lives in the plan
+    prompt."""
+    prompt = np._plan_prompt(_brief(), 3, 2250, None, "", _horror())
+    assert "must not SHARE an event" in prompt
+    assert "escape chain ends" in prompt
+    assert "its own subsequent" in prompt
+
+
 def test_ritual_coda_slot_is_assigned_to_the_first_story_only():
     """Three consecutive live runs (self-storage 1947, mall 0108) died with the
     shared-ritual-coda gate firing: writers cannot avoid duplicating the coda

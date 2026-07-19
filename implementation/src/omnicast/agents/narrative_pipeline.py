@@ -2695,7 +2695,13 @@ that order. So every clause must be a discrete, timestampable EVENT. A continuou
 state ("keeps to the main route", "stays calm") is not an event — it cannot be
 ordered against one, and a chain that mixes them becomes unauditable and kills the
 story after it is written. Standing states belong in the continuity_ledger; keep the
-escape chain to 2-3 actions a viewer could put on a clock. At most one story may use one restrained evidence
+escape chain to 2-3 actions a viewer could put on a clock.
+escape_action and ending_shape must not SHARE an event: the escape chain ends
+BEFORE the ending begins. If the same moment appears in both fields ("...flags down
+the deputy as the man slips through the fence gap" / "deputies arrive as the man
+slips through the fence gap"), the auditor must quote one span for two beats and the
+story is unauditable no matter how it is written. Give the ending its own subsequent
+moment. At most one story may use one restrained evidence
 beat; at least one must use none. cold_open is one short first-person line whose promised
 moment will occur in a story. No monsters, omniscient knowledge, CTAs, analysis, police-
 report framing, camera static, disappearing footprints, or proof-stacking. For three
