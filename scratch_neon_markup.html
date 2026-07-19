@@ -1,0 +1,497 @@
+
+
+
+<div style="position:relative; width:1440px; height:900px; display:flex; overflow:hidden; font-family:'Be Vietnam Pro',sans-serif; color:#4a3b7a; background:linear-gradient(160deg,#f6f0ff,#e9ddff 42%,#ffe3f4 78%,#e3f4ff);">
+
+  <!-- sparkle grid overlay -->
+  <div class="oc-grid" style="position:absolute; inset:-64px; z-index:0; pointer-events:none; opacity:.45; background-image:linear-gradient(rgba(255,255,255,.55) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.55) 1px,transparent 1px); background-size:64px 64px;"></div>
+  <div class="star" style="top:80px;left:360px;font-size:20px;">✦</div>
+  <div class="star" style="top:220px;right:180px;font-size:15px;animation-delay:.7s;">✦</div>
+  <div class="star" style="bottom:120px;left:320px;font-size:17px;animation-delay:1.2s;">✦</div>
+  <div class="star" style="bottom:70px;right:320px;font-size:13px;animation-delay:.4s;">✦</div>
+  <!-- quầng sáng mộng mơ -->
+  <div style="position:absolute; width:560px; height:560px; left:-160px; top:-180px; border-radius:50%; background:radial-gradient(circle, rgba(255,158,216,.38), transparent 65%); z-index:0; pointer-events:none;"></div>
+  <div style="position:absolute; width:640px; height:640px; right:-200px; bottom:-240px; border-radius:50%; background:radial-gradient(circle, rgba(154,225,255,.42), transparent 65%); z-index:0; pointer-events:none;"></div>
+  <div style="position:absolute; width:420px; height:420px; right:24%; top:-160px; border-radius:50%; background:radial-gradient(circle, rgba(201,179,255,.36), transparent 65%); z-index:0; pointer-events:none;"></div>
+  <!-- mây bồng bềnh -->
+  <div class="oc-cloud" style="position:absolute; left:6%; bottom:8%; z-index:0; opacity:.55;">
+    <div style="width:160px; height:46px; background:#fff; border-radius:999px;"></div>
+    <div style="width:66px; height:66px; background:#fff; border-radius:50%; position:absolute; top:-28px; left:28px;"></div>
+    <div style="width:48px; height:48px; background:#fff; border-radius:50%; position:absolute; top:-18px; left:86px;"></div>
+  </div>
+  <div class="oc-cloud" style="position:absolute; right:10%; top:9%; z-index:0; opacity:.45; animation-delay:3s;">
+    <div style="width:110px; height:34px; background:#fff; border-radius:999px;"></div>
+    <div style="width:44px; height:44px; background:#fff; border-radius:50%; position:absolute; top:-18px; left:20px;"></div>
+    <div style="width:32px; height:32px; background:#fff; border-radius:50%; position:absolute; top:-12px; left:58px;"></div>
+  </div>
+  <!-- sao rải dày, nhiều màu -->
+  <div class="star" style="top:130px;left:54%;font-size:11px;color:#ffb3e6;animation-delay:1.9s;">✦</div>
+  <div class="star" style="top:48%;left:20%;font-size:14px;color:#c9b3ff;animation-delay:.9s;">✚</div>
+  <div class="star" style="top:64%;right:8%;font-size:12px;color:#ffd45e;animation-delay:2.4s;">✦</div>
+  <div class="star" style="top:24%;left:32%;font-size:9px;color:#9ae1ff;animation-delay:1.4s;">✦</div>
+  <div class="star" style="bottom:28%;left:46%;font-size:12px;color:#ffb3e6;animation-delay:3s;">✚</div>
+  <div class="star" style="top:12%;right:34%;font-size:10px;animation-delay:.5s;">✦</div>
+  <div class="star" style="bottom:14%;right:12%;font-size:16px;color:#c9b3ff;animation-delay:1.1s;">✦</div>
+  <div class="star" style="top:38%;right:26%;font-size:8px;color:#ffd9f4;animation-delay:2.8s;">•</div>
+  <div class="star" style="bottom:40%;left:10%;font-size:8px;color:#cfe0ff;animation-delay:2.1s;">•</div>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="oc-scroll oc-sidebar" style="position:relative; z-index:2; width:236px; flex-shrink:0; background:rgba(255,255,255,.62); backdrop-filter:blur(8px); border-right:1.5px solid rgba(201,184,240,.7); display:flex; flex-direction:column; padding:14px 0; overflow-y:auto; overflow-x:hidden; transition:width .2s ease;">
+    <div class="oc-logo" style="display:flex; align-items:center; gap:10px; padding:0 16px; margin-bottom:14px;">
+      <div class="disp" style="position:relative; width:38px;height:38px;border-radius:13px;background:linear-gradient(135deg,#f45fce,#a877ff);border:2px solid #4a3b7a;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:19px;box-shadow:3px 3px 0 0 rgba(74,59,122,.2), 0 0 18px -2px rgba(244,95,206,.6);">✿<span style="position:absolute; top:-8px; right:-8px; font-size:13px; color:#ffd45e; filter:drop-shadow(0 0 4px rgba(255,212,94,.9)); animation:twinkle 2s infinite;">✦</span></div>
+      <span class="disp oc-label" style="font-size:18px; font-weight:800; color:#372a66;">OmniCast</span>
+    </div>
+
+    <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="4">
+      <div style="margin-top:10px;">
+        <div class="disp oc-eyebrow" style="padding:0 18px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#b0a3d6; margin-bottom:5px;">{{ g.eyebrow }}</div>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+          <div onclick="{{ it.onClick }}" class="oc-nav" style="{{ it.style }}">
+            <span style="width:24px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">{{ it.icon }}</span>
+            <span class="disp oc-label" style="font-size:13px; font-weight:700;">{{ it.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+
+    <div onclick="{{ goSystem }}" class="oc-nav" style="{{ systemStyle }}">
+      <span style="width:24px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">{{ systemIcon }}</span>
+      <span class="disp oc-label" style="font-size:13px; font-weight:700;">Hệ thống</span>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN ═══ -->
+  <div style="position:relative; z-index:1; flex:1; display:flex; flex-direction:column; overflow:hidden;">
+
+    <!-- Topbar -->
+    <header style="height:62px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0 24px;">
+      <div class="disp" style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; color:#8676bd;">
+        <span>OmniCast</span><span style="color:#c9b8f0;">✧</span><span style="color:#372a66;">{{ currentTab }}</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="display:inline-flex; align-items:center; gap:7px; background:#e3fff4; border:2px solid #4a3b7a; border-radius:999px; padding:5px 13px; font-size:12px; font-weight:700; color:#1a9e7a; box-shadow:2px 2px 0 0 rgba(74,59,122,.15);"><span style="width:8px;height:8px;border-radius:50%;background:#22c9a8; animation:pulseDot 1.6s infinite;"></span>Kết nối tốt</span>
+        <button onclick="{{ togglePause }}" style="{{ pauseStyle }}"><span style="display:inline-flex;" dangerouslysetinnerhtml="{{ pauseSvg }}"></span>{{ pauseLabel }}</button>
+        <button onclick="{{ toggleDark }}" style="width:36px;height:36px;border-radius:12px;background:#fff;border:2px solid #4a3b7a;display:flex;align-items:center;justify-content:center;color:#8676bd;box-shadow:2px 2px 0 0 rgba(74,59,122,.15); cursor:pointer;">{{ darkIcon }}</button>
+        <button style="width:36px;height:36px;border-radius:12px;background:#fff;border:2px solid #4a3b7a;display:flex;align-items:center;justify-content:center;color:#8676bd;box-shadow:2px 2px 0 0 rgba(74,59,122,.15); cursor:pointer; position:relative;">{{ bellIcon }}<span style="position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#ff5f9e;border:1.5px solid #fff;"></span></button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="oc-scroll" style="flex:1; overflow-y:auto; padding:8px 24px 28px;">
+
+      <!-- ══ DASHBOARD ══ -->
+      <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; flex-direction:column; gap:18px;">
+          <div>
+            <h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Bảng điều khiển <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2>
+            <p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Tổng quan hệ thống sản xuất nội dung OmniCast Engine</p>
+          </div>
+          <!-- KPI -->
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+            <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+              <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#f7f2ff 65%,#fff2fb); border:2px solid #4a3b7a; border-radius:18px; padding:14px 16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+                <span aria-hidden="true" style="position:absolute; bottom:-10px; right:-6px; font-size:40px; color:#fae6f7; pointer-events:none;">✦</span>
+                <div style="position:relative; display:flex; align-items:center; justify-content:space-between;">
+                  <span style="font-size:11px; font-weight:700; color:#8676bd;">{{ k.label }}</span>
+                  <span style="width:30px;height:30px;border-radius:10px;border:2px solid #4a3b7a; display:flex;align-items:center;justify-content:center; background:{{ k.iconBg }}; font-size:14px;">{{ k.icon }}</span>
+                </div>
+                <div class="disp" style="font-size:28px; font-weight:800; color:#372a66; margin-top:6px; text-shadow:0 0 14px rgba(168,119,255,.32);">{{ k.value }}</div>
+                <div style="font-size:11px; color:#a390d6; margin-top:2px;">{{ k.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <!-- 2 revenue cards -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+              <span aria-hidden="true" style="position:absolute; top:-10px; right:-6px; font-size:46px; color:#fae6f7; pointer-events:none;">✦</span>
+              <div class="disp" style="position:relative; font-size:14px; font-weight:700; color:#372a66;">Lượt xem YouTube (tổng)</div>
+              <div style="font-size:11px; color:#a390d6; margin-bottom:10px;">Số thật từ YouTube Data API</div>
+              <div style="display:flex; align-items:baseline; justify-content:space-between;"><span class="disp mono" style="font-size:26px; font-weight:800; color:#372a66; text-shadow:0 0 14px rgba(168,119,255,.32);">1.284.902 views</span><span class="mono" style="font-size:11px; color:#8676bd;">48 video · 12.430 sub</span></div>
+            </div>
+            <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+              <span aria-hidden="true" style="position:absolute; top:-8px; right:-4px; font-size:42px; color:#e6f7ef; pointer-events:none;">✿</span>
+              <div class="disp" style="position:relative; font-size:14px; font-weight:700; color:#372a66;">Doanh thu ước tính</div>
+              <div style="font-size:11px; color:#a390d6; margin-bottom:10px;">YouTube ước tính + affiliate đã ghi nhận</div>
+              <div style="display:flex; align-items:baseline; justify-content:space-between;"><span class="disp mono" style="font-size:26px; font-weight:800; color:#1a9e7a; text-shadow:0 0 14px rgba(34,201,168,.35);">$842.17</span><span class="mono" style="font-size:11px; color:#8676bd;">3/4 kênh đã liên kết</span></div>
+            </div>
+          </div>
+          <!-- pipeline + activity -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+              <span aria-hidden="true" style="position:absolute; bottom:-12px; right:-6px; font-size:48px; color:#f4ecff; pointer-events:none;">♡</span>
+              <div class="disp" style="position:relative; font-size:14px; font-weight:700; color:#372a66; margin-bottom:2px;">Pipeline đang chạy</div>
+              <div style="font-size:11px; color:#a390d6; margin-bottom:12px;">Real-time job status</div>
+              <sc-for list="{{ pipelines }}" as="p" hint-placeholder-count="2">
+                <div style="padding:10px 0; border-top:1.5px solid #f0e6ff;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <div style="display:flex; align-items:center; gap:7px;"><span style="width:7px;height:7px;border-radius:50%;background:#f2a93b; animation:pulseDot 1.4s infinite;"></span><span class="disp" style="font-size:13px; font-weight:700; color:#372a66;">{{ p.channel }}</span></div>
+                    <span class="mono" style="font-size:10px; font-weight:700; color:#c07f18; background:#fff5da; border:1.5px solid #4a3b7a; padding:2px 8px; border-radius:999px;">{{ p.eta }}</span>
+                  </div>
+                  <div style="font-size:11px; font-weight:600; color:#37b6f5; margin-bottom:6px;">{{ p.stage }}</div>
+                  <div style="height:8px; background:#f3ecff; border:1.5px solid #4a3b7a; border-radius:999px; overflow:hidden;"><div style="{{ p.fill }}"></div></div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+              <span aria-hidden="true" style="position:absolute; bottom:-10px; right:-4px; font-size:40px; color:#fae6f7; pointer-events:none;">✧</span>
+              <div class="disp" style="position:relative; font-size:14px; font-weight:700; color:#372a66; margin-bottom:2px;">Hoạt động gần đây</div>
+              <div style="font-size:11px; color:#a390d6; margin-bottom:12px;">Lịch sử chạy gần nhất</div>
+              <sc-for list="{{ activities }}" as="a" hint-placeholder-count="4">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-top:1.5px solid #f0e6ff;">
+                  <div><span class="disp" style="font-size:13px; font-weight:700; color:#372a66;">{{ a.ch }}</span><span class="mono" style="font-size:10px; color:#a390d6; margin-left:8px;">{{ a.phase }}</span></div>
+                  <span style="{{ a.tag }}">{{ a.status }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ STUDIO ══ -->
+      <sc-if value="{{ isStudio }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div>
+            <h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Xưởng sản xuất <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2>
+            <p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Quy trình 4 bước: Discovery → Script → Render → Duyệt</p>
+          </div>
+          <!-- Stepper -->
+          <div style="display:flex; align-items:stretch; gap:6px;">
+            <sc-for list="{{ steps }}" as="s" hint-placeholder-count="4">
+              <div onclick="{{ s.onClick }}" style="{{ s.style }}">
+                <div class="disp" style="{{ s.badge }}">{{ s.icon }}</div>
+                <div><div class="disp" style="font-size:13px; font-weight:700; color:{{ s.titleColor }};">{{ s.title }}</div><div style="font-size:11px; font-weight:700; color:{{ s.subColor }};">{{ s.sub }}</div></div>
+              </div>
+            </sc-for>
+          </div>
+          <!-- Render body -->
+          <div style="display:flex; gap:16px; align-items:flex-start;">
+            <div style="flex:1.55; min-width:0; display:flex; flex-direction:column; gap:14px;">
+              <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                  <div class="disp" style="font-size:16px; font-weight:700; color:#372a66;">{{ stepBody.title }}</div>
+                  <div style="display:flex; gap:8px;">
+                    <button style="background:#fff; color:#4a3b7a; border:2px solid #4a3b7a; border-radius:999px; padding:7px 14px; font-size:12px; font-weight:700; box-shadow:2px 2px 0 0 rgba(74,59,122,.18); cursor:pointer;" class="disp">↻ {{ stepBody.btn1 }}</button>
+                    <button style="background:linear-gradient(135deg,#ff5f9e,#f45fce); color:#fff; border:2px solid #4a3b7a; border-radius:999px; padding:7px 14px; font-size:12px; font-weight:700; box-shadow:2px 2px 0 0 rgba(74,59,122,.18); cursor:pointer;" class="disp">{{ stepBody.btn2 }}</button>
+                  </div>
+                </div>
+                <div style="aspect-ratio:16/9; border-radius:16px; border:2px solid #4a3b7a; background:linear-gradient(160deg,#8db4ff,#b79cff 60%,#ffb3e6); display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; box-shadow:inset 0 -30px 50px rgba(74,59,122,.25);">
+                  <div style="position:absolute;top:20px;left:30px;font-size:22px;color:#fff;filter:drop-shadow(0 0 6px #fff);">✦</div>
+                  <div style="position:absolute;bottom:60px;right:70px;font-size:15px;color:#fff;filter:drop-shadow(0 0 6px #fff);">✦</div>
+                  <div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.85);border:2px solid #4a3b7a;display:flex;align-items:center;justify-content:center;color:#f45fce;font-size:24px;padding-left:4px;cursor:pointer;box-shadow:0 4px 0 0 rgba(74,59,122,.25);">▶</div>
+                  <div class="disp" style="position:absolute; bottom:14px; left:16px; color:#fff; font-size:15px; font-weight:700; text-shadow:0 1px 4px rgba(74,59,122,.6);">Bí ẩn đại dương sâu thẳm</div>
+                  <span class="disp" style="position:absolute; top:12px; right:12px; font-size:11px; font-weight:800; color:#fff; background:#22c9a8; border:2px solid #4a3b7a; padding:3px 10px; border-radius:999px;">QA PASS</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:14px;">
+                  <sc-for list="{{ renderStats }}" as="r" hint-placeholder-count="4">
+                    <div style="background:#faf4ff; border:2px solid #4a3b7a; border-radius:14px; padding:9px 11px; box-shadow:2px 2px 0 0 rgba(74,59,122,.14);"><div style="font-size:10px; color:#a390d6; font-weight:600;">{{ r.k }}</div><div class="mono disp" style="font-size:15px; font-weight:800; color:#372a66;">{{ r.v }}</div></div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="min-width:0; background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+                <div class="disp" style="font-size:14px; font-weight:700; color:#372a66; margin-bottom:12px;">Timeline phân cảnh <span style="color:#b0a3d6; font-weight:600;">(8)</span></div>
+                <div class="oc-scroll" style="display:flex; gap:10px; overflow-x:auto; padding-bottom:6px;">
+                  <sc-for list="{{ scenes }}" as="s" hint-placeholder-count="6">
+                    <div style="flex:0 0 130px;">
+                      <div style="{{ s.thumb }}">
+                        <span class="mono" style="position:absolute; top:5px; left:5px; background:rgba(74,59,122,.75); color:#fff; font-size:9px; font-weight:700; padding:2px 7px; border-radius:999px;">{{ s.num }}</span>
+                        <span style="{{ s.dot }}"></span>
+                      </div>
+                      <div class="disp" style="font-size:10.5px; margin-top:7px; line-height:1.3; height:27px; overflow:hidden; color:{{ s.tc }}; font-weight:600;">{{ s.title }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:14px;">
+              <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;"><div class="disp" style="font-size:14px; font-weight:700; color:#372a66;">Cấu hình sản xuất</div><button style="background:#ffe0f5; border:2px solid #4a3b7a; color:#f45fce; font-size:11px; font-weight:700; border-radius:999px; padding:5px 12px; cursor:pointer; box-shadow:2px 2px 0 0 rgba(74,59,122,.15);" class="disp">Chỉnh ✎</button></div>
+                <sc-for list="{{ config }}" as="c" hint-placeholder-count="5">
+                  <div style="display:flex; justify-content:space-between; font-size:12px; padding:5px 0;"><span style="color:#a390d6;">{{ c.k }}</span><span style="color:#372a66; font-weight:700;">{{ c.v }}</span></div>
+                </sc-for>
+              </div>
+              <div style="background:#f3ecff; border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;"><span style="width:9px;height:9px;border-radius:50%;background:#22c9a8; animation:pulseDot 1.4s infinite;"></span><div class="disp" style="font-size:13px; font-weight:700; color:#372a66;">Live Monitor</div><span class="mono" style="margin-left:auto;font-size:10px; color:#a390d6;">ETA 3m 10s</span></div>
+                <div class="mono" style="font-size:11px; line-height:1.8; color:#6b5aa0;">
+                  <sc-for list="{{ logs }}" as="l" hint-placeholder-count="5">
+                    <div><span style="color:#b0a3d6;">{{ l.t }}</span> <span style="color:{{ l.c }}; font-weight:700;">{{ l.tag }}</span> {{ l.msg }}</div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ CHANNELS ══ -->
+      <sc-if value="{{ isChannels }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Kênh &amp; Niche <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Quản lý định dạng phân phối và ngách nội dung</p></div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <div style="display:flex; background:#f3ecff; border:2px solid #4a3b7a; border-radius:999px; padding:3px; box-shadow:2px 2px 0 0 rgba(74,59,122,.15);">
+                <div onclick="{{ chTabList }}" class="disp" style="{{ chTab1Style }}">Danh sách Kênh</div>
+                <div onclick="{{ chTabNiche }}" class="disp" style="{{ chTab2Style }}">Ý tưởng &amp; Ngách</div>
+              </div>
+              <button class="disp" style="background:linear-gradient(135deg,#f45fce,#a877ff); color:#fff; border:2px solid #4a3b7a; border-radius:999px; padding:8px 16px; font-size:12px; font-weight:700; box-shadow:2px 2px 0 0 rgba(74,59,122,.18); cursor:pointer;">+ Thêm Kênh</button>
+            </div>
+          </div>
+
+          <sc-if value="{{ chShowList }}" hint-placeholder-val="{{ true }}">
+            <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; overflow:hidden; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+              <div style="display:grid; grid-template-columns:1.6fr .8fr 1fr .8fr .7fr 1fr .9fr; gap:8px; padding:12px 16px; background:#faf0ff; border-bottom:2px solid #4a3b7a;">
+                <sc-for list="{{ chCols }}" as="c" hint-placeholder-count="7"><span class="disp" style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#8676bd;">{{ c }}</span></sc-for>
+              </div>
+              <sc-for list="{{ channels }}" as="c" hint-placeholder-count="4">
+                <div style="display:grid; grid-template-columns:1.6fr .8fr 1fr .8fr .7fr 1fr .9fr; gap:8px; padding:12px 16px; border-bottom:1.5px solid #f0e6ff; align-items:center;">
+                  <div><div class="disp" style="font-size:13px; font-weight:700; color:#372a66;">{{ c.name }}</div><div class="mono" style="font-size:9.5px; color:#b0a3d6;">{{ c.id }}</div></div>
+                  <span style="{{ c.statusStyle }}">{{ c.status }}</span>
+                  <span class="mono" style="font-size:11px; color:#8676bd;">{{ c.niche }}</span>
+                  <span class="mono" style="font-size:11px; color:#4a3b7a;">{{ c.views }}</span>
+                  <span class="mono" style="font-size:11px; color:#4a3b7a;">{{ c.subs }}</span>
+                  <span class="mono" style="font-size:11px; font-weight:700; color:#1a9e7a;">{{ c.rev }}</span>
+                  <div style="display:flex; gap:5px; justify-content:flex-end;">
+                    <button style="background:#faf4ff; border:2px solid #4a3b7a; color:#f45fce; font-size:10px; font-weight:700; border-radius:999px; padding:4px 9px; cursor:pointer;" class="disp">Sửa</button>
+                    <button style="background:#fff0f6; border:2px solid #4a3b7a; color:#ff5f9e; font-size:10px; font-weight:700; border-radius:999px; padding:4px 9px; cursor:pointer;" class="disp">Xóa</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ chShowNiche }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; background:linear-gradient(160deg,#ffffff,#f7f2ff 65%,#fff2fb); border:2px solid #4a3b7a; border-radius:18px; padding:14px 16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40); flex-wrap:wrap; gap:10px;">
+                <div><div class="disp" style="font-size:14px; font-weight:700; color:#372a66;">Quét ngách tự động</div><div style="font-size:11px; color:#a390d6;">Quét xu hướng, lượng tìm kiếm và đề xuất ngách tiềm năng</div></div>
+                <button class="disp" style="background:linear-gradient(135deg,#f45fce,#a877ff); color:#fff; border:2px solid #4a3b7a; border-radius:999px; padding:8px 16px; font-size:12px; font-weight:700; box-shadow:2px 2px 0 0 rgba(74,59,122,.18); cursor:pointer;">✧ Chạy quét ngách mới</button>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                <sc-for list="{{ niches }}" as="n" hint-placeholder-count="4">
+                  <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#f7f2ff 65%,#fff2fb); border:2px solid #4a3b7a; border-radius:18px; padding:14px 16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+                    <span aria-hidden="true" style="position:absolute; bottom:-12px; right:-4px; font-size:44px; color:#f1ecff; pointer-events:none;">✿</span>
+                    <div style="position:relative; display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><span class="disp" style="font-size:14px; font-weight:700; color:#372a66;">{{ n.name }}</span><span style="{{ n.badge }}">{{ n.score }}</span></div>
+                    <p style="margin:0; font-size:12px; color:#8676bd; line-height:1.5;">{{ n.desc }}</p>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- ══ SCHEDULER ══ -->
+      <sc-if value="{{ isScheduler }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Lịch &amp; Tự động <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Cấu hình chu kỳ sản xuất tự động 24/7 và điều hành hàng đợi autopilot</p></div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:18px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+              <div class="disp" style="font-size:15px; font-weight:700; color:#372a66; display:flex; align-items:center; gap:7px;">{{ autopilotIcon }} Hệ thống Autopilot</div>
+              <p style="font-size:12px; color:#8676bd; line-height:1.6; margin:10px 0 14px;">Tự động quét ngách, đề xuất chủ đề, tạo kịch bản và render theo chu kỳ mà không cần con người.</p>
+              <div style="display:flex; align-items:center; justify-content:space-between; padding-top:14px; border-top:1.5px solid #f0e6ff;">
+                <span class="mono" style="font-size:11px; font-weight:700; color:#37b6f5; background:#e6f6ff; border:1.5px solid #4a3b7a; padding:3px 10px; border-radius:999px;">● ĐANG CHẠY</span>
+                <button class="disp" style="background:linear-gradient(135deg,#ff5f9e,#f45fce); color:#fff; border:2px solid #4a3b7a; border-radius:999px; padding:8px 16px; font-size:12px; font-weight:700; box-shadow:2px 2px 0 0 rgba(74,59,122,.18); cursor:pointer;">Dừng Autopilot</button>
+              </div>
+            </div>
+            <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:18px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+              <div class="disp" style="font-size:15px; font-weight:700; color:#372a66; display:flex; align-items:center; gap:7px;">{{ schedCalIcon }} Scheduler định kỳ</div>
+              <p style="font-size:12px; color:#8676bd; line-height:1.6; margin:10px 0 14px;">Bật lịch chạy tự động theo tần suất cấu hình của từng kênh.</p>
+              <div style="display:flex; align-items:center; justify-content:space-between; padding-top:14px; border-top:1.5px solid #f0e6ff;">
+                <span class="mono" style="font-size:11px; font-weight:700; color:#1a9e7a; background:#e3fff4; border:1.5px solid #4a3b7a; padding:3px 10px; border-radius:999px;">● ĐÃ BẬT</span>
+                <div style="width:52px; height:28px; border-radius:999px; background:#22c9a8; border:2px solid #4a3b7a; position:relative; cursor:pointer;"><div style="position:absolute; top:1px; right:1px; width:22px; height:22px; border-radius:50%; background:#fff; border:2px solid #4a3b7a;"></div></div>
+              </div>
+            </div>
+          </div>
+          <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+            <div class="disp" style="font-size:14px; font-weight:700; color:#372a66; margin-bottom:12px;">Lịch chạy theo kênh</div>
+            <sc-for list="{{ schedule }}" as="s" hint-placeholder-count="4">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1.5px solid #f0e6ff;">
+                <div style="display:flex; align-items:center; gap:10px;"><span style="width:32px;height:32px;border-radius:10px;border:2px solid #4a3b7a;background:{{ s.grad }};"></span><div><div class="disp" style="font-size:13px; font-weight:700; color:#372a66;">{{ s.name }}</div><div class="mono" style="font-size:10px; color:#b0a3d6;">{{ s.next }}</div></div></div>
+                <div style="display:flex; align-items:center; gap:10px;"><span class="mono" style="font-size:11px; color:#8676bd;">{{ s.cadence }}</span><span style="{{ s.badge }}">{{ s.state }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ APPROVALS ══ -->
+      <sc-if value="{{ isApprovals }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Duyệt &amp; Đăng <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Kiểm tra QC cuối, chọn quyền riêng tư và đích đăng cho từng video</p></div>
+          <sc-for list="{{ approvals }}" as="a" hint-placeholder-count="3">
+            <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:14px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42); display:flex; gap:14px; align-items:center;">
+              <div style="width:150px; aspect-ratio:16/9; border-radius:12px; border:2px solid #4a3b7a; background:{{ a.grad }}; flex-shrink:0; position:relative; overflow:hidden;"><span style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:22px; filter:drop-shadow(0 0 5px #fff);">▶</span></div>
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;"><span class="disp" style="font-size:15px; font-weight:700; color:#372a66;">{{ a.title }}</span><span style="{{ a.qc }}">{{ a.qcText }}</span></div>
+                <div class="mono" style="font-size:11px; color:#a390d6;">{{ a.channel }} · {{ a.dur }} · {{ a.ago }}</div>
+                <div style="display:flex; gap:7px; margin-top:10px;">
+                  <button class="disp" style="background:linear-gradient(135deg,#22c9a8,#37b6f5); color:#fff; border:2px solid #4a3b7a; border-radius:999px; padding:7px 16px; font-size:12px; font-weight:700; box-shadow:2px 2px 0 0 rgba(74,59,122,.18); cursor:pointer;">✓ Duyệt &amp; Đăng</button>
+                  <button class="disp" style="background:#fff0f6; color:#ff5f9e; border:2px solid #4a3b7a; border-radius:999px; padding:7px 16px; font-size:12px; font-weight:700; box-shadow:2px 2px 0 0 rgba(74,59,122,.18); cursor:pointer;">✕ Từ chối</button>
+                  <button class="disp" style="background:#fff; color:#8676bd; border:2px solid #4a3b7a; border-radius:999px; padding:7px 14px; font-size:12px; font-weight:700; cursor:pointer;">Xem trước</button>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- ══ ANALYTICS ══ -->
+      <sc-if value="{{ isAnalytics }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Phân tích Hiệu năng <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Theo dõi lượt xem, tương tác và doanh thu chính thức theo từng Video</p></div>
+          <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; overflow:hidden; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+            <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr; gap:8px; padding:12px 16px; background:#faf0ff; border-bottom:2px solid #4a3b7a;">
+              <sc-for list="{{ anCols }}" as="c" hint-placeholder-count="6"><span class="disp" style="font-size:10px; font-weight:800; text-transform:uppercase; color:#8676bd;">{{ c }}</span></sc-for>
+            </div>
+            <sc-for list="{{ analytics }}" as="a" hint-placeholder-count="5">
+              <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr; gap:8px; padding:12px 16px; border-bottom:1.5px solid #f0e6ff; align-items:center;">
+                <div class="disp" style="font-size:12px; font-weight:600; color:#372a66; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ a.title }}</div>
+                <span style="{{ a.plat }}">{{ a.platform }}</span>
+                <span class="mono" style="font-size:11px; color:#4a3b7a;">{{ a.views }}</span>
+                <span class="mono" style="font-size:11px; color:#4a3b7a;">{{ a.likes }}</span>
+                <span class="mono" style="font-size:11px; color:#4a3b7a;">{{ a.watch }}</span>
+                <span class="mono" style="font-size:11px; font-weight:700; color:#1a9e7a;">{{ a.rev }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ LIBRARY ══ -->
+      <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Thư viện <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Tất cả video đã render — xem lại, tải xuống hoặc đăng lại</p></div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+            <sc-for list="{{ library }}" as="v" hint-placeholder-count="6">
+              <div style="background:linear-gradient(160deg,#ffffff,#f7f2ff 65%,#fff2fb); border:2px solid #4a3b7a; border-radius:18px; overflow:hidden; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+                <div style="aspect-ratio:16/9; border-bottom:2px solid #4a3b7a; background:{{ v.grad }}; position:relative;"><span style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:24px; filter:drop-shadow(0 0 5px #fff);">▶</span><span class="mono" style="position:absolute; bottom:6px; right:6px; background:rgba(74,59,122,.75); color:#fff; font-size:9px; padding:2px 7px; border-radius:999px;">{{ v.dur }}</span><span style="{{ v.qc }}">{{ v.qcText }}</span></div>
+                <div style="position:relative; overflow:hidden; padding:11px 13px;"><span aria-hidden="true" style="position:absolute; bottom:-8px; right:-2px; font-size:30px; color:#fae6f7; pointer-events:none;">✦</span><div class="disp" style="position:relative; font-size:13px; font-weight:700; color:#372a66; line-height:1.3; height:34px; overflow:hidden;">{{ v.title }}</div><div class="mono" style="font-size:10px; color:#b0a3d6; margin-top:4px;">{{ v.channel }}</div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ PLATFORMS ══ -->
+      <sc-if value="{{ isPlatforms }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Nền tảng &amp; Đích <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Kết nối tài khoản đăng và quản lý đích phân phối</p></div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+            <sc-for list="{{ platforms }}" as="p" hint-placeholder-count="3">
+              <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#f7f2ff 65%,#fff2fb); border:2px solid #4a3b7a; border-radius:18px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+                <span aria-hidden="true" style="position:absolute; top:-8px; right:-4px; font-size:34px; color:#f4ecff; pointer-events:none;">✦</span>
+                <div style="position:relative; display:flex; align-items:center; gap:10px; margin-bottom:12px;"><span style="width:40px;height:40px;border-radius:12px;border:2px solid #4a3b7a;background:{{ p.grad }};display:flex;align-items:center;justify-content:center;font-size:18px;">{{ p.icon }}</span><div><div class="disp" style="font-size:14px; font-weight:700; color:#372a66;">{{ p.name }}</div><div class="mono" style="font-size:10px; color:#b0a3d6;">{{ p.handle }}</div></div></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1.5px solid #f0e6ff;"><span style="{{ p.badge }}">{{ p.state }}</span><button class="disp" style="background:#faf4ff; border:2px solid #4a3b7a; color:#f45fce; font-size:11px; font-weight:700; border-radius:999px; padding:5px 12px; cursor:pointer;">Quản lý</button></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ MONETIZATION ══ -->
+      <sc-if value="{{ isMonetization }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Doanh thu &amp; Affiliate <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Theo dõi doanh thu YouTube, affiliate và độ sẵn sàng kiếm tiền</p></div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+            <sc-for list="{{ money }}" as="m" hint-placeholder-count="3">
+              <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#f7f2ff 65%,#fff2fb); border:2px solid #4a3b7a; border-radius:18px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+                <span aria-hidden="true" style="position:absolute; bottom:-10px; right:-4px; font-size:42px; color:#e6f7ef; pointer-events:none;">♡</span>
+                <div style="position:relative; font-size:11px; font-weight:700; color:#8676bd;">{{ m.label }}</div>
+                <div class="disp mono" style="font-size:26px; font-weight:800; color:#1a9e7a; text-shadow:0 0 14px rgba(34,201,168,.35); margin:6px 0 2px;">{{ m.value }}</div>
+                <div style="font-size:11px; color:#a390d6;">{{ m.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+            <div class="disp" style="font-size:14px; font-weight:700; color:#372a66; margin-bottom:12px;">Độ sẵn sàng kiếm tiền (Readiness)</div>
+            <sc-for list="{{ readiness }}" as="r" hint-placeholder-count="4">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1.5px solid #f0e6ff;">
+                <div style="display:flex; align-items:center; gap:9px;"><span style="{{ r.dot }}">{{ r.mark }}</span><span class="disp" style="font-size:13px; font-weight:600; color:#372a66;">{{ r.name }}</span></div>
+                <span style="{{ r.badge }}">{{ r.state }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ AUDIT ══ -->
+      <sc-if value="{{ isAudit }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Nhật ký kiểm toán <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Toàn bộ hành động của hệ thống và người dùng, bất biến</p></div>
+          <div style="background:linear-gradient(160deg,#ffffff,#fdf4ff 65%,#fff0fa); border:2px solid #4a3b7a; border-radius:20px; padding:8px 0; box-shadow:3px 3px 0 0 rgba(74,59,122,.18), 0 0 26px -8px rgba(244,95,206,.42);">
+            <sc-for list="{{ audit }}" as="a" hint-placeholder-count="6">
+              <div style="display:flex; align-items:center; gap:12px; padding:11px 18px; border-bottom:1.5px solid #f0e6ff;">
+                <span style="{{ a.tag }}">{{ a.type }}</span>
+                <span class="disp" style="flex:1; font-size:13px; font-weight:600; color:#372a66;">{{ a.msg }}</span>
+                <span class="mono" style="font-size:10px; color:#b0a3d6;">{{ a.actor }}</span>
+                <span class="mono" style="font-size:10px; color:#c9b8f0;">{{ a.time }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ SYSTEM ══ -->
+      <sc-if value="{{ isSystem }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div><h2 class="disp" style="margin:0; font-size:24px; font-weight:800; color:#372a66; text-shadow:0 0 18px rgba(244,95,206,.30);">Hệ thống <span style="font-size:15px; letter-spacing:3px; color:#f45fce; text-shadow:0 0 10px rgba(244,95,206,.65);">⋆｡˚✧</span></h2><p style="margin:2px 0 0; font-size:12px; color:#8676bd;">Cấu hình toàn cục, API keys, giới hạn chi phí và bảo trì</p></div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <sc-for list="{{ sysCards }}" as="s" hint-placeholder-count="4">
+              <div style="position:relative; overflow:hidden; background:linear-gradient(160deg,#ffffff,#f7f2ff 65%,#fff2fb); border:2px solid #4a3b7a; border-radius:18px; padding:16px; box-shadow:3px 3px 0 0 rgba(74,59,122,.16), 0 0 24px -8px rgba(168,119,255,.40);">
+                <span aria-hidden="true" style="position:absolute; top:-8px; right:-4px; font-size:34px; color:#f1ecff; pointer-events:none;">✿</span>
+                <div class="disp" style="position:relative; font-size:14px; font-weight:700; color:#372a66; display:flex; align-items:center; gap:7px; margin-bottom:10px;">{{ s.icon }} {{ s.title }}</div>
+                <sc-for list="{{ s.rows }}" as="r" hint-placeholder-count="3">
+                  <div style="display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-top:1.5px solid #f0e6ff; font-size:12px;"><span style="color:#8676bd;">{{ r.k }}</span><span class="mono" style="color:#372a66; font-weight:700;">{{ r.v }}</span></div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+    </main>
+  </div>
+
+  <!-- ═══ PROGRESS DOCK — Goal Widget (theo ref) ═══ -->
+  <div style="position:absolute; right:20px; bottom:20px; z-index:20; width:330px; border:2px solid #2a1a5a; border-radius:18px; box-shadow:0 12px 30px -8px rgba(20,10,50,.6), 0 0 0 1px rgba(180,140,255,.25); overflow:hidden; background:linear-gradient(165deg,#241653,#160e38 60%,#1e1147);">
+    <div aria-hidden="true" style="position:absolute; inset:0; pointer-events:none; opacity:.6; background-image:radial-gradient(1.4px 1.4px at 18% 24%,#fff 60%,transparent),radial-gradient(1.4px 1.4px at 72% 16%,#fff 60%,transparent),radial-gradient(1.2px 1.2px at 44% 70%,#ffd9f4 60%,transparent),radial-gradient(1.2px 1.2px at 88% 58%,#cfe0ff 60%,transparent),radial-gradient(1.3px 1.3px at 30% 88%,#fff 60%,transparent);"></div>
+    <div onclick="{{ toggleDock }}" style="position:relative; display:flex; align-items:center; gap:9px; padding:12px 15px; cursor:pointer; border-bottom:{{ dockBorder }};">
+      <span style="width:9px;height:9px;border-radius:50%;background:#ff6fd0; box-shadow:0 0 8px 1px #ff6fd0; animation:pulseDot 1.3s infinite;"></span>
+      <span class="disp" style="flex:1; font-size:15px; font-weight:800; color:#fff; text-shadow:0 0 10px rgba(255,140,230,.5);">✦ Tiến trình</span>
+      <span class="disp" style="font-size:11px; font-weight:700; color:#c9b8ff;">{{ dockCount }}</span>
+      <span style="font-size:14px; color:#c9b8ff; transform:{{ chevronRot }}; transition:transform .2s;">⌄</span>
+    </div>
+    <div class="oc-scroll" style="position:relative; max-height:{{ dockBodyMax }}; overflow-y:auto; transition:max-height .25s ease;">
+      <sc-for list="{{ tasks }}" as="t" hint-placeholder-count="3">
+        <div style="position:relative; padding:4px 16px 12px;">
+          <div class="disp" style="display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:#fff; margin-bottom:9px; text-shadow:0 0 8px rgba(200,160,255,.4);">
+            <span style="font-size:10px; color:{{ t.color }}; animation:twSpark 2.2s infinite;">✦</span><span style="opacity:.6; font-size:8px;">✧</span>
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.title }}</span>
+          </div>
+          <div style="position:relative; height:13px; border-radius:999px; background:rgba(10,6,30,.55); box-shadow:inset 0 1px 3px rgba(0,0,0,.5), 0 0 0 1px rgba(180,150,255,.18); overflow:visible;">
+            <div style="{{ t.fill }}"></div>
+            <!-- cánh hoa rơi lấp lánh tại điểm tiến -->
+            <div style="position:absolute; top:6px; left:{{ t.pctStr }}; pointer-events:none;">
+              <span class="oc-petal" style="{{ t.petal1 }}">❀</span>
+              <span class="oc-petal" style="{{ t.petal2 }}">✿</span>
+              <span class="oc-petal" style="{{ t.petal3 }}">✦</span>
+            </div>
+            <span style="{{ t.flower }}">❀</span>
+            <!-- charm treo lủng lẳng dưới thanh -->
+            <div class="oc-charm" style="position:absolute; top:12px; left:14%; display:flex; flex-direction:column; align-items:center;">
+              <div style="width:1px; height:11px; background:repeating-linear-gradient(#c9b8ff 0 1.5px, transparent 1.5px 3.5px);"></div>
+              <span style="font-size:12px; filter:drop-shadow(0 0 4px {{ t.glow }});">{{ t.charm }}</span>
+            </div>
+            <div class="oc-charm" style="position:absolute; top:12px; left:26%; display:flex; flex-direction:column; align-items:center; animation-delay:.6s;">
+              <div style="width:1px; height:8px; background:repeating-linear-gradient(#c9b8ff 0 1.5px, transparent 1.5px 3.5px);"></div>
+              <span style="font-size:10px; filter:drop-shadow(0 0 4px {{ t.glow }});">{{ t.charm2 }}</span>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:flex-end; margin-top:14px;">
+            <span class="disp" style="font-size:12px; font-weight:800; color:{{ t.color }}; text-shadow:0 0 8px {{ t.glow }};"><span style="color:#c9b8ff; font-size:9px;">[✦]</span> {{ t.count }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+
+

@@ -1,0 +1,287 @@
+{
+  "url": "https://labs.google/fx/vi/tools/flow/project/293f8e74-008f-41cc-8280-83f32c0bccf8",
+  "before": [
+    {
+      "tag": "button",
+      "text": "arrow_back\nQuay lại",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "more_vert\nTuỳ chọn khác",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r21:"
+    },
+    {
+      "tag": "button",
+      "text": "search\nTìm kiếm",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "filter_list\nSắp xếp và lọc",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r23:"
+    },
+    {
+      "tag": "button",
+      "text": "add\nThêm nội dung nghe nhìn",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r25:"
+    },
+    {
+      "tag": "button",
+      "text": "help\nTrợ giúp về sản phẩm",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "settings_2\nCài đặt chế độ xem",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r29:"
+    },
+    {
+      "tag": "button",
+      "text": "more_vert\nKhác",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r2c:"
+    },
+    {
+      "tag": "button",
+      "text": "PRO",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "dashboard\nTất cả nội dung nghe nhìn",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "accessibility_new\nNhân vật",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "movie\nXem các cảnh",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "apps_spark_2\nCông cụ",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "delete\nXem thùng rác",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "left_panel_close\nThu gọn",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "add_2\nTạo",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "Tác nhân",
+      "aria": "",
+      "pressed": "true",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "article_spark\nHướng dẫn cho tác nhân",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "tune\nCài đặt",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "arrow_forward\nTạo",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "expand_content\nMở rộng",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    }
+  ],
+  "after": [
+    {
+      "tag": "button",
+      "text": "arrow_back\nQuay lại",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "more_vert\nTuỳ chọn khác",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r21:"
+    },
+    {
+      "tag": "button",
+      "text": "search\nTìm kiếm",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "filter_list\nSắp xếp và lọc",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r23:"
+    },
+    {
+      "tag": "button",
+      "text": "add\nThêm nội dung nghe nhìn",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r25:"
+    },
+    {
+      "tag": "button",
+      "text": "help\nTrợ giúp về sản phẩm",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "settings_2\nCài đặt chế độ xem",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r29:"
+    },
+    {
+      "tag": "button",
+      "text": "more_vert\nKhác",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r2c:"
+    },
+    {
+      "tag": "button",
+      "text": "PRO",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "dashboard\nTất cả nội dung nghe nhìn",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "accessibility_new\nNhân vật",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "movie\nXem các cảnh",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "apps_spark_2\nCông cụ",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "delete\nXem thùng rác",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "left_panel_close\nThu gọn",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "add_2\nTạo",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "Tác nhân",
+      "aria": "",
+      "pressed": "false",
+      "id": ""
+    },
+    {
+      "tag": "button",
+      "text": "Imagen 4\ncrop_16_9\n1x",
+      "aria": "",
+      "pressed": "",
+      "id": "radix-:r3c:"
+    },
+    {
+      "tag": "button",
+      "text": "arrow_forward\nTạo",
+      "aria": "",
+      "pressed": "",
+      "id": ""
+    }
+  ]
+}

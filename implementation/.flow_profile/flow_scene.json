@@ -1,0 +1,162 @@
+[
+  {
+    "tag": "button",
+    "role": "",
+    "text": "arrow_back\nQuay lại dự án",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "input",
+    "role": "",
+    "text": "",
+    "aria": "Văn bản có thể chỉnh sửa",
+    "type": "text",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "arrow_left",
+    "aria": "Trước",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "arrow_right",
+    "aria": "Tiếp theo",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "favorite\nYêu thích",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "download\nTải xuống",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "history\nẨn nhật ký",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "more_vert\nKhác",
+    "aria": "",
+    "type": "button",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "Xong",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "crop_landscape\n16:9",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "add_photo_alternate\nLưu khung hình",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "volume_up\nÂm thanh",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "skip_previous\nPrevious",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "play_arrow\nphát",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "skip_next\ntiếp theo",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "fullscreen\nToàn màn hình",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "zoom_out\nThu nhỏ",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "zoom_in\nPhóng to",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "add\nThêm đoạn trích video",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "arrow_forward\nTạo",
+    "aria": "",
+    "type": "",
+    "accept": ""
+  }
+]

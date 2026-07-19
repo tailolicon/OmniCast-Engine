@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(anthropic-skills:docx)",
+      "Skill(anthropic-skills:docx:*)",
+      "PowerShell(\\(Get-Content \"E:\\\\Project\\\\OmniCast Engine\\\\PROJECT_CONTEXT.md\" | Measure-Object -Line\\).Lines)"
+    ]
+  }
+}

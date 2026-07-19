@@ -1,0 +1,82 @@
+{
+  "channel_id": "money_blueprint_us",
+  "name": "The Money Blueprint",
+  "niche": "finance",
+  "sub_niche": "personal finance mechanics & money psychology",
+  "market": "US",
+  "visual_style": "dark_cinematic",
+  "channel_style": "footage",
+  "music_mood": "cinematic",
+  "voice_profile": "kokoro:am_michael",
+  "voice_fallback": [
+    "edge:en-US-AndrewMultilingualNeural",
+    "edge:en-US-BrianMultilingualNeural",
+    "edge:en-US-GuyNeural"
+  ],
+  "voice_persona": "authoritative_male_40",
+  "brand_voice": "Calm, sharp financial insider explaining how money systems actually work — banks, inflation, credit, investing traps — with hard numbers and zero hype.",
+  "tone": "direct",
+  "hook_format": "The bank makes $X off you every year — here's the exact mechanism, and how to flip it.",
+  "brand_color_hex": "#0F2A4A",
+  "font_vibe": "sans_modern",
+  "competitor_handles": [
+    "@GrahamStephan",
+    "@TheSwedishInvestor",
+    "@TwoCentsPBS"
+  ],
+  "audience": {
+    "age_range": "28-55",
+    "pain_points": [
+      "paycheck disappears with nothing saved",
+      "fear of retiring broke",
+      "feeling stupid about credit, interest and investing jargon"
+    ],
+    "content_triggers": [
+      "hidden fees and traps everyone falls into",
+      "exact dollar breakdowns and compounding examples",
+      "what banks and credit card companies don't advertise"
+    ],
+    "engagement_drivers": [
+      "comment the money mistake you'd undo",
+      "guess the number before the reveal"
+    ]
+  },
+  "trends_keywords": [
+    "how banks make money",
+    "compound interest explained",
+    "credit score myths",
+    "inflation savings account",
+    "index funds vs savings"
+  ],
+  "rss_feeds": [
+    "https://www.investopedia.com/feedbuilder/feed/getfeed?feedName=rss_headline",
+    "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+  ],
+  "subreddits": ["personalfinance", "MiddleClassFinance"],
+  "rpm_floor": 15.0,
+  "target_duration_min": 10,
+  "destinations": [
+    {
+      "destination_id": "money_blueprint_us_youtube",
+      "platform_id": "youtube",
+      "account_id": "money_blueprint_us",
+      "format_variant": "youtube_16x9",
+      "enabled": true,
+      "approval_required": true,
+      "schedule_policy": "prime_time",
+      "market": "US",
+      "metadata_overrides": {}
+    }
+  ],
+  "youtube_channel_id": "UCaKyBIKi8Jy_Ms22BUzEhgg",
+  "youtube_handle": "@TheMoneyBlueprintHQ-z6r",
+  "channel_created_at": "2026-07-10",
+  "channel_type": "hub",
+  "language": "en",
+  "ref_channels": [
+    "@GrahamStephan",
+    "@TheSwedishInvestor",
+    "@TwoCentsPBS"
+  ],
+  "strip_script_outro": false
+}

@@ -1,0 +1,70 @@
+# OmniCast default channel pipeline
+# Runs: Discovery → Script → Render → (optional) Upload
+#
+# Run manually:
+#   python -c "
+#   import asyncio
+#   from pathlib import Path
+#   from omnicast.pipeline.runner import PipelineRunner
+#   r = PipelineRunner()
+#   ex = asyncio.run(r.run_file(Path('pipelines/default_channel.yaml'),
+#                               inputs={'channel_id': 'my_channel', 'do_upload': False}))
+#   print(ex.status, ex.error)
+#   "
+
+id: default_channel
+name: Default Channel Pipeline
+description: >
+  Full production cycle for one channel:
+  topic discovery → Writer/Critic script debate → FFmpeg render → optional YouTube upload.
+
+steps:
+  - id: discovery
+    type: omnicast.discovery
+    retry:
+      max_attempts: 3
+      delay_seconds: 60
+      backoff_multiplier: 2.0
+    timeout_seconds: 300
+    inputs:
+      channel_id: "{{ channel_id }}"
+
+  - id: script
+    type: omnicast.script
+    depends_on: [discovery]
+    retry:
+      max_attempts: 1   # a 25-min debate timeout shouldn't burn another full retry
+      delay_seconds: 30
+    timeout_seconds: 2100   # writer×2 + 7-round debate + tournament + evolution + expand
+    inputs:
+      channel_id: "{{ channel_id }}"
+      topic: "{{ steps.discovery.topic }}"
+      audience: "{{ steps.discovery.audience }}"
+      pain_point: "{{ steps.discovery.pain_point }}"
+      content_angle: "{{ steps.discovery.content_angle }}"
+      next_topic: "{{ steps.discovery.next_topic }}"
+
+  - id: render
+    type: omnicast.render
+    depends_on: [script]
+    retry:
+      max_attempts: 1
+    timeout_seconds: 2700
+    inputs:
+      channel_id: "{{ channel_id }}"
+      script_path: "{{ steps.script.script_path }}"
+      beat_words: 18   # ~1 sentence/shot, Vfacts-style pacing
+
+  - id: upload
+    type: omnicast.upload
+    depends_on: [render]
+    condition: "{{ do_upload }}"
+    retry:
+      max_attempts: 3
+      delay_seconds: 120
+      backoff_multiplier: 2.0
+    timeout_seconds: 600
+    inputs:
+      channel_id: "{{ channel_id }}"
+      video_path: "{{ steps.render.video_path }}"
+      privacy: "private"

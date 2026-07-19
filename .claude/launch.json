@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "omnicast-api",
+      "runtimeExecutable": "implementation/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "omnicast.api.server:app", "--host", "127.0.0.1", "--port", "8765", "--app-dir", "implementation/src"],
+      "port": 8765
+    },
+    {
+      "name": "mobile",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "npm", "run", "dev", "--prefix", "E:\\Project\\OmniCast Engine\\mobile"],
+      "port": 5173
+    }
+  ]
+}

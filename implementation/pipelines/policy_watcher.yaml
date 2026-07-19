@@ -1,0 +1,25 @@
+# OmniCast policy watcher pipeline
+# Runs every Sunday at 03:00 UTC — fetches YouTube policy pages, diffs vs last
+# snapshot, extracts rule changes into pending_approval (human-gated).
+#
+# Approve/reject via:
+#   Dashboard → Policy tab
+#   POST /api/policy/rules/{id}/approve|reject
+
+id: policy_watcher
+name: YouTube Policy Watcher (weekly)
+description: >
+  Fetch + diff all YouTube policy sources. LLM-extracts changed rules into
+  pending_approval in vault.db. Human must approve before rules go live.
+
+schedule:
+  cron: "0 3 * * 0"   # Every Sunday at 03:00 UTC
+  do_upload: false
+
+steps:
+  - id: fetch_policies
+    type: omnicast.policy_check
+    retry:
+      max_attempts: 2
+      delay_seconds: 300
+    timeout_seconds: 600

@@ -1,0 +1,93 @@
+{
+  "channel_id": "true_dread_files_us",
+  "name": "True Dread Files",
+  "niche": "psychology",
+  "sub_niche": "true scary stories & unexplained real cases",
+  "niche_config_key": "psychology.horror",
+  "script_profile": "true_horror_strict_v1",
+  "market": "US",
+  "visual_style": "dark_cinematic",
+  "channel_style": "horror_real",
+  "music_mood": "horror",
+  "music_volume": 0.08,
+  "sfx_style": "diegetic",
+  "pacing_flat_ok": true,
+  "voice_profile": "edge:en-US-ChristopherNeural",
+  "voice_fallback": [
+    "edge:en-US-GuyNeural",
+    "edge:en-US-AndrewMultilingualNeural"
+  ],
+  "voice_persona": "low_calm_male_narrator",
+  "voice_rate": "-8%",
+  "brand_voice": "A calm narrator reading allegedly true FIRST-PERSON submissions — 'this happened to me' stories told in the submitter's own voice. Mundane relatable settings that slowly go wrong. No analysis, no neat explanation, and only a brief practical aftermath; the dread comes from being inside the moment.",
+  "tone": "dramatic",
+  "hook_format": "Open cold in first person, either one chilling line from the scariest moment then pull back, or the ordinary detail that will curdle — e.g. 'I only stopped taking the county road after what kept pace with my car.' NEVER frame it as a file/report/case or say 'the police report says'.",
+  "brand_color_hex": "#1B1B22",
+  "font_vibe": "sans_modern",
+  "competitor_handles": [
+    "@mrnightmare",
+    "@LetsReadOfficial",
+    "@DarkSomnium"
+  ],
+  "audience": {
+    "age_range": "18-40",
+    "pain_points": [
+      "generic AI horror slop with fake-looking art",
+      "channels that oversell and underdeliver on 'true' stories",
+      "wanting long ambient horror to fall asleep to"
+    ],
+    "content_triggers": [
+      "allegedly true encounters with consistent mundane details and physical geography",
+      "liminal real places: night shifts, empty roads, basements",
+      "under-confirmed danger that could plausibly happen to an ordinary person"
+    ],
+    "engagement_drivers": [
+      "video DESCRIPTION only (never spoken in-narration): invite viewers to share their own encounter",
+      "video DESCRIPTION only: tease the next episode's setting"
+    ]
+  },
+  "trends_keywords": [
+    "true scary stories",
+    "real horror encounters",
+    "night shift horror stories",
+    "unexplained disappearances",
+    "true creepy stories compilation"
+  ],
+  "rss_feeds": [],
+  "subreddits": [
+    "nosleep",
+    "LetsNotMeet",
+    "Glitch_in_the_Matrix"
+  ],
+  "rpm_floor": 5.0,
+  "target_duration_min": 15,
+  "destinations": [
+    {
+      "destination_id": "true_dread_files_us_youtube",
+      "platform_id": "youtube",
+      "account_id": "true_dread_files_us",
+      "format_variant": "youtube_16x9",
+      "enabled": true,
+      "approval_required": true,
+      "schedule_policy": "prime_time",
+      "market": "US",
+      "metadata_overrides": {}
+    }
+  ],
+  "channel_created_at": null,
+  "channel_type": "hub",
+  "language": "en",
+  "ref_channels": [
+    "@mrnightmare",
+    "@LetsReadOfficial",
+    "@DarkSomnium"
+  ],
+  "strip_script_outro": false,
+  "image_style_prompt": "ONE single full-frame REAL PHOTOGRAPH, amateur night photo on an old phone camera, harsh single light or sodium glow, heavy high-ISO grain, slight motion blur, imperfect off-center framing, mundane real environment. If any figure appears it is DISTANT, PARTIAL, or a SILHOUETTE in shadow — a shape, never a close face; suggested not shown. Empty liminal spaces and absence are preferred. no text, no words",
+  "image_style_negative": "illustration, painting, digital art, 3d render, cgi, cinematic lighting, symmetrical, movie poster, studio lighting, posed, bright cheerful colors, close-up face, facial close up, distorted face, deformed face, disfigured, melted features, mangled, mutilated, gore, blood, wound, corpse, monster, creature, fangs, claws, zombie, demon, low detail, watermark",
+  "image_style_lock": "as a real unedited amateur photograph, grainy and imperfect; any person is distant or a silhouette, never a distorted close-up face",
+  "image_provider": "flow",
+  "voice_pitch": "-6Hz",
+  "card_intro_title": "TRUE DREAD FILES",
+  "card_intro_subtitle": "REAL ACCOUNTS · NOTHING EXPLAINED"
+}

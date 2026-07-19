@@ -1,0 +1,7 @@
+2026/05/27-02:39:47.950 a574 Reusing MANIFEST E:\Project\OmniCast Engine\output\browser_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/MANIFEST-000001
+2026/05/27-02:39:47.950 a574 Recovering log #4
+2026/05/27-02:39:47.950 a574 Reusing old log E:\Project\OmniCast Engine\output\browser_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/000004.log 
+2026/05/27-02:39:47.977 54e8 Level-0 table #8: started
+2026/05/27-02:39:47.983 54e8 Level-0 table #8: 8399 bytes OK
+2026/05/27-02:39:47.985 54e8 Delete type=0 #4
+2026/05/27-02:39:47.986 a574 Manual compaction at level-0 from '\x00\x05\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x06\x00\x00\x00' @ 0 : 0; will stop at (end)

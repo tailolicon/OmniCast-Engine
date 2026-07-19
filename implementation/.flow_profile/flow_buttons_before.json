@@ -1,0 +1,142 @@
+[
+  {
+    "tag": "button",
+    "role": "",
+    "text": "arrow_back\nQuay lại",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "more_vert\nTuỳ chọn khác",
+    "testId": "",
+    "id": "radix-:r3:"
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "search\nTìm kiếm",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "filter_list\nSắp xếp và lọc",
+    "testId": "",
+    "id": "radix-:r5:"
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "add\nThêm nội dung nghe nhìn",
+    "testId": "",
+    "id": "radix-:r7:"
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "help\nTrợ giúp về sản phẩm",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "settings_2\nCài đặt chế độ xem",
+    "testId": "",
+    "id": "radix-:rb:"
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "more_vert\nKhác",
+    "testId": "",
+    "id": "radix-:re:"
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "PRO",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "dashboard\nTất cả nội dung nghe nhìn",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "image\nXem hình ảnh",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "accessibility_new\nNhân vật",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "movie\nXem các cảnh",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "apps_spark_2\nCông cụ",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "delete\nXem thùng rác",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "left_panel_close\nThu gọn",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "add_2\nTạo",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "Tác nhân",
+    "testId": "",
+    "id": ""
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "Imagen 4\ncrop_16_9\n1x",
+    "testId": "",
+    "id": "radix-:rn:"
+  },
+  {
+    "tag": "button",
+    "role": "",
+    "text": "arrow_forward\nTạo",
+    "testId": "",
+    "id": ""
+  }
+]

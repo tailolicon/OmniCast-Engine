@@ -1,0 +1,91 @@
+{
+  "schema": "acceptance-context.v1",
+  "user_request": "hoan thien toan bo du an super app, sau do check toan bo output xem da du tot de bat kiem tien chua",
+  "user_request_hash": "manual-2026-07-01-m1-monetization-readiness",
+  "demo_artifacts": [
+    {
+      "kind": "app",
+      "path": "C:\\Users\\Tailolicon\\OneDrive\\Máy tính\\OmniCast.lnk"
+    },
+    {
+      "kind": "text",
+      "path": "http://127.0.0.1:8767/api/monetization/readiness"
+    },
+    {
+      "kind": "text",
+      "path": "implementation/src/omnicast/api/webui/ tab Monetization"
+    }
+  ],
+  "verified_criteria": [
+    {
+      "name": "Desktop app target verified",
+      "passed": true,
+      "evidence": "Shortcut points to implementation/OmniCast.bat, which launches omnicast_desktop.py and serves the WebUI through FastAPI."
+    },
+    {
+      "name": "M1 platform contract exists",
+      "passed": true,
+      "evidence": "IPlatform models, registry, YouTube adapter, TikTok adapter, and API /api/platforms verified."
+    },
+    {
+      "name": "Channel destinations configured",
+      "passed": true,
+      "evidence": "beat_glp1_nausea has YouTube approval-required destination and disabled TikTok template destination."
+    },
+    {
+      "name": "Approval gate prevents automatic public publish",
+      "passed": true,
+      "evidence": "MultiPlatformPublisher returns WAITING_APPROVAL for approval_required destinations; readiness reports approval gate passed."
+    },
+    {
+      "name": "9:16 render variant path exists",
+      "passed": true,
+      "evidence": "RenderVariantExporter builds TikTok 9:16 FFmpeg command; tests verify scale/crop filter."
+    },
+    {
+      "name": "Desktop operator surface exists",
+      "passed": true,
+      "evidence": "Real FastAPI WebUI now includes a Monetization tab with readiness, platforms, destinations, credential vault, and affiliate offer controls. Playwright opened it via local backend."
+    },
+    {
+      "name": "Multi-platform analytics ready",
+      "passed": true,
+      "evidence": "Vault-backed post_metrics ledger and /api/platforms/metrics ingestion exist; round-trip tests pass."
+    },
+    {
+      "name": "Affiliate tracking ready",
+      "passed": true,
+      "evidence": "Offer, placement, disclosure injection, conversion, and revenue ledger exist; unit tests pass."
+    },
+    {
+      "name": "Credential vault ready",
+      "passed": true,
+      "evidence": "CredentialVault stores secrets without safe-list leakage and supports Fernet encryption; API never returns secret values."
+    },
+    {
+      "name": "Encrypted live credentials configured",
+      "passed": false,
+      "evidence": "Readiness reports 0 encrypted credentials configured in output/vault.db."
+    },
+    {
+      "name": "Active monetization offer configured",
+      "passed": false,
+      "evidence": "Readiness reports 0 active offers configured in output/vault.db."
+    }
+  ],
+  "tdd_verified": "yes",
+  "unverified_caveats": [
+    "No real public upload was attempted.",
+    "Existing MP4 outputs were technically audited with ffprobe; only 1 of the 5 latest cache MP4s had an audio stream.",
+    "Final monetization requires real encrypted platform credentials and real approved affiliate offers."
+  ],
+  "past_issue_patterns": [],
+  "recommendation": "wait",
+  "recommendation_evidence": [
+    "Readiness endpoint returns WAIT with score 84.6%.",
+    "Required blockers remain: encrypted_credentials_configured and active_offer_configured.",
+    "Public monetization should stay off until these blockers are resolved and a manual content QA pass approves the intended sample video."
+  ],
+  "project": "OmniCast Engine",
+  "generated_at": "2026-07-01T23:00:00+07:00"
+}

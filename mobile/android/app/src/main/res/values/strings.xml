@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OmniCast</string>
+    <string name="title_activity_main">OmniCast</string>
+    <string name="package_name">com.omnicast.mobile</string>
+    <string name="custom_url_scheme">com.omnicast.mobile</string>
+</resources>

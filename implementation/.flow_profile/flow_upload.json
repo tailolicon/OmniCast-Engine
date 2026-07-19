@@ -1,0 +1,303 @@
+{
+  "clicked": true,
+  "before": {
+    "fileInputs": [
+      {
+        "accept": "image/*",
+        "name": "",
+        "id": "",
+        "hidden": true
+      }
+    ],
+    "items": [
+      {
+        "tag": "button",
+        "role": "",
+        "text": "arrow_back\nQuay lại",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "more_vert\nTuỳ chọn khác",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "search\nTìm kiếm",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "filter_list\nSắp xếp và lọc",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "add\nThêm nội dung nghe nhìn",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "help\nTrợ giúp về sản phẩm",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "settings_2\nCài đặt chế độ xem",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "more_vert\nKhác",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "PRO",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "dashboard\nTất cả nội dung nghe nhìn",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "image\nXem hình ảnh",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "videocam\nXem video",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "accessibility_new\nNhân vật",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "movie\nXem các cảnh",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "apps_spark_2\nCông cụ",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "delete\nXem thùng rác",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "left_panel_close\nThu gọn",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "add_2\nTạo",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "Tác nhân",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "Video · 4s\ncrop_16_9\n1x",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "arrow_forward\nTạo",
+        "testId": ""
+      }
+    ]
+  },
+  "after": {
+    "fileInputs": [
+      {
+        "accept": "image/*",
+        "name": "",
+        "id": "",
+        "hidden": true
+      }
+    ],
+    "items": [
+      {
+        "tag": "button",
+        "role": "",
+        "text": "arrow_back\nQuay lại",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "more_vert\nTuỳ chọn khác",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "search\nTìm kiếm",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "filter_list\nSắp xếp và lọc",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "add\nThêm nội dung nghe nhìn",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "help\nTrợ giúp về sản phẩm",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "settings_2\nCài đặt chế độ xem",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "more_vert\nKhác",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "PRO",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "dashboard\nTất cả nội dung nghe nhìn",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "image\nXem hình ảnh",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "videocam\nXem video",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "accessibility_new\nNhân vật",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "movie\nXem các cảnh",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "apps_spark_2\nCông cụ",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "delete\nXem thùng rác",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "left_panel_close\nThu gọn",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "add_2\nTạo",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "Tác nhân",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "Video · 4s\ncrop_16_9\n1x",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "",
+        "text": "arrow_forward\nTạo",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "menuitem",
+        "text": "upload\nTải nội dung nghe nhìn lên",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "menuitem",
+        "text": "folder\nTạo bộ sưu tập",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "menuitem",
+        "text": "account_circle\nTạo nhân vật",
+        "testId": ""
+      },
+      {
+        "tag": "button",
+        "role": "menuitem",
+        "text": "play_movies\nTạo cảnh",
+        "testId": ""
+      }
+    ]
+  }
+}

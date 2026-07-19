@@ -1,0 +1,295 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Be Vietnam Pro', system-ui, sans-serif;
+  --font-display: 'Baloo 2', 'Be Vietnam Pro', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-text: var(--text);
+  --color-text2: var(--text2);
+  --color-text3: var(--text3);
+  --color-heading: var(--heading);
+  --color-ink: var(--ink);
+  --color-accent: var(--accent);
+  --color-blue: var(--blue);
+  --color-green: var(--green);
+  --color-purple: var(--purple);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+}
+
+/* ── Display font: Baloo 2 (kawaii-neon headings/logo/values) ───────────────── */
+@font-face {
+  font-family: 'Baloo 2';
+  src: url('/fonts/Baloo2-latin.woff2') format('woff2');
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Baloo 2';
+  src: url('/fonts/Baloo2-latinext.woff2') format('woff2');
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Baloo 2';
+  src: url('/fonts/Baloo2-vietnamese.woff2') format('woff2');
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+
+/* ── Body font: Be Vietnam Pro (weight ranges avoid faux-bold synthesis) ─────── */
+@font-face {
+  font-family: 'Be Vietnam Pro';
+  src: url('/fonts/BeVietnamPro-Regular.ttf') format('truetype');
+  font-weight: 400 500;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Be Vietnam Pro';
+  src: url('/fonts/BeVietnamPro-Bold.ttf') format('truetype');
+  font-weight: 600 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Be Vietnam Pro';
+  src: url('/fonts/BeVietnamPro-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/IBMPlexMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/IBMPlexMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   OmniCast Neon — kawaii pastel design tokens.
+   LIGHT is primary (matches the neon mockup); DARK is a neon-night variant.
+   Page/component code references these token names, so swapping values re-skins
+   the whole app. Extra neon-only tokens: --ink (chunky outline), --shadow-hard
+   (offset "sticker" shadow), --glow (soft neon bloom), --bg-gradient.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root, .light {
+  --bg: #efe7ff;
+  --bg-gradient: linear-gradient(160deg, #f6f0ff, #e9ddff 42%, #ffe3f4 78%, #e3f4ff);
+  --surface: #ffffff;
+  --surface-gradient: linear-gradient(160deg, #ffffff, #f7f2ff 65%, #fff2fb);
+  --surface2: #f7f2ff;
+  --surface3: #f3ecff;
+  --border: #4a3b7a;          /* ink — chunky 2px outline */
+  --border-soft: #e6dcff;     /* hairline dividers inside cards */
+  --border-hover: #372a66;
+  --ink: #4a3b7a;
+  --text: #4a3b7a;
+  --text2: #8676bd;
+  --text3: #b0a3d6;
+  --heading: #372a66;
+
+  --accent: #f45fce;          /* neon pink — primary */
+  --accent-hover: #ec3fbf;
+  --accent-soft: #ffe0f5;
+  --accent-ring: rgba(244, 95, 206, 0.45);
+
+  --green: #22c9a8;
+  --green-soft: #e3fff4;
+  --green-ink: #1a9e7a;      /* chữ xanh lá trên nền sáng (bản Neon dùng cho $ / trạng thái) */
+  --blue: #37b6f5;
+  --blue-soft: #e6f6ff;
+  --purple: #a877ff;
+  --purple-soft: #f3ecff;
+  --amber: #f2a93b;
+  --amber-soft: #fff5da;
+  --red: #ff5f9e;
+  --red-soft: #fff0f6;
+
+  --shadow-hard: 3px 3px 0 0 rgba(74, 59, 122, 0.16);
+  --shadow-hard-sm: 2px 2px 0 0 rgba(74, 59, 122, 0.15);
+  --glow: 0 0 24px -8px rgba(168, 119, 255, 0.40);
+  --glow-pink: 0 0 16px -2px rgba(244, 95, 206, 0.55);
+  --radius-card: 18px;
+  --radius-pill: 999px;
+
+  --star: #ffd45e;
+  --grid-line: rgba(255, 255, 255, 0.55);
+  --cloud: #ffffff;
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(201, 184, 240, 0.7);
+}
+
+.dark {
+  --bg: #120e1f;
+  --bg-gradient: linear-gradient(160deg, #171128, #1c1330 42%, #26122b 78%, #101a2b);
+  --surface: #1e1836;
+  --surface-gradient: linear-gradient(160deg, #221b3e, #1c1533 65%, #261640);
+  --surface2: #251d42;
+  --surface3: #2d2350;
+  --border: #7d6bb8;          /* light violet ink so chunky outline still reads */
+  --border-soft: #33285c;
+  --border-hover: #9d8bd8;
+  --ink: #7d6bb8;
+  --text: #ece7ff;
+  --text2: #b9a9e6;
+  --text3: #8676bd;
+  --heading: #f6f0ff;
+
+  --accent: #ff6fd0;
+  --accent-hover: #ff8ada;
+  --accent-soft: rgba(255, 111, 208, 0.16);
+  --accent-ring: rgba(255, 111, 208, 0.55);
+
+  --green: #4fd86a;
+  --green-soft: rgba(79, 216, 106, 0.16);
+  --green-ink: #4fd86a;
+  --blue: #6fa8ff;
+  --blue-soft: rgba(111, 168, 255, 0.16);
+  --purple: #b07cff;
+  --purple-soft: rgba(176, 124, 255, 0.16);
+  --amber: #ffb44d;
+  --amber-soft: rgba(255, 180, 77, 0.16);
+  --red: #ff5f9e;
+  --red-soft: rgba(255, 95, 158, 0.16);
+
+  --shadow-hard: 3px 3px 0 0 rgba(0, 0, 0, 0.45);
+  --shadow-hard-sm: 2px 2px 0 0 rgba(0, 0, 0, 0.40);
+  --glow: 0 0 26px -6px rgba(176, 124, 255, 0.60);
+  --glow-pink: 0 0 18px -2px rgba(255, 111, 208, 0.70);
+
+  --star: #ffe08a;
+  --grid-line: rgba(180, 150, 255, 0.10);
+  --cloud: rgba(255, 255, 255, 0.06);
+  --glass: rgba(30, 24, 54, 0.62);
+  --glass-border: rgba(125, 107, 184, 0.4);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-gradient) fixed;
+  background-color: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  color: var(--heading);
+  font-weight: 800;
+  letter-spacing: -0.005em;
+}
+h1 { font-size: 24px; }
+h2 { font-size: 20px; }
+h3 { font-size: 15px; }
+
+code, pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+/* Display font utility (kawaii headings/values/logo) */
+.disp { font-family: var(--font-display); }
+.mono { font-family: var(--font-mono); }
+
+/* ── Kawaii-neon background decor (drifting sparkle grid, twinkling stars, floating clouds) ── */
+.oc-grid {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 64px 64px, 64px 64px;
+  animation: gridDrift 12s linear infinite;
+}
+.star {
+  position: absolute;
+  color: var(--star);
+  pointer-events: none;
+  user-select: none;
+  animation: twinkle 2.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 5px rgba(255, 212, 94, 0.6));
+}
+.oc-cloud { animation: cloudDrift 16s ease-in-out infinite; }
+
+@keyframes gridDrift {
+  0%   { background-position: 0 0, 0 0; }
+  100% { background-position: 64px 64px, 64px 64px; }
+}
+@keyframes cloudDrift {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(30px); }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+@keyframes petalFall {
+  0%   { transform: translateY(-2px) rotate(0deg) scale(.9); opacity: 0; }
+  15%  { opacity: 1; }
+  70%  { opacity: .9; }
+  100% { transform: translateY(30px) rotate(150deg) scale(.6); opacity: 0; }
+}
+@keyframes charmSway {
+  0%, 100% { transform: rotate(-5deg); }
+  50%      { transform: rotate(5deg); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-loader {
+  background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+*:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); border-radius: 8px; }
+::selection { background: var(--accent-soft); }
+/* Neon scrollbar — gradient pink→purple thumb trên track hồng nhạt (khớp .oc-scroll bản standalone) */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--accent), var(--purple));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, var(--accent-hover), var(--purple)); background-clip: padding-box; }
+::-webkit-scrollbar-track { background: rgba(244, 95, 206, 0.10); border-radius: 999px; margin: 4px; }
+.scrollbar-thin::-webkit-scrollbar { width: 7px; height: 7px; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* ── Neon sidebar: icon-rail 74px, hover (hoặc ghim bằng click logo) bung 236px ── */
+.oc-sidebar { width: 74px; transition: width 0.2s ease; }
+.oc-sidebar:hover, .oc-sidebar.oc-pinned { width: 236px; }
+.oc-sidebar .oc-label { opacity: 0; max-width: 0; overflow: hidden; white-space: nowrap; transition: opacity 0.14s, max-width 0.2s; }
+.oc-sidebar:hover .oc-label, .oc-sidebar.oc-pinned .oc-label { opacity: 1; max-width: 170px; }
+.oc-sidebar .oc-eyebrow { opacity: 0; height: 0; margin-bottom: 0 !important; overflow: hidden; transition: opacity 0.14s; }
+.oc-sidebar:hover .oc-eyebrow, .oc-sidebar.oc-pinned .oc-eyebrow { opacity: 1; height: auto; margin-bottom: 4px !important; }
+.oc-sidebar .oc-nav { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+.oc-sidebar:hover .oc-nav, .oc-sidebar.oc-pinned .oc-nav { justify-content: flex-start; gap: 10px; padding-left: 11px; padding-right: 11px; }
+.oc-sidebar .oc-logo { justify-content: center; padding: 0; }
+.oc-sidebar:hover .oc-logo, .oc-sidebar.oc-pinned .oc-logo { justify-content: flex-start; padding: 0 16px; }
+@media (prefers-reduced-motion: reduce) {
+  .oc-sidebar, .oc-sidebar .oc-label, .oc-sidebar .oc-eyebrow { transition: none; }
+}

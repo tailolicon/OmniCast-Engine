@@ -1,0 +1,167 @@
+{
+ "_source": "output/products/true_dread_files_us/20260717_0733_3_true_encounters_while_delivering_newspapers_befo",
+ "_note": "Verbatim plan/narration from the 2026-07-17 artifact the system scored 93/production_ready and an independent manual audit scored ~58-62. Mechanism/topic/safety labels are NOT in the original plan (the schema had no such fields); they are added here as the labels an honest planner would assign to these exact premises, so the plan-time gates can be regression-tested. Labels describe what the PLAN commits to, not what the prose happened to deliver.",
+ "topic": "3 True Encounters While Delivering Newspapers Before Dawn",
+ "cold_open": "The gate that let me in every morning was locked behind me, and he was still inside with me.",
+ "target_word_count": 2250,
+ "stories": [
+  {
+   "story_id": "story_1",
+   "title": "The Gap in the Fence",
+   "narrator_profile": "Sixteen-year-old high school sophomore riding her first solo paper route by bike before school, quiet, cautious, new to the neighborhood.",
+   "setting": "Suburban subdivision loop street with a paved walking-trail shortcut between two wooden fences, dark before sunrise in October.",
+   "setup_requirement": "Sixteen-year-old narrator explains she rides the same subdivision loop on her bike delivering papers before school each dawn.",
+   "threat": "A silent man who's long watched her route blocks her only shortcut home, flashlight dark, refusing to move aside.",
+   "threat_type": "human",
+   "escape_action": "She pedals hard around him into a lit yard, abandons the bike, and pounds on a neighbor's door until she's pulled inside.",
+   "ending_shape": "Safety reached mid-scream; door yanked open and man walks off unhurried while narrator learns next day no one matching him lives nearby.",
+   "evidence_allowance": "witness",
+   "voice_rules": "Short, breathless teenage clauses; sentences trail off when scared; repeats small physical details instead of explaining feelings; no adult vocabulary.",
+   "continuity_ledger": [
+    "hook_timeline: Six years ago, October, final week of a five-month paper route, forty minutes before dawn on trash-pickup Thursdays.",
+    "people_objects: Narrator, sixteen, alone; one bike with two canvas pannier bags; one adult man carrying a flashlight, no dog.",
+    "locations_exits: Subdivision loop street; paved walking-trail shortcut between two wooden fences; exit is Mrs. Alden's yard with motion light.",
+    "props_threat_position: Man stands square in the fence-gap mouth, flashlight off, blocking the only shortcut exit, one arm out.",
+    "response_escape: She rides straight past him into the yard, drops bike, pounds Alden's door, gets pulled inside."
+   ]
+  },
+  {
+   "story_id": "story_2",
+   "title": "The Locked Breezeway",
+   "narrator_profile": "Mid-thirties warehouse worker taking a pre-shift foot delivery route through apartment breezeways for extra cash, practical, unsentimental.",
+   "setting": "Three-story apartment complex with open-air breezeways and a self-locking ground gate normally propped open with a brick.",
+   "setup_requirement": "Adult narrator, mid-thirties, explains he walks a foot delivery route through an apartment complex's breezeways before his warehouse shift.",
+   "threat": "A stranger who trapped him inside a locked breezeway gate advances up the stairwell toward him with no clear exit left.",
+   "threat_type": "human",
+   "escape_action": "He hurls his delivery bag to stall the man, vaults the second-floor railing into the mulch, and sprints for his parked car.",
+   "ending_shape": "Story ends the moment his car door locks and headlights swing across the empty breezeway; he never learns who the man was.",
+   "evidence_allowance": "none",
+   "voice_rules": "Flat, clipped, working-class phrasing; short declarative sentences; occasional dry aside; avoids adjectives except when describing the gate.",
+   "continuity_ledger": [
+    "hook_timeline: Two winters ago, five weeks into a foot route, deliveries finished before his six a.m. warehouse shift started.",
+    "people_objects: Narrator, mid-thirties, alone with one canvas delivery bag; one unfamiliar man loitering near the stairwell, no weapon seen.",
+    "locations_exits: Three-story breezeway apartment block; self-locking ground gate normally propped with a brick; second exit over the rail to mulch.",
+    "props_threat_position: Gate found shut and locked behind him mid-route; the stranger moves to block the stairwell exit above.",
+    "response_escape: He throws the bag at the man, vaults the breezeway rail to the mulch below, and runs to his car."
+   ]
+  },
+  {
+   "story_id": "story_3",
+   "title": "The Counter Stool",
+   "narrator_profile": "Late-fifties longtime local doing a small-town Main Street bundle route by car, dry-humored, methodical, been driving it for years.",
+   "setting": "Small-town Main Street route by car and on foot, passing a shuttered diner and a gas station two blocks on, before dawn.",
+   "setup_requirement": "Woman in her late fifties describes years spent driving a small-town bundle route past the same closed diner every morning before sunrise.",
+   "threat": "A figure who has watched her from the shuttered diner's window every morning is suddenly standing on the sidewalk, blocking her path.",
+   "threat_type": "ambiguous",
+   "escape_action": "She jogs past him to a gas station two blocks on and bangs the glass until the owner lets her inside.",
+   "ending_shape": "Story ends as the gas station owner locks the door behind her; she quietly stops walking that block of the route afterward.",
+   "evidence_allowance": "none",
+   "voice_rules": "Dry, plain-spoken, unhurried small-town cadence; understates fear with short factual sentences; almost no metaphor.",
+   "continuity_ledger": [
+    "hook_timeline: Three winters into a Main Street bundle route, passing the same diner corner twice each morning before 5:30.",
+    "people_objects: Narrator, late fifties, alone; one recurring figure seated inside the shuttered diner; gas station owner unlocking two blocks on.",
+    "locations_exits: Main Street route; shuttered diner sidewalk; Value Stop gas station two blocks on where the owner arrives early.",
+    "props_threat_position: Figure normally at the diner's window counter stool now stands on the sidewalk, directly in her path.",
+    "response_escape: She jogs past him to the gas station, bangs the glass until the owner lets her inside."
+   ]
+  }
+ ],
+ "narrations": {
+  "story_1": "I've been doing this route since summer. Every morning before school, dark still, I ride the loop on my bike with two bags hanging off the back wheel, papers rolled tight with rubber bands. Same houses. Same order. Out my street, around the loop, and then the shortcut — a paved trail squeezed between two wooden fences that cuts straight through to the far side and saves me maybe ten minutes. I always liked that part best, actually. Quiet. My tires on the pavement, that little hum. Almost done by the time I hit it.\n\nThat October morning was trash day, so the bins were already out at the curbs, plastic smell, and it was extra dark because the moon wasn't doing much. Forty minutes before the sun, my mom always said, is the darkest dark there is. I didn't used to believe her. I do now.\n\nI came around the loop like normal, coasting a little, checking porches for the numbers I still didn't have memorized. And then I looked up at the shortcut, at the gap between the fences where the trail starts, and there was a man standing in it.\n\nRight in the middle. Square in the gap, like he'd been carved to fit there. He had a flashlight in his hand but it was off, just hanging down at his side, black rubber handle. He didn't move. I slowed down without really deciding to, my hand just did it, brakes squeezing soft.\n\n\"Morning,\" I said. My voice came out smaller than I wanted.\n\nNothing. He didn't say it back. He didn't step to the side either, the way people do, that little shuffle to let a bike past. He just stood there, both fences right up against his shoulders almost, and then he lifted one arm out. Not pointing at me. Just out. Like a gate arm. Like he was telling me, no, not through here.\n\nI stopped pedaling. My front wheel wobbled and I put a foot down on the pavement, and I remember thinking, so stupid, thinking, maybe he's waiting for someone, maybe he's a dad out looking for a lost cat, and then not believing any of that even while I was thinking it. He wasn't looking for anything. He was looking at me.\n\nI sat there maybe two seconds. Three. Long enough to feel my own heartbeat in my ears, that thud thud thud, and to notice the flashlight wasn't just off, it was gripped tight, knuckles pale in the almost-light. That's the thing I keep coming back to. His hand so tight around it.\n\nI didn't go through the gap.\n\nI stood up on the pedals and I turned the bike hard, gravel spitting, and I went straight at him instead of away from him, straight past his shoulder, so close I felt the air move, and then I was through, past the fence line, into Mrs. Alden's side yard where her motion light clicks on for raccoons. It clicked on. Everything went white for a second.\n\nI didn't stop the bike right, I just let it go out from under me, heard it clatter into her flower bed, papers spilling everywhere, and I was already running, already up her steps, already hitting the door with both fists.\n\n\"Please — please open up — please —\"\n\nI was screaming it by the end, not even words anymore, just noise, and I heard the chain slide and the door came open and a hand grabbed my arm and pulled, hard, and I was inside, inside, the door shut behind me, and I was still screaming into Mrs. Alden's bathrobe with her saying my name, saying it's okay, saying you're inside, honey, you're inside.\n\nThrough her front window, past the fence gap, I watched him turn around. Not running. Not even walking fast. Just turning and walking off down the trail like a man headed somewhere he needed to be.\n\nThe next day my mom asked around the subdivision, and Mrs. Alden asked too, described him best she could — tall, dark jacket, that flashlight — and nobody in any of the houses along that loop knew a man who looked like that. Nobody's husband, nobody's brother, nobody visiting. Nobody at all.\n\nI still ride the loop. I still go the long way now instead of through the gap, even though it costs me the ten minutes. Mrs. Alden leaves her porch light burning till the sun's all the way up.",
+  "story_2": "Two winters ago I picked up a foot route, delivering packages on foot through an apartment complex before my warehouse shift started. Money was tight, the complex was six blocks from my apartment, and the job paid cash if you finished before six in the morning. I'd been doing it five weeks by then. Knew the property. Three floors, open-air breezeways stacked one on top of the other, stairwells at each end. Ground gate that locked itself shut unless somebody wedged it. Tenants kept a brick there for exactly that reason. I never thought twice about it.\n\nThat morning the lot was empty and quiet, streetlights still on, my breath showing a little. I let myself in through the ground gate, canvas bag over my shoulder, and started up the near stairwell to drop packages on the second and third floor landings. Routine. I'd done it a hundred times.\n\nComing back down I noticed the brick wasn't where it should've been. Somebody had kicked it clear of the gate, and the gate had swung shut and locked the way it was built to. I gave it a shake anyway, out of habit more than hope. Solid. No handle on this side, just a keypad and a slot for a fob. That's when I noticed the guy.\n\nHe was standing at the bottom of the far stairwell, other end of the breezeway, hands in his jacket pockets, not doing anything. Didn't look like a tenant walking a dog or heading to a car. Just standing there watching me try the gate. I said something dumb like, \"Hey, you got a key for this thing?\" He didn't answer. Just started walking toward the stairs.\n\nI moved to the near stairwell to put distance between us, figuring I'd go up, cross over on the third floor, come down the far side and loop back to check the gate again from another angle. Halfway up I heard him take the stairs too, not running, just steady, unhurried, like he already knew where I was headed before I did.\n\nI got to the second-floor landing and looked down the rail. He was one flight below me now, closing the gap without ever speeding up. I called down, asked what he wanted. Nothing. No words, no expression I could read in that light. Just the pace, even and coming.\n\nI checked the far stairwell option and it wasn't one anymore — he'd have cut me off before I got halfway across. Only two ways off that landing. Up, into a dead end on the third floor, or down past him, or over.\n\nI didn't think about it long. I swung the canvas bag off my shoulder and threw it at him as hard as I could, packages and all, aiming for his chest and face. It caught him mid-step, threw his balance off for a second, maybe two. That was the only opening I was going to get.\n\nI went over the rail. Not down the stairs, over the side, into the mulch bed along the building. Landed wrong, jammed my ankle, didn't care. Rolled and I was up and running along the fence line toward the gap where the perimeter hedge thinned out, the one blind spot in that self-locking gate system nobody bothers fixing because it's not built for people, just for keeping cars off the grass.\n\nI didn't look back to see if he followed. My car was parked on the street past the hedge line, and I had the fob out before I even reached it, thumb mashing the button so the locks would already be cycling by the time I got the door open. I dropped into the seat, slammed it, hit the lock again out of pure reflex even though it was already done, and sat there with both hands on the wheel.\n\nI started the engine and the headlights swung across the front of the complex as I pulled out, catching the breezeway gate, the stairwells, the mulch bed I'd landed in. Empty. No one standing in the light. No one on the stairs.\n\nI never went back to find out who he was.",
+  "story_3": "I've run the Main Street bundle route since before my youngest finished school, which puts it at a stretch of years I don't like to add up out loud. Same order every morning. Load the car at the depot, work down past the hardware store, the bank, the old Kessler building, and always, always past the diner on the corner of Third, the one that closed when the highway pulled the truck traffic off this street for good. I do it before the sun's up. Some habits you keep because they're efficient. This one I kept because changing it never occurred to me.\n\nThe diner still has its counter. You can see it through the front glass if the streetlight hits right, that long stretch of stools bolted to the floor, going nowhere, waiting on customers who aren't coming back. About three winters ago I started noticing a man sitting on the end stool, closest to the window. Just sitting. I figured a squatter, somebody using the place to get out of the cold, and it wasn't my business to check the locks on a building that wasn't mine. I'd pass around five, sometimes a little before, and there he'd be, facing the glass. I'd nod, the way you do at four in the morning when you're both awake and nobody else is. He never nodded back. After a while I quit trying.\n\nThis morning was ordinary right up until it wasn't. Cold enough to see my breath, quiet enough to hear my own boots on the sidewalk when I got out to drop a bundle at the corner box. I looked up out of habit, the way you'd check a clock, and the stool by the window was empty.\n\nI want to say I felt it before I understood it, but that's not honest. I understood it fine. Empty stool. And then, about ten feet down the sidewalk, between me and the car, a man standing where the sidewalk narrows by the old ice machine. Same build I'd gotten used to seeing through glass. Not moving. Just facing me now instead of facing the street.\n\nI didn't call out. Some situations you don't test with your voice, you just start deciding. My car was behind him. The gas station two blocks up was not. Value Stop opens early because the owner likes his coffee made before anybody else's, and I have banked plenty of mornings on that man's schedule without ever thanking him for it.\n\nI went right instead of straight, off the curb and around, giving him more room than the sidewalk really offered, and I did not run so much as move at a clip I haven't used since my knees started complaining about stairs. He didn't follow fast. I want to be fair about that. But I heard boots on pavement somewhere behind me the whole two blocks, matching my pace enough that I never got to slow down and check.\n\nThe Value Stop sign was lit up orange the way it always is, that particular ugly color that I have never in my life been so glad to see. The door was locked, the way it is right up until it isn't, and I hit that glass with the flat of my hand harder than I meant to, hard enough to sting, and kept hitting it, calling the owner's name because I know it, because you learn names on a route like this whether you mean to or not.\n\nHe came out from the back in his coat still half on and got the door open, and I did not wait to be invited, I went straight past him into the light and the smell of the coffee he'd started, and he looked past my shoulder out at the street before he looked at me.\n\nWhatever he saw, or didn't, he turned the deadbolt behind me without a word about it, and that told me plenty.\n\nI still run the route. I still make my stops. But I load that corner box on my way in from the other end now, and I do the diner block last, in full daylight, after the sun's done deciding whether it's coming up. Nobody's asked me why I changed the order. I haven't offered it."
+ },
+ "scored_story_issues": [
+  {
+   "story_id": "story_1",
+   "severity": "minor",
+   "problem": "The narrator's action 'I went straight at him instead of away from him, straight past his shoulder' is physically unclear given the man is described as blocking the gap 'square in the middle' with fences 'right up against his shoulders almost.' The space to pass is not established, making the escape feel slightly improbable.",
+   "repair_instruction": "Add a brief detail clarifying the gap is wide enough for a bike to squeeze past a person, e.g., 'the gap was wide enough for a bike if I hugged the fence.'",
+   "issue_kind": "style",
+   "evidence_quote": "Right in the middle. Square in the gap, like he'd been carved to fit there.",
+   "anchor_quote": "",
+   "confidence": 0.7,
+   "viewer_impact": "Momentary confusion about spatial possibility.",
+   "issue_id": "S1_MIN_001"
+  },
+  {
+   "story_id": "story_2",
+   "severity": "minor",
+   "problem": "The narrator's escape route 'toward the gap where the perimeter hedge thinned out' is introduced abruptly without prior mention of a hedge or gap in the fence line, making the exit feel convenient rather than observed.",
+   "repair_instruction": "Mention the hedge gap earlier, e.g., when describing the property: 'I knew the property... including the thin spot in the hedge by the fence line.'",
+   "issue_kind": "style",
+   "evidence_quote": "toward the gap where the perimeter hedge thinned out, the one blind spot in that self-locking gate system nobody bothers fixing",
+   "anchor_quote": "",
+   "confidence": 0.8,
+   "viewer_impact": "Slight deus ex machina feel.",
+   "issue_id": "S2_MIN_001"
+  },
+  {
+   "story_id": "story_3",
+   "severity": "minor",
+   "problem": "The phrase 'I did not run so much as move at a clip I haven't used since my knees started complaining about stairs' undercuts the urgency of the escape, making the threat feel less immediate.",
+   "repair_instruction": "Replace with a more direct description of rapid movement, e.g., 'I broke into a jog, my knees protesting every step.'",
+   "issue_kind": "style",
+   "evidence_quote": "I did not run so much as move at a clip I haven't used since my knees started complaining about stairs.",
+   "anchor_quote": "",
+   "confidence": 0.6,
+   "viewer_impact": "Slight tension release during escape.",
+   "issue_id": "S3_MIN_001"
+  }
+ ],
+ "reported_call_counts": {
+  "planner": 1,
+  "story_writer": 3,
+  "story_writer_recovery": 0,
+  "story_compliance": 5,
+  "story_compliance_escalation": 0,
+  "critic_score": 2,
+  "repair_writer": 0,
+  "repair_rewrite": 0,
+  "plan_audit": 1,
+  "blind_selector": 0,
+  "final_editor": 2,
+  "annotation": 3
+ },
+ "reported_attempt": 2,
+ "reported_total_score": 93,
+ "honest_labels": {
+  "story_1": {
+   "threat_mechanism": "blocks_path",
+   "progression_mechanism": "silent_stillness",
+   "escape_mechanism": "flee_to_occupied_place",
+   "aftermath_mechanism": "witness_corroboration",
+   "topic_promise": "delivers newspapers by bike on a subdivision loop before school",
+   "narrator_age_band": "minor",
+   "narrator_age_years": 16,
+   "safety_obligation": "not_applicable",
+   "safety_omission_reason": "",
+   "_safety_obligation_note": "not_applicable is what this plan actually commits to. Its ending_shape promises only an identity inquiry ('narrator learns next day no one matching him lives nearby'); the only adult in the plan is the neighbour in escape_action, who is part of getting inside, not part of an aftermath response. The narration happens to add 'my mom asked around', but the label describes the PLAN, and the plan never commits to telling anyone. Labelling it trusted_adult_or_witness would credit the plan for something it does not contain.",
+   "threat_identity": "lone_stranger"
+  },
+  "story_2": {
+   "threat_mechanism": "traps_or_confines",
+   "progression_mechanism": "steady_approach",
+   "escape_mechanism": "climb_or_vault_barrier",
+   "aftermath_mechanism": "no_explanation_offered",
+   "topic_promise": "delivers packages on foot through apartment breezeways before a warehouse shift",
+   "narrator_age_band": "adult",
+   "narrator_age_years": null,
+   "safety_obligation": "concrete_reason_omitted",
+   "safety_omission_reason": "an off-books cash route he would lose by reporting it",
+   "threat_identity": "lone_stranger"
+  },
+  "story_3": {
+   "threat_mechanism": "blocks_path",
+   "progression_mechanism": "repeat_sightings",
+   "escape_mechanism": "flee_to_occupied_place",
+   "aftermath_mechanism": "routine_permanently_changed",
+   "topic_promise": "drives a Main Street newspaper bundle route past a closed diner before dawn",
+   "narrator_age_band": "adult",
+   "narrator_age_years": null,
+   "safety_obligation": "concrete_reason_omitted",
+   "safety_omission_reason": "a small town where a man standing on a sidewalk is not a report",
+   "threat_identity": "lone_stranger"
+  }
+ }
+}

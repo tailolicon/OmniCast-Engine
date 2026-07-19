@@ -1,0 +1,23 @@
+# Secrets — không bao giờ commit
+.env
+*.credentials.json
+channels/credentials.json
+# Output & media — nặng và sinh lại được
+implementation/output/
+*.mp4
+*.mkv
+*.wav
+*.mp3
+*.log
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# Node
+node_modules/
+# Repo tham khảo (read-only, có git riêng)
+_refs/
+# IDE/scratch
+.history/
+.graphify_ready

@@ -1,0 +1,81 @@
+{
+  "channel_id": "forgotten_chronicles_us",
+  "name": "Forgotten Chronicles",
+  "niche": "mythology",
+  "sub_niche": "untold history & ancient legends storytelling",
+  "market": "US",
+  "visual_style": "documentary",
+  "channel_style": "storytelling",
+  "image_provider": "flow",
+  "music_mood": "epic",
+  "voice_profile": "kokoro:bm_george",
+  "voice_fallback": [
+    "edge:en-GB-RyanNeural",
+    "edge:en-US-AndrewMultilingualNeural",
+    "edge:en-US-BrianMultilingualNeural"
+  ],
+  "voice_persona": "warm_storyteller_male_50",
+  "brand_voice": "A fireside storyteller resurrecting forgotten figures and strange turning points of history — vivid, human, cinematic, always anchored in real sources.",
+  "tone": "dramatic",
+  "hook_format": "History forgot this man — but for one night in 1347, he held the fate of an empire.",
+  "brand_color_hex": "#7A5C2E",
+  "font_vibe": "serif_classic",
+  "competitor_handles": [
+    "@Fall_of_Civilizations",
+    "@VoicesofthePast",
+    "@MythologyGuy"
+  ],
+  "audience": {
+    "age_range": "25-60",
+    "pain_points": [
+      "history classes made the past boring",
+      "wanting depth and story instead of listicle trivia",
+      "craving long immersive content for commutes and sleep"
+    ],
+    "content_triggers": [
+      "a single person or night that changed everything",
+      "civilizations and mysteries nobody covers",
+      "what it actually FELT like to be there"
+    ],
+    "engagement_drivers": [
+      "comment which forgotten story we should tell next",
+      "share the detail that surprised you most"
+    ]
+  },
+  "trends_keywords": [
+    "forgotten history stories",
+    "ancient civilizations mysteries",
+    "untold historical figures",
+    "history documentary storytelling",
+    "greatest betrayals in history"
+  ],
+  "rss_feeds": [
+    "https://www.smithsonianmag.com/rss/history/",
+    "https://www.historytoday.com/feed/rss.xml"
+  ],
+  "subreddits": ["AskHistorians", "history"],
+  "rpm_floor": 8.0,
+  "target_duration_min": 12,
+  "destinations": [
+    {
+      "destination_id": "forgotten_chronicles_us_youtube",
+      "platform_id": "youtube",
+      "account_id": "forgotten_chronicles_us",
+      "format_variant": "youtube_16x9",
+      "enabled": true,
+      "approval_required": true,
+      "schedule_policy": "prime_time",
+      "market": "US",
+      "metadata_overrides": {}
+    }
+  ],
+  "channel_created_at": null,
+  "channel_type": "hub",
+  "language": "en",
+  "ref_channels": [
+    "@Fall_of_Civilizations",
+    "@VoicesofthePast",
+    "@MythologyGuy"
+  ],
+  "strip_script_outro": false
+}

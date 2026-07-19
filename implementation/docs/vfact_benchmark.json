@@ -1,0 +1,77 @@
+{
+  "_meta": {
+    "source_video": "YTDown.com_YouTube_1093-Bat-ChatGPT-Dem-1-1-Trieu-Cai-Gia-C_Media_ucqR7A7BelQ_001_1080p.mp4",
+    "measured_at": "2026-07-08",
+    "method": "ffmpeg silencedetect (-35dB/0.25s) + band-pass envelope syllable-nuclei peak-picking (15s windows) + scdet 0.30 sampled windows; cross-checked against video_analysis.md (whisper+acoustic, same video)",
+    "note_language": "Vietnamese is monosyllabic: syllables/min ~= words/min. For English scripts multiply WPM targets by ~0.75 (EN averages ~1.3 syllables/word)."
+  },
+  "duration_s": 732.2,
+
+  "speech_rate": {
+    "unit": "syllables_per_wall_minute",
+    "mean": 196.7,
+    "std": 21.1,
+    "p10": 176.0,
+    "p90": 212.8,
+    "min_window": 98.0,
+    "max_window": 236.0,
+    "sections": {
+      "hook_0_30s": {"target": "slow, dramatic", "wpm_measured_whisper": 32, "note": "long holds between key words; envelope method reads ~208 due to SFX/meme audio in hook"},
+      "body": {"range": [170, 215], "note": "info-dense, continuous"},
+      "climax": {"max": 236, "note": "fastest at tech-optimism section ~540-570s (206 WPM whisper)"},
+      "outro": {"wpm_measured_whisper": 58, "envelope_last_window": 98, "note": "drops sharply for the discussion question"}
+    },
+    "targets_for_generated_video": {
+      "wpm_variance_min_pct": 15,
+      "comment": "std/mean must be >= 0.10 across 15s windows; hook and outro each at least 25% slower than body mean; at least one climax window >= 10% faster than body mean"
+    }
+  },
+
+  "pauses": {
+    "detector": "silencedetect noise=-35dB d=0.25",
+    "count_gt_250ms": 17,
+    "per_min": 1.39,
+    "mean_s": 0.76,
+    "max_s": 2.8,
+    "hist": {"0.25-0.4": 8, "0.4-0.7": 4, "0.7-1.2": 1, ">1.2": 4},
+    "inter_sentence_gap_s": [0.15, 0.23],
+    "interpretation": "breaths and natural gaps are edited OUT; almost all pauses are INTENTIONAL: ~4 long dramatic holds (>1.2s) at twist/chapter moments, rest are short 0.25-0.7s beats. Generated audio must NOT have uniform gaps: default inter-scene gap <= 0.25s, plus 2-5 deliberate 0.5-1.5s pauses at twists.",
+    "targets_for_generated_video": {
+      "default_gap_ms": [120, 250],
+      "dramatic_pause_ms": [500, 1500],
+      "dramatic_pauses_per_10min": [3, 6]
+    }
+  },
+
+  "visual_pacing": {
+    "hard_cuts_sampled_per_min": 12.4,
+    "all_cuts_incl_soft_per_min": 16.4,
+    "avg_shot_s": 3.66,
+    "burst_cutting": "up to 6 cuts in 3s at high-energy lines (~96s mark)",
+    "long_holds": "5-8s only on data tables/charts, always with slow ken-burns",
+    "targets_for_generated_video": {
+      "shots_per_min_min": 15,
+      "max_static_shot_s": 5,
+      "kenburns_on_shots_longer_than_s": 4
+    }
+  },
+
+  "audio_mix": {
+    "voice": "baritone, dynamic-range compressed, mean pitch ~220Hz, pitch std ~102Hz (very expressive; normal speech is 30-50Hz)",
+    "pitch_spikes": "on quantity words and strong adjectives (measured up to ~450Hz)",
+    "bgm": "ambient science/synthwave, -18 to -22dB under VO, tempo rises mid-video",
+    "sfx": {"whoosh": "every major transition/table reveal", "ting_click": "text/underline pop-ins", "min_sfx_per_10min": 5},
+    "loudness": "-14 LUFS integrated (platform standard)"
+  },
+
+  "qa_thresholds": {
+    "comment": "output_audit should FAIL (with suggestions) if any of these deviate >20% from target",
+    "wpm_std_over_mean_min": 0.10,
+    "hook_slower_than_body_pct_min": 25,
+    "outro_slower_than_body_pct_min": 25,
+    "shots_per_min_min": 15,
+    "sfx_markers_min": 5,
+    "dramatic_pauses_min": 3,
+    "max_uniform_gap_share": 0.7
+  }
+}

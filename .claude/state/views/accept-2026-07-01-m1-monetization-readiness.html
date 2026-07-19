@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OmniCast M1 Monetization Readiness</title>
+  <style>
+    body { font-family: Inter, Segoe UI, Arial, sans-serif; margin: 0; background: #0f172a; color: #e5e7eb; }
+    main { max-width: 1040px; margin: 0 auto; padding: 32px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .sub { color: #94a3b8; margin-bottom: 24px; }
+    .banner { border: 1px solid #f59e0b; background: rgba(245, 158, 11, .12); padding: 18px; border-radius: 8px; margin-bottom: 20px; }
+    .banner strong { color: #fbbf24; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+    .card { border: 1px solid #334155; background: #111827; border-radius: 8px; padding: 16px; }
+    .metric { font-size: 30px; font-weight: 800; }
+    .label { color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 8px; }
+    th, td { text-align: left; border-bottom: 1px solid #334155; padding: 12px; vertical-align: top; }
+    th { color: #cbd5e1; background: #1e293b; font-size: 12px; text-transform: uppercase; }
+    .pass { color: #22c55e; font-weight: 700; }
+    .fail { color: #f59e0b; font-weight: 700; }
+    code { background: #020617; border: 1px solid #334155; padding: 2px 6px; border-radius: 5px; }
+    a { color: #38bdf8; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>OmniCast M1 Monetization Readiness</h1>
+  <div class="sub">Generated 2026-07-01 · Project: OmniCast Engine</div>
+
+  <div class="banner">
+    <strong>Recommendation: WAIT.</strong>
+    The Super App M1 foundation is now much closer: platform contracts, analytics ledger,
+    credential vault, affiliate tracking, output audit, and the real desktop Monetization tab exist.
+    Do not enable public monetized automation yet because live encrypted credentials and active offers are still missing.
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Readiness</div><div class="metric">84.6%</div></div>
+    <div class="card"><div class="label">Destinations</div><div class="metric">2</div></div>
+    <div class="card"><div class="label">Platforms</div><div class="metric">2</div></div>
+    <div class="card"><div class="label">Verdict</div><div class="metric">WAIT</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Verified Criteria</h2>
+    <table>
+      <thead><tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Desktop app target verified</td><td class="pass">Pass</td><td>Shortcut launches <code>implementation/OmniCast.bat</code> → <code>omnicast_desktop.py</code>.</td></tr>
+        <tr><td>M1 platform contract exists</td><td class="pass">Pass</td><td>IPlatform models, registry, YouTube adapter, TikTok adapter, and <code>/api/platforms</code> verified.</td></tr>
+        <tr><td>Channel destinations configured</td><td class="pass">Pass</td><td>YouTube approval-required destination and disabled TikTok template destination exist.</td></tr>
+        <tr><td>Approval gate prevents automatic public publish</td><td class="pass">Pass</td><td><code>MultiPlatformPublisher</code> returns <code>WAITING_APPROVAL</code>.</td></tr>
+        <tr><td>9:16 render variant path exists</td><td class="pass">Pass</td><td><code>RenderVariantExporter</code> builds FFmpeg scale/crop commands for TikTok.</td></tr>
+        <tr><td>Real desktop Monetization tab exists</td><td class="pass">Pass</td><td>Playwright opened the FastAPI WebUI tab with readiness, blockers, destinations, vault, and offers.</td></tr>
+        <tr><td>Multi-platform analytics ready</td><td class="pass">Pass</td><td><code>post_metrics</code> ledger and <code>/api/platforms/metrics</code> ingestion exist; tests pass.</td></tr>
+        <tr><td>Affiliate tracking ready</td><td class="pass">Pass</td><td>Offer, placement, disclosure injection, conversion, and revenue ledgers exist.</td></tr>
+        <tr><td>Credential vault ready</td><td class="pass">Pass</td><td>Safe listing hides secrets; Fernet encrypted storage works when key is configured.</td></tr>
+        <tr><td>Encrypted live credentials configured</td><td class="fail">Wait</td><td>Readiness reports <code>0 encrypted credential(s)</code>.</td></tr>
+        <tr><td>Active monetization offer configured</td><td class="fail">Wait</td><td>Readiness reports <code>0 active offer(s)</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Desktop shortcut: <code>C:\Users\Tailolicon\OneDrive\Máy tính\OmniCast.lnk</code></p>
+  <p>Readiness API: <a href="http://127.0.0.1:8767/api/monetization/readiness">http://127.0.0.1:8767/api/monetization/readiness</a></p>
+</main>
+</body>
+</html>

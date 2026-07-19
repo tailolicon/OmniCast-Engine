@@ -1,0 +1,2343 @@
+
+########## tab_downloader.pyc (25)
+   Tự động nhận diện nền tảng từ URL.N
+   Trích URL từ text share Douyin/TikTok (vd: '... https://v.douyin.com/xxx/ ...').r
+   Chưa nhập link!
+   Mở bảng dán nhiều link lẻ. KHÔNG tự đóng — chỉ đóng khi bấm OK (xác
+   nhận thêm) hoặc Hủy/X. Sau OK → quét APPEND vào danh sách + auto-tick.
+   Đang quét
+   Đợi quét xong rồi thêm tiếp nhé.Nr
+   Chưa có link
+   Parse text nhiều dòng → danh sách URL → quét tuần tự APPEND vào list.r
+   Không có link
+   ➕ Đã thêm
+   ✅ Đã thêm link vào danh sách — bấm TẢI VIDEO ĐÃ CHỌN!r
+   Quét 1 link đơn (force_single) APPEND vào list — KHÔNG xóa list hiện có.NFTrc
+   Chưa chọn video!
+   ⬇️ Đang chuẩn bị tải
+   ⬇️ Bat dau na
+   Tải MP3 cho các video đã tick — chỉ hỗ trợ YouTube.rc
+   Tải MP3
+   Tính năng tải MP3 hiện chỉ hỗ trợ YouTube.
+   Chọn nền tảng YouTube Shorts rồi quét video trước nhé!rm
+   Quên tích rồi!
+   Tích ☑ vào mấy cái video muốn tải MP3 trước đã!TFrq
+   Chuẩn bị tải
+   ⏳ Chờ MP3r{
+   Bắt đầu tải
+
+########## tab_exporter.pyc (18)
+   Tiếng Philippines
+   Tiếng Ý
+   Tiếng Thổ Nhĩ Kỳ
+   Tiếng Ba Lan
+   Tiếng Ukraina
+   Tiếng Hà Lan
+   Đảo compact_mode + lưu user_config + popup yêu cầu khởi động lại.r
+   Đã bật Compact mode (panel thu gọn cho màn nhỏ / DPI cao).
+   Khởi động lại tool để áp dụng.
+   Đã tắt Compact mode (panel kích thước chuẩn).
+   Ẩn Timeline
+   Hiện Timeline
+   Không
+   Dưới
+   Chạy _log_system_info trong thread nền tránh block UI startup.r
+   Hiển thị CPU / GPU / RAM trên log khi mở app.r
+   GB (trống
+   Không có
+
+########## services_media.pyc (19)
+   Wrapper gọi yt-dlp trong subprocess, đẩy log và event qua queue.c
+   URL gốc :
+   URL sạch:
+   Thử với cookies Chrome...
+   ✅ Tải xong!r=
+   ⚠️ Edge cũng bị lock → thử không dùng cookies (video công khai)...
+   ❌ Tải thất bại mã
+   Gợi ý: Đóng Chrome trước khi tải, hoặc cập nhật yt-dlp: pip install -U yt-dlp
+   Trả (video_codec, audio_codec, ext) lowercase. '' nếu không có stream.rw
+   Chuẩn hóa src → MP4 thuần (H.264 + AAC), ĐÈ lên file gốc (xóa gốc, thay
+   bằng {tên}.mp4 cùng chỗ → tránh nhầm file khi chọn). Dùng chung cho tab
+   Download (Cắt Tách) và tab Edit (Thêm file).
+   - Đã chuẩn (h264/aac/.mp4) → trả src nguyên.
+   - h264/aac container khác (mkv/ts/flv) → REMUX (-c copy, nhanh).
+   - Codec lạ (HEVC/VP9/AV1...) → RE-ENCODE h264_nvenc → fallback libx264 + aac.
+   Chỉ xóa gốc KHI convert xong + file hợp lệ. Trả path .mp4 mới, hoặc None nếu lỗi.
+   Patch demucs.apply.apply_model để tự fallback CPU khi GPU không tương thích.
+   Chạy lúc services_media được import (startup) — trước khi exporter_preview_engine
+   import apply_model — nên patch có hiệu lực ngay khi user dùng tách giọng.
+
+########## downloader_ui.pyc (75)
+   Mã ngôn ngữ dịch tiêu đề từ dropdown. CHỈ gọi ở MAIN THREAD (đọc tk var).
+   '' = giữ gốc (không dịch). Mặc định 'vi'.r
+   Dịch 1 tiêu đề theo ngôn ngữ ĐÃ resolve. Thread-safe: dùng plain attr
+   _title_tl_resolved (snapshot ở main thread lúc bấm Quét/Tải), KHÔNG đụng
+   Gom-rồi-dịch: sau khi quét xong (nền non-Douyin), dịch TẤT CẢ tiêu đề
+   1 lượt bằng 10 luồng song song — KHÔNG dịch inline chặn vòng giải mã
+   extract_info (Google nghẽn không làm kẹt quét). Chạy ở thread nền; map
+   theo url (unique) rồi cập nhật bảng + _videos ở main thread.
+   Douyin đã dịch trong scan → KHÔNG gọi hàm này (gate ở _poll_scan).rA
+   Đang dịch
+   Sleep TÔN TRỌNG nút Dừng — thoát ngay khi _stop_flag bật (thay
+   progress_hook cho yt-dlp: bấm Dừng → raise để abort NGAY file đang tải
+   Link Kênh:r
+   List link lẻ
+   Dịch tên:r
+   TẢI MP3
+   Cắt ghép nhạcc
+   Cắt Tách Videoc
+   Mở thư mục
+   Telegram: Video Dọc 6:19 Xuyên khôngz
+   Zalo Hỗ trợNr,
+   Nền tảngrw
+   Chọn tất cảc
+   Tải nhạc MP3 từ link videor
+   Mỗi link 1 dòng (hỗ trợ nhiều link)rZ
+   Lưu vào:r\
+   Đang tải 0/rb
+   Quay lại danh sáchc
+   Thêm filer
+   Xóa đã chọnrD
+   Sóng nhạcrZ
+   Bắt đầu: 00:00.00rp
+   Kết thúc: 00:00.00rv
+   Lưu ra:r%
+   Cắt file đã chọnr}
+   Tất cảz
+   Chọn file nhạc để xem sóng nhạcrZ
+   Bắt đầu: r
+   Kết thúc:
+   Chọn file
+   Chọn 1 file nhạc để cắt!r
+   Đang cắt...r
+   Cắt xong!rp
+   Ghép
+   Cần ít nhất 2 file nhạc để ghép!
+   Đang ghép...r
+   Ghép xong!rp
+   Có (chậm, tương thích hơn)r
+   Tách đều thành:r
+   Tách file đã chọn
+   Định dạng không phải MP4
+   file không phải MP4:
+   Tool xử lý chuẩn nhất với MP4 (H.264/AAC). Convert sang MP4 ngay?
+   • Có = convert rồi thêm (file h264 sẵn → nhanh; codec lạ → lâu hơn)
+   • Không = thêm nguyên bản (có thể lỗi khi dịch/lồng tiếng)c
+   Lỗi convert
+   Chọn file video để xem timelinerZ
+   Chọn 1 file video để cắt!r
+   Cắt xong! rp
+   Convert 1 file → MP4 thuần, ĐÈ file gốc. Dùng hàm chung ở services_media
+   (chia sẻ với tab Edit). Trả path .mp4 mới / src nếu đã chuẩn / None nếu lỗi.r
+   Tách file đang chọn thành N đoạn đều nhau.
+   Output: part1.ext, part2.ext, ... (tên đơn giản, không kèm tên gốc)
+   Chọn 1 file video để tách thành nhiều đoạn!Nr
+   Thư mục xuất
+   Video quá ngắn
+   Video chỉ
+   s — không đủ để tách thành
+   Đang tách
+   đoạn (stream copy)...r
+   Đang re-encode r
+   Tách xong
+   đoạn (yêu cầu
+   , lệch do keyframe)rp
+   đoạn → rp
+
+########## ai_stt_groq.pyc (79)
+   Tách từ exporter_ai_sub.py để dễ quản lý.
+   力，法术，法器，灵气，灵力，气运，真气，元气，天道，造化，渡劫，飞升，封印，解封，重生，轮回，结界，阵法，妖怪，魔王，仙人，菩萨，观音，如来，施主，阿弥陀佛，承接，滔天，气韵，牙口，好牙口
+   以下は中国語の短編ドラマのセリフです。法身、法力、修行、気運、造化、金剛、菩薩、観音、如来、妖怪、魔王、仙人、凡人、肉体、魂魄、元神、雷劫、阿弥陀仏、施主、貧僧
+   다음은 중국 단편 드라마 대본입니다. 법신, 법력, 수련, 기운, 조화, 금강, 보살, 관음, 여래, 요괴, 마왕, 선인, 범인, 육체, 혼백, 원신
+   Chia audio thành các chunk file với overlap.
+   Gọi Groq Whisper API cho 1 chunk audio. Key rotation + retry.r
+   STT qua Groq Whisper. Tự chia chunk khi audio dài (>120s) để chống
+   Returns list of dicts: [{start_sec, end_sec, text}, ...] hoặc None.
+   ⚠️ Gap
+   để so sánh...FrA
+   AI đang nhận dạng (
+   ✅ Nhận dạng xong:
+   ⚠️ API bận, nhảy key...
+   ⚠️ Hết key, nghỉ chờ...rw
+   ⚠️ HTTP
+   — thử model khác...
+   Xử lý audio dài bằng cách chia chunk ~90s để chống Whisper timestamp drift.
+   Mỗi chunk gửi riêng → timestamp chính xác, sau đó merge + dedup overlap.
+   s → chia
+   đoạn để tăng độ chính xác...r
+   ] Nhận dạng
+   Tiếng nguồn:
+   → khóa cho các đoạn sau (ổn định hơn)
+   ⚠️ [
+   ] Không nhận dạng được đoạn này.r
+   Sửa TẤT CẢ các câu bị Whisper gán start nằm trong khoảng im.
+   Dùng FFmpeg silencedetect quét toàn bộ audio → tìm tất cả silence blocks.
+   Với mỗi entry có start_sec nằm trong silence → đẩy start_sec ra silence_end.
+   Đặc biệt: fix câu đầu ở 0.0s bằng voice-onset detection (lọc band giọng nói).
+   Fix silence timing: sửa rI
+   câur
+   Tìm thời điểm giọng nói bắt đầu trong vài giây đầu audio.
+   Phương pháp: lọc band giọng nói (300-3000Hz) → đo RMS per frame →
+   tìm thời điểm RMS tăng SUSTAINED (liên tục ≥0.15s) so với baseline.
+   Hoạt động tốt kể cả khi có nhạc nền (silencedetect thất bại).
+   Trả về thời điểm (giây) giọng nói xuất hiện, hoặc None nếu không xác định.
+   Phát hiện đoạn audio bị mất (gap lớn giữa 2 segment liên tiếp).
+   Log cảnh báo nếu tìm thấy gap > threshold giây.
+   s) — có thể mất segmentr
+   Phát hiện gaps lớn trong kết quả Whisper, extract audio chunk → re-run Whisper → merge.
+   Giúp lấp đầy các đoạn bị Whisper bỏ sót khi xử lý file dài.
+   Phát hiện
+   gap lớn, đang lấp đầy...r
+   Lấp gap #
+   ✅ Lấp gap #
+   ✅ Lấp gap xong:
+   Vùng thời gian segment bị Whisper ẢO GIÁC, theo chính tín hiệu tin cậy
+   của Whisper (ngưỡng chuẩn OpenAI — bảo thủ, ít xóa nhầm câu thật):
+   • Im lặng/nhạc → bịa: no_speech_prob > 0.6 VÀ avg_logprob < -1.0
+   • Lặp/bịa lê thê: compression_ratio > 2.4
+   Parse Whisper verbose_json response thành list entries.
+   Ưu tiên dùng top-level words[] (word-level timestamps) để tự chia câu
+   theo khoảng nghỉ — tránh Groq trả 1 segment khổng lồ.
+   Fallback về segments[] nếu không có words.
+   Post-processing: sửa timestamp phình + lọc hallucination lặp.
+   1) Whisper nhận tạp âm → start_sec quá sớm → thu hẹp.
+   2) Whisper hallucination lặp ký tự (哈哈哈哈..., 啊啊啊...) → cắt/xóa.
+   3) Whisper hallucination YouTube channel intros → xóa entry.
+   请不吝[啊\s]*u
+   点赞.*订阅u
+   订阅.*点赞uN
+   (?:点赞|订阅|转发|分享|打赏|关注).*(?:频道|栏目|节目|支持)u!
+   明镜与点点(?:栏目|频道)?u9
+   (?:感谢|谢谢).*(?:观看|收看|订阅|关注|支持)uC
+   (?:请|别忘[了]?).*(?:订阅|点赞|关注|转发|分享|三连)u?
+   (?:记得|别忘).*(?:点击|点个|点赞|三连|一键三连)u)
+   下(?:次|期)(?:再见|不见不散|见)u*
+   我们下(?:次|期|集|回)(?:再见|见)zB(?:please\s+)?(?:like|subscribe)\s*(?:and|,)?\s*(?:like|subscribe)z
+   (?:nhớ\s+)?(?:like|thích|đăng\s*ký|đăng\s*kí|theo\s*dõi|chia\s*sẻ)u:
+   cảm\s+ơn\s+(?:đã\s+)?(?:xem|theo\s*dõi|ủng\s+hộ)u
+   チャンネル登録u5
+   いいね(?:と|や|、)?.*(?:チャンネル|登録)u
+   구독.*좋아요u
+   Nhóm words thành các câu dựa trên khoảng nghỉ (pause gap) giữa các từ.
+   Chia nhỏ giống CapCut: mỗi câu CJK ~4-8 ký tự, ngắt theo pause + max chars + max duration.
+   Buộc ngắt cứng khi segment quá dài (tránh tạp âm gây ghép câu).
+   。！？!?
+   ，,、；;：:
+   (?:什么|做什么|怎么|怎么样|为什么|是谁|哪里|哪儿|哪个|多少|吗|呢|吧|嘛|啊|了吗|了吧|不是|好吗|好吧|可以吗|对吗|行吗)$c
+
+########## ai_stt_whisperx.pyc (23)
+   Pipeline: faster-whisper transcribe (Silero VAD, word timestamps) → whisperx wav2vec2 alignment.
+   >= 8 GB  → large-v3-turbo  float16   batch 16
+   >= 6 GB  → large-v3-turbo  int8      batch 8
+   >= 3 GB  → medium          int8      batch 4
+   <  3 GB  → base            int8      batch 4  (CPU fallback)
+   ' trên
+   ✅ Model '
+   ' đã sẵn sàng (
+   3. _group_words_by_pause() → subtitle-sized entries
+   ⚠️ WhisperX model load thất bại: r;
+   (GPU — vài giây)
+   (CPU — có thể mất 1-5 phút)
+   WhisperX: đang nhận dạng giọng nói...
+   ⚠️ WhisperX: không nhận dạng được câu nào.
+   đoạn (lang=
+   ⚠️ WhisperX transcribe lỗi:
+   Đang căn chỉnh timestamp từng từ (alignment)...r!
+   ⚠️ Alignment GPU lỗi, chuyển sang CPU...
+   ✅ Alignment xong (
+   câu (word-level timestamps)
+   ⚠️ Alignment bỏ qua (
+   ), dùng timestamp thô.r~
+   ✅ WhisperX hoàn tất:
+
+########## ai_sub_fix.pyc (37)
+   Tầng 1 (LOCAL): Tính chars/sec, bỏ qua câu đã OK hoặc timeline thoáng.
+   Tầng 2 (LOCAL TRIM): Xóa từ đệm phổ biến, rút gọn cụm ngắn.
+   Tầng 3 (GEMINI): Chỉ gửi câu vẫn quá dài sau local trim → batch Gemini.
+   \bừ\bu
+   \bà\bu
+   \bnhé\bu
+   \bbởi vì\bu
+   \bcho nên\bu
+   nên)
+   \bvào thời điểm này\bu
+   lúc này)
+   Tính tốc độ đọc ký tự/giây.r
+   Bạn là chuyên gia rút gọn phụ đề video tiếng Việt.
+   Mỗi dòng input có dạng: ID|text|max_ký_tự
+   QUY TẮC BẮT BUỘC:
+   1. Rút gọn câu sao cho số ký tự gần ≤ max_ký_tự, nhưng ƯU TIÊN GIỮ NGHĨA hơn giảm ký tự
+   2. Câu rút gọn PHẢI đọc hiểu được, ngữ pháp tự nhiên, KHÔNG được cắt ngang ý
+   3. KHÔNG xóa từ ngữ pháp quan trọng (đã, đang, sẽ, rồi, mà, cũng, thì, được, bị...)
+   4. Ưu tiên: diễn đạt súc tích hơn, dùng từ đồng nghĩa ngắn hơn
+   5. Giữ nguyên tên riêng, số liệu. KHÔNG thay đổi ý nghĩa cốt lõi
+   6. Giữ nguyên ngôn ngữ gốc (tiếng Việt)
+   7. Nếu không thể rút gọn mà vẫn giữ nghĩa → giữ nguyên câu gốc
+   8. Output: ĐÚNG mỗi dòng ID|câu_rút_gọn — KHÔNG giải thích
+   Gọi Gemini để rút gọn batch câu subtitle.
+   dict mapping original_idx → condensed_text
+   Sửa sub dày timeline: 3 tầng lọc.
+   threshold_cps : chars/sec ngưỡng (mặc định 22, ~1.5x tốc độ đọc bình thường)
+   log_fn : callback(str) để log
+   progress_fn : callback(current, total) để cập nhật tiến trình
+   câu:
+   câu dày timeline (>
+   ký tự/giây),
+   ✂️ Local trim: sửa
+   câu, còn
+   câu cần AIr6
+   ✅ AI sửa xong:
+   câu | Local:
+
+########## ai_sub_generate.pyc (141)
+   Tách từ exporter_ai_sub.py để giảm kích thước file.
+   Lọc tiếng rên / âm rác do AI hallucinate khi gặp im lặng.
+   Nhận diện sub rác: quá ngắn, chỉ filler, hoặc thời lượng bất thường.r
+   哈呵嘿嗯啊哎哦哟诶唔呃哼嘻
+   aàáảãạăằắẳẵặâầấẩẫậeèéẻẽẹêềếểễệiìíỉĩịoòóỏõọôồốổỗộơờớởỡợuùúủũụưừứửữựyỳýỷỹỵ
+   ậmr+
+   [\s,.!?…~\-_'\"()，。！？、]+c
+   1 token có phải âm rác (nguyên âm/cười, không có phụ âm nghĩa).FTc
+   True nếu dòng CHỈ là âm rác cười/cảm thán → bỏ. Đa ngôn ngữ, dựa âm-học.
+   Bỏ khi: (1) ≥2 token toàn rác (lặp → chắc chắn), (2) cụm cười 1 token
+   (haha/哈哈/ㅋㅋ), (3) 1 token trong set cảm-thán-chặt (hử/hừ/hmm…).
+   GIỮ từ thật ngắn đơn lẻ (em/ai/ô/à/ừ/dạ) để không giết oan.r
+   Parse SRT linh hoạt — chấp nhận nhiều biến thể timestamp từ Gemini.
+   Phát hiện ngôn ngữ chủ đạo từ nội dung text (Unicode script).r
+   Gộp mục SRT liên tiếp có BẢN DỊCH y hệt + giờ liền mạch (≤ gap giây).
+   0.5s/frame → 1 phụ đề hiện ~1.5-2s = 3-4 sample; video động sau phụ đề làm
+   skip-similar-frame không gộp → OCR đọc lệch chút mỗi frame → tách nhiều
+   segment → dịch ra CÙNG 1 câu → lặp. (Dedup gốc so chữ TRUNG nên sót case này.)
+   Gộp = KÉO DÀI end_ts mục đầu tới end mục cuối, KHÔNG dịch chuyển mục khác
+   (giữ nguyên timecode). kept: list dict {start_ts,end_ts,start_sec,end_sec,trans,orig}.
+   Groq Whisper STT → Gemini Audio → WhisperX local fallback → dịch kèm hình ảnh ngữ cảnh.
+   Nếu OCR mode bật → ưu tiên OCR, KHÔNG fallback STT API/Whisper.
+   GPU NVIDIA phát hiện
+   Phát hiện GPU NVIDIA — OCR đang dùng CPU.
+   Tải GPU pack (~
+   MB, 1 lần) để OCR nhanh 3-5x?
+   YES → Tải pack ngay + áp dụng GPU cho batch này.
+   NO  → Tiếp tục dùng CPU.r
+   ⬇️ GPU pack v
+   ⬇️ Đang tải GPU pack OCR (~
+   ✅ GPU pack cài xong — batch hiện tại sẽ dùng GPU.
+   ⚠️ Tải GPU pack thất bại — tiếp tục CPU
+   ✅ OCR xong:
+   OCR xong → dịch qua
+   ⚠️ SRT OCR rỗng → bỏ qua dịchr
+   ✅ Dịch xong:
+   câu)
+   ❌ Dịch lỗi:
+   → giữ SRT OCR
+   ❌ OCR lỗi:
+   — KHÔNG fallback STT (OCR mode ưu tiên)
+   ℹ️ Dùng DeepSeek relay (quota
+   token/tháng)
+   ℹ️ Dùng DeepSeek relay
+   ℹ️ Dùng Grok relay (quota 1M token/tháng)
+   phút (quá 1h30). Vui lòng qua tab Download → Cắt Tách Video để tách đoạn trước.
+   ❌ Video không có audio track — không thể tạo phụ đề tự động.
+   Hãy dùng video có tiếng nói hoặc thêm nhạc/lời trước.
+   ️ [Audio] Đang tách âm thanh...
+   ❌ FFmpeg lỗi tách audio:
+   ❌ File audio trống hoặc hỏng!r.
+   ✅ [Audio] Tách xong! (
+   Bắt đầu nhận dạng
+   đoạn...
+   Mỗi câu sub CHỈ 1 dòng, tối đa 20 từ
+   Câu dài hơn 20 từ → TÁCH thành 2 sub riêng biệt nhưng giữ nguyên timelinerV
+   Mỗi câu sub CHỈ 1 dòng, tối đa 10 từ
+   Câu dài hơn 10 từ → TÁCH thành 2 sub riêng biệt nhưng giữ nguyên timeliner+
+   - Chinese audio → transcribe in Chinese characters
+   - Japanese audio → transcribe in Japanese (漢字/ひらがな/カタカナ)
+   - Korean audio → transcribe in Korean (한국어)
+   - English audio → transcribe in English
+   - Vietnamese audio → transcribe in Vietnamese
+   - NEVER put a comma (，,) or period (。.) inside a subtitle
+   - For Chinese/Japanese/Korean: each segment ≤
+   - For English/Vietnamese: each segment ≤
+   你在说什么
+   他已经走了
+   三天之后
+   你也会死的
+   当年爷爷救了你
+   你能活到现在
+   你在说什么,他已经走了,三天之后你也会死的
+   - Silence → SKIP, do not create empty subtitles
+   ] Bóc băng
+   ⚠️ [
+   ⚠️ Không có key — thử server khác...r@
+   ⚠️ Nội dung bị chặn (reason=
+   ) → thử server khác...
+   ⚠️ API blocked (reason=
+   ] Không parse được SRT (key
+   ⚠️ Parse fail
+   ⚠️ Rate limit, chờ
+   ⚠️ Rate limit (
+   s), nhảy key (
+   còn)...
+   ⚠️ Model
+   ⚠️ Tools đang quá tải (HTTP
+   ), chờ
+   Nhập key API miễn phí tại: https://aistudio.google.com/apikey
+   ⚠️ Key
+   timeout, nhảy key khác...
+   câu.
+   ] Không bóc băng được đoạn này.
+   Hàng Ỉm: đang nhận dạng...c
+   ✅ Hàng Ỉm nhận dạng xong:
+   ⚠️ Hàng Ỉm: không nhận dạng được giọng nói.
+   ⚠️ Hàng Ỉm:
+   không parse được SRT
+   ⚠️ Hàng Ỉm lỗi:
+   không kết nối được
+   → fallback...
+   CapCut API: đang nhận dạng...c
+   ✅ CapCut nhận dạng xong:
+   ⚠️ CapCut: không nhận dạng được giọng nói.
+   ⚠️ CapCut:
+   ⚠️ CapCut lỗi:
+   Groq Whisper API: đang nhận dạng...
+   ✅ Groq nhận dạng xong:
+   ⚠️ Groq thất bại, thử Gemini Audio STT...
+   ⚠️ API hết limit, thử WhisperX local...
+   ✅ WhisperX local:
+   ⚠️ Nhận dạng giọng nói thất bại!
+   ⚠️ Hãy dùng CapCut để bóc phụ đề.c
+   ⚠️ Tools đang quá tải!
+   Tools đang quá tải do có nhiều người dùng!
+   Vui lòng nhập key API miễn phí tại:
+   Hoặc dùng CapCut để bóc phụ đề gốc,
+   tool sẽ tự động dịch tiếp cho bạn.
+   ✅ Bóc băng hoàn tất! Tổng
+   Loại
+   ⚠️ Lặp bất thường: '
+   Sau lọc:
+   câu có timestamp ngoài video (
+   [。！？!?.…~♪\n]$
+   câu (gộp
+   đoạn ngắn).r&
+   bẩmu
+   vângu
+   thưau
+   khôngu
+   giếtu
+   chếtu
+   ⚠️ Không còn câu thoại hợp lệ sau căn chỉnh.
+   [Sub] Tổng
+   SRT gốc:
+   phút,
+   ✂️ Tách đối thoại:
+   câu gộp →
+   [Sub] Đã lưu
+   câu →
+
+########## ai_sub_translate.pyc (28)
+   Tách từ exporter_ai_sub.py để giảm kích thước file.
+   Dịch nhiều chunk song song: mỗi chunk ưu tiên key Gemini khác nhau.
+   - 1 chunk / OpenAI / 1 key → sequential (như cũ)
+   - Nhiều chunk + ≥2 key Gemini → chunk đầu dịch trước lấy [MEMORY],
+   các chunk sau phát song song mỗi chunk ưu tiên key riêng.
+   ] DeepSeek dịch
+   ] Grok dịch
+   ] Groq dịch
+   ⚠️ [
+   ] Gemini dịch văn bản...
+   ] Gemini lỗi:
+   ✅ [r'
+   câu)r-
+   ⚡ Dịch song song
+   phần...
+   ⚠️ Phần
+   lỗi: r!
+   Kiểm tra API key cho model đã chọn. Trả về tên key bị thiếu, hoặc None nếu OK.
+   Nếu SERVER_KEYS_ONLY = True → keys được quản lý trên relay server,
+   client không cần nhập → trả None (luôn cho phép).
+   Dịch SRT có sẵn (CapCut / manual) kèm grid ảnh ngữ cảnh.Nr
+   ❌ Thiếu OpenAI API Key!r-
+   ❌ SRT trống hoặc lỗi format!
+   SRT có sẵn:
+   ⚠️ CẢNH BÁO:
+   câu KHÔNG thay đổi sau dịch! API dịch có thể bị lỗi parse response.c
+   Đã dịch
+   câu →
+
+########## ai_translate_deepseek.pyc (52)
+   Gọi DeepSeek qua relay proxy — server track token per HWID.
+   Quy ước trả về (để caller phân biệt lỗi tạm thời vs dừng hẳn):
+   • dict  → thành công.
+   • None  → lỗi TERMINAL (hết quota / 4xx license) → dừng, đừng retry.
+   • RAISE → lỗi TẠM THỜI (rớt mạng/timeout/5xx/rate-limit) → caller
+   (_deepseek_translate_batch) bắt exception và retry.
+   Bug cũ: rớt mạng tới Worker (HTTPSConnectionPool) cũng trả None →
+   batch dừng ngay, khách tưởng "ăn limit" trong khi chỉ rớt mạng 1 nhịp.r
+   Hết quota DeepSeek tháng này!
+   ❌ DeepSeek relay HTTP
+   ⚠️ DeepSeek relay HTTP
+   Dịch batch qua DeepSeek Chat Completions API (OpenAI-compatible).r
+   ★ CONTEXT FROM PREVIOUS BATCH:
+   ★ QUY TẮC TỐI THƯỢNG TỪ ĐOẠN TRƯỚC:
+   BẮT BUỘC áp dụng đúng quy tắc xưng hô này! Dịch xong, cập nhật lại [MEMORY] nếu có thêm nhân vật mới.
+   ⚠️ LENGTH: Each line shows [⏱Xs|≤Ych] — TTS has X sec; ≤Y chars is the UPPER CAP.
+   - Translate FULLY & naturally within the ≤Y cap (length ≈ source, up to ~130%).
+   - Exceeding ≤Y = TTS sped up = bad dubbing. But do NOT over-compress or cut meaning.
+   ngôn ngữ gốc
+   Prompt Dịch
+   ⚠️ NHẮC LẠI: MẶC ĐỊNH 我→'tôi', 你→'anh/em/bạn'. TUYỆT ĐỐI KHÔNG dùng 'tao/mày' trừ khi bạn thân cùng tuổi hoặc đang cãi nhau/đe dọa.
+   Dịch
+   câu phụ đề
+   . Trả về ĐÚNG
+   dòng định dạng ID|Nội dung dịch.
+   ⚠️ BẮT BUỘC — ĐỘ DÀI: Mỗi dòng ghi [⏱Xs|≤Ych] = TTS chỉ có X giây, tối đa Y ký tự.
+   - Bản dịch PHẢI ≤Y ký tự. Vượt quá → TTS đọc nhanh → mất tự nhiên.
+   - Khi quá dài: bỏ từ thừa (rất, thật, lắm, quá), giữ ý chính. NGẮN hơn ĐỦ Ý.
+   DeepSeek relay dịch (
+   DeepSeek dịch (
+   ⚠️ DeepSeek rate limit, chờ 5s...r5
+   ⚠️ DeepSeek quá tải (HTTP
+   ), chờ
+   ✅ DeepSeek dịch OK! (r
+   câu)
+   ⚠️ DeepSeek dịch thiếu (
+   ), thử lại...
+   Wrapper quanh _deepseek_translate_batch — KHÔNG auto-fallback sang
+   Groq/Gemini. Fail sau 3 retry internal → popup hỏi user:
+   YES → chờ 2 phút retry (max 10 cycles = ~18 phút)
+   NO  → abort job, stop event
+   CANCEL → skip chunk, return None để caller tự xử lý (caller có thể
+   dùng raw texts để giữ tiến trình)
+   User-choice lưu vào self._ds_fail_choice → các chunk fail sau không hỏi
+   lại trong cùng job. Reset _ds_fail_choice = None khi bắt đầu job mới.r
+   DeepSeek dịch lỗi
+   DeepSeek dịch fail sau 3 lần retry.
+   • YES → Chờ 2 phút rồi thử lại (giữ DeepSeek)
+   • NO → Hủy job, qua đổi sang model khác
+   • CANCEL → Bỏ qua chunk này, tiếp tụcT
+   ⏳ DeepSeek fail — chờ 2 phút retry...r)
+   ❌ User hủy job DeepSeek dịch
+
+########## ai_translate_gemini.pyc (1)
+   Tách từ exporter_ai_sub.py để dễ quản lý.
+
+########## ai_translate_grok.pyc (59)
+   Gọi Grok qua relay proxy — server track token per HWID.
+   Quy ước trả về (đồng bộ deepseek, phân biệt tạm thời vs dừng hẳn):
+   • dict  → thành công.
+   • None  → lỗi TERMINAL (hết quota / 4xx license) → dừng, đừng retry.
+   • RAISE → lỗi TẠM THỜI (rớt mạng/timeout/5xx/rate-limit) → caller
+   (_grok_translate_batch) bắt exception và retry.r
+   Hết quota Grok tháng này!
+   ❌ Grok relay HTTP
+   ⚠️ Grok relay HTTP
+   Dịch batch qua xAI Grok Chat Completions API (OpenAI-compatible).r
+   ★ CONTEXT FROM PREVIOUS BATCH:
+   ★ QUY TẮC TỐI THƯỢNG TỪ ĐOẠN TRƯỚC:
+   BẮT BUỘC áp dụng đúng quy tắc xưng hô này! Dịch xong, cập nhật lại [MEMORY] nếu có thêm nhân vật mới.
+   ⚠️ LENGTH: Each line shows [⏱Xs|≤Ych] — TTS has X sec; ≤Y chars is the UPPER CAP.
+   - Translate FULLY & naturally within the ≤Y cap (length ≈ source, up to ~130%).
+   - Exceeding ≤Y = TTS sped up = bad dubbing. But do NOT over-compress or cut meaning.
+   ngôn ngữ gốc
+   Prompt Dịch
+   ⚠️ NHẮC LẠI: MẶC ĐỊNH 我→'tôi', 你→'anh/em/bạn'. TUYỆT ĐỐI KHÔNG dùng 'tao/mày' trừ khi bạn thân cùng tuổi hoặc đang cãi nhau/đe dọa.
+   Dịch
+   câu phụ đề
+   . Trả về ĐÚNG
+   dòng định dạng ID|Nội dung dịch.
+   ⚠️ BẮT BUỘC — ĐỘ DÀI: Mỗi dòng ghi [⏱Xs|≤Ych] = TTS chỉ có X giây, tối đa Y ký tự.
+   - Bản dịch PHẢI ≤Y ký tự. Vượt quá → TTS đọc nhanh → mất tự nhiên.
+   - Khi quá dài: bỏ từ thừa (rất, thật, lắm, quá), giữ ý chính. NGẮN hơn ĐỦ Ý.
+   Grok relay dịch (
+   Grok dịch (
+   ⚠️ Grok rate limit, chờ 5s...r5
+   ⚠️ Grok key lỗi, thử relay...r7
+   ⚠️ Grok HTTP 400:
+   ⚠️ Grok model '
+   ⚠️ Grok quá tải (HTTP
+   ), chờ
+   ⚠️ Grok HTTP
+   ✅ Grok dịch OK! (r
+   ⚠️ Grok dịch thiếu (
+   ), thử lại...
+   Wrapper quanh _grok_translate_batch — KHÔNG auto-fallback sang
+   Groq/Gemini. Fail sau 3 retry internal → popup hỏi user:
+   YES → chờ 2 phút retry (max 10 cycles)
+   NO  → abort job, stop event
+   CANCEL → skip chunk
+   User-choice lưu self._grok_fail_choice, reset đầu mỗi job.r
+   Grok dịch lỗi
+   Grok dịch fail sau 3 lần retry.
+   • YES → Chờ 2 phút rồi thử lại (giữ Grok)
+   • NO → Hủy job, qua đổi sang model khác
+   • CANCEL → Bỏ qua chunk này, tiếp tụcT
+   ⏳ Grok fail — chờ 2 phút retry...r)
+   ❌ User hủy job Grok dịch
+   Grok-specific: quét dòng còn sót ký tự CJK sau dịch.
+   Nếu chỉ lẻ 1-2 từ CJK (ratio < 0.3) → thử dịch lại, không được thì xóa.r
+   [一-鿿㐀-䶿　-〿]+c
+   Grok: dọn c
+   từ CJK sót trong
+   dòng...r)
+   Grok: đã dịch
+   từ, xóa
+
+########## ai_translate_groq.pyc (18)
+   Tách từ exporter_ai_sub.py để dễ quản lý.
+   Load fallback API keys từ user_config.json.
+   Config format giống Gemini: {provider}_api_key + {provider}_backup_keys.
+   Fetch a pool (≤5) of Groq keys từ relay. Counts 1 batch/call.
+   Dịch trực tiếp qua Groq/OpenAI-compat API kèm ảnh ngữ cảnh nếu có.
+   Dùng helper _build_translate_user_text để đồng nhất [⏱Xs|≤Ych] annotation.r
+   ✅ Dịch OK! (rz
+   câu)
+   ⚠️ API bận, nhảy key...
+   ⚠️ API key lỗi, thử key khác...
+   ⚠️ AI HTTP
+   — hết model khả dụng, bỏ qua.
+   ⚠️ Model lỗi
+   ⚠️ Model không hỗ trợ ảnh, thử lại không ảnh...
+   ⚠️ AI lỗi: r
+   Dịch qua Groq/fallback kèm ảnh ngữ cảnh nếu có.
+   Dùng helper _build_translate_user_text để đồng nhất annotation [⏱Xs|≤Ych]
+   với DeepSeek/Grok/Gemini path — tránh translation dài hơn TTS budget.r
+
+########## ai_translate_openai.pyc (3)
+   Tách từ exporter_ai_sub.py để dễ quản lý.
+   Dịch batch text-only qua OpenAI. Dùng helper _build_translate_user_text
+   để đồng nhất annotation [⏱Xs|≤Ych] với DeepSeek/Grok/Gemini/Groq.r
+
+########## ai_translate_utils.pyc (272)
+   Tách từ exporter_ai_sub.py để dễ quản lý.
+   Bao gồm cả Hangul (Hàn) + Kana (Nhật) để khớp với các detector khác
+   trong codebase (ai_stt_groq, whisperx, ffmpeg_filters...). Trước đây chỉ
+   đếm chữ Hán → câu nguồn Hàn/Nhật còn sót không bị phát hiện để dịch bù.
+   Phát hiện ngôn ngữ nguồn từ chính nội dung phụ đề (dùng khi source='auto').
+   Chỉ nhận diện theo CHỮ VIẾT đặc thù (Hangul/Kana/Thái/Hán) — đủ để builder
+   chọn đúng bộ ví dụ. Nguồn latin (Anh/Pháp...) trả '' → builder giữ mặc định
+   Ví dụ xưng hô / dịch tự nhiên đặc thù theo NGÔN NGỮ NGUỒN — TRÁO chứ
+   KHÔNG cộng dồn: mỗi lần dịch prompt chỉ chứa 1 bộ ví dụ, nên dù tool hỗ
+   trợ cả chục thứ tiếng, prompt vẫn dài như nhau (không loãng API).
+   Mặc định = tiếng Trung (giữ NGUYÊN VĂN bản cũ, byte-identical → 0 regression
+   cho luồng đang chạy). Thêm ngôn ngữ nguồn mới = thêm 1 nhánh ở đây.rI
+   - ⚠️ MẶC ĐỊNH: 저/제 → 'tôi/con/em' (khiêm nhường, nói với người trên), 나/내 → 'tôi/tớ'. 너 → 'cậu/em', 당신 → 'anh/ông' tùy vai. TUYỆT ĐỐI KHÔNG dùng 'tao/mày' làm mặc định.
+   i → bỏ 'ạ', xưng thân.
+   - 우리 아빠/엄마 → 'bố tôi/mẹ tôi' (KHÔNG 'bố tao/mẹ tao'). 오빠/형 → 'anh', 누나/언니 → 'chị', 동생 → 'em', 선배 → 'tiền bối/anh chị'.
+   - VD: '나도 그렇게 생각해' → 'Tôi cũng nghĩ vậy' (✅), KHÔNG 'Tôi cũng như thế mà nghĩ' (❌).
+   - VD: '걱정하지 마' → 'Đừng lo' / 'Anh đừng lo' (✅), KHÔNG 'Đừng có lo lắng' (❌).
+   - VD: '말도 안 돼' → 'Không thể nào' / 'Làm gì có' (✅).
+   - VD: '뭐라고?' → 'Anh nói gì cơ?' / 'Hả?' (✅), KHÔNG 'Cái gì đã được nói' (❌).
+   - VD: '두고 봐' → 'Cứ chờ đấy' / 'Để rồi xem' (✅).
+   - ⚠️ MẶC ĐỊNH: 私/僕 → 'tôi/tớ', 俺 → 'tôi/tao' (thô, theo tính cách), あなた/君 → 'anh/em/cậu', お前 → 'mày/cậu' (suồng sã). TUYỆT ĐỐI KHÔNG dùng 'tao/mày' làm mặc định.
+   - ⚠️ KÍNH NGỮ NHẬT QUYẾT ĐỊNH XƯNG HÔ: thể -ます/-です = lịch sự → thêm 'ạ/dạ', xưng khiêm. Thể thường (だ/だよ/だね) = thân mật/ngang hàng → bỏ 'ạ'.
+   - Hậu tố: ～さん → 'anh/chị', ～様 → 'ngài/quý ngài', ～ちゃん → tên thân mật, ～君 → 'cậu', 先輩 → 'tiền bối/anh chị'.
+   - お父さん/お母さん → 'bố/mẹ'. お兄さん/兄 → 'anh', お姉さん/姉 → 'chị', 弟/妹 → 'em'. KHÔNG hạ thành 'mày/tao'.
+   - VD: '私もそう思う' → 'Tôi cũng nghĩ vậy' (✅), KHÔNG 'Tôi cũng như thế suy nghĩ' (❌).
+   - VD: '心配しないで' → 'Đừng lo' / 'Anh đừng lo' (✅).
+   - VD: 'ありえない' → 'Không thể nào' / 'Làm gì có' (✅).
+   - VD: '何だって?' / 'なんで?' → 'Hả?' / 'Cái gì cơ?' (✅), KHÔNG 'Cái gì đã được nói vậy' (❌).
+   - VD: '覚えてろ' → 'Cứ chờ đấy' / 'Liệu hồn' (✅).
+   - ⚠️ MẶC ĐỊNH: 'I' → 'tôi/tớ', 'you' → 'anh/em/cậu/bạn' tùy quan hệ (tiếng Anh không phân biệt nên PHẢI suy từ ngữ cảnh). TUYỆT ĐỐI KHÔNG dùng 'tao/mày' làm mặc định.
+   - Trang trọng (Sir/Madam/Mr./Ms.) → 'ông/bà/ngài'. Suồng sã/cãi nhau (dude, hey you, shut up) → mới dùng 'mày/cậu'.
+   - Dad/Daddy → 'bố', Mom/Mommy → 'mẹ', bro → 'anh/em', sis → 'chị/em'. KHÔNG hạ thành 'mày/tao'.
+   - VD: 'I think so too' → 'Tôi cũng nghĩ vậy' (✅), KHÔNG 'Tôi nghĩ như vậy cũng' (❌).
+   - VD: "Don't worry" → 'Đừng lo' / 'Anh đừng lo' (✅).
+   - VD: 'No way' → 'Không thể nào' / 'Làm gì có' (✅).
+   - VD: 'What?' → 'Hả?' / 'Anh nói gì cơ?' (✅).
+   - VD: "You'll pay for this" → 'Cứ chờ đấy' / 'Liệu hồn' (✅), KHÔNG 'Mày sẽ trả giá cho việc này' (cứng) (❌).
+   - ⚠️ MẶC ĐỊNH: ผม (nam)/ฉัน/ดิฉัน → 'tôi/tớ', คุณ → 'anh/chị/bạn', เธอ → 'em/cậu'. TUYỆT ĐỐI KHÔNG dùng 'tao/mày' làm mặc định.
+   - Trợ từ lịch sự cuối câu ครับ (nam) / ค่ะ-คะ (nữ) = đang nói lễ phép → có thể thêm 'ạ' khi trang trọng, bỏ khi thân mật. KHÔNG dịch trợ từ thành chữ.
+   - พ่อ/แม่ → 'bố/mẹ', พี่ → 'anh/chị', น้อง → 'em'. KHÔNG hạ thành 'mày/tao'.
+   - VD: 'ฉันก็คิดอย่างนั้น' → 'Tôi cũng nghĩ vậy' (✅).
+   - VD: 'ไม่ต้องห่วง' → 'Đừng lo' / 'Anh đừng lo' (✅).
+   - VD: 'เป็นไปไม่ได้' → 'Không thể nào' / 'Làm gì có' (✅).
+   - VD: 'อะไรนะ' → 'Hả?' / 'Cái gì cơ?' (✅).
+   - ⚠️ MẶC ĐỊNH: ngôi thứ nhất → 'tôi/tớ', ngôi thứ hai → 'anh/em/bạn' tùy quan hệ. TUYỆT ĐỐI KHÔNG dùng 'tao/mày' làm mặc định.
+   - Quan hệ gia đình/trên-dưới → xưng hô đúng vai (bố/mẹ/con, anh/chị/em, ông/bà/cháu). KHÔNG hạ thành 'mày/tao'.
+   - Dịch THOÁT Ý theo văn nói Việt, KHÔNG dịch sát từng chữ.
+   - VD ý 'tôi cũng nghĩ vậy' → 'Tôi cũng nghĩ vậy' (✅), không câu cứng dài dòng.
+   - Phủ định mạnh → 'Không thể nào' / 'Làm gì có'. Ngạc nhiên → 'Hả?' / 'Thật á?'.
+   - ⚠️ MẶC ĐỊNH BẮT BUỘC: 我 → 'tôi', 你 → 'anh/em/bạn'. TUYỆT ĐỐI KHÔNG dùng 'tao' hoặc 'mày' làm mặc định.
+   - Khi nhân vật nói '我爸/我妈' → dịch 'bố tôi/mẹ tôi', TUYỆT ĐỐI KHÔNG dịch 'bố tao/mẹ tao'
+   - VD: '我也是这样想的' → 'Tôi cũng nghĩ vậy' (✅), KHÔNG 'Tôi cũng là như vậy mà nghĩ' (❌).
+   - VD: '你别担心了' → 'Đừng lo' / 'Anh đừng lo' (✅), KHÔNG 'Anh không cần phải lo lắng' (❌).
+   - VD: '不可能的事' → 'Không thể nào' / 'Làm gì có' (✅), KHÔNG 'Việc không thể có' (❌).
+   - VD: '你说什么' → 'Anh nói gì cơ?' / 'Hả?' (✅), KHÔNG 'Anh đã nói gì vậy' (❌).
+   - VD: '我会让他付出代价的' → 'Tao sẽ cho hắn biết tay' (✅), thay vì 'Tôi sẽ làm cho hắn trả giá' (cứng, dài).
+   Tên ngôn ngữ nguồn để nhồi vào prompt. source='auto' → dùng ngôn ngữ
+   đã nhận diện từ nội dung (nếu có) để model bám sát hơn (giúp cả chiều
+   ★ QUY TẮC OUTPUT (CỰC KỲ QUAN TRỌNG): Trả về ĐÚNG
+   dòng, mỗi dòng:
+   ID|Nội dung dịch
+   Ví dụ: 1|câu dịch 1
+   TUYỆT ĐỐI KHÔNG DẠ VÂNG, KHÔNG THÊM LỜI CHÀO, KHÔNG GIẢI THÍCH.
+   BẮT ĐẦU NGAY LẬP TỨC BẰNG DÒNG '1|...'.
+   KHÔNG markdown, KHÔNG code block.
+   ★ Dịch TẤT CẢ
+   dòng gốc sang
+   , không bỏ dòng nào.
+   ★ QUY TẮC XƯNG HÔ (CỰC KỲ QUAN TRỌNG — ƯU TIÊN CAO NHẤT):
+   - ⚠️ TRƯỚC KHI DỊCH MỖI CÂU: XÁC ĐỊNH AI ĐANG NÓI → AI ĐANG NGHE.
+   Đại từ nhân xưng phải ĐÚNG GÓC NHÌN CỦA NGƯỜI NÓI, không được đảo ngược.
+   VD: Cha nói với con → cha xưng 'ta/tôi', gọi con 'con/cậu'. Con nói với cha → con xưng 'con/tôi', gọi cha 'cha/ông'.
+   VD: Bề trên nói với bề dưới → gọi bề dưới 'cậu/ngươi'. Bề dưới nói với bề trên → gọi bề trên 'ông/ngài'.
+   TUYỆT ĐỐI KHÔNG ĐẢO NGƯỢC: bề trên KHÔNG gọi bề dưới là 'ông', bề dưới KHÔNG gọi bề trên là 'cậu'.
+   - PHẢI xưng hô đúng theo MỐI QUAN HỆ thực tế giữa các nhân vật
+   - Gia đình: Anh/Em, Ông/Bà/Cháu, Bố/Mẹ/Con, Chú/Cô/Cháu — KHÔNG được đổi thành Mày/Tao
+   - Người lớn tuổi hơn hoặc có vai vế: Anh/Chị/Bác/Cô/Chú — KHÔNG hạ bệ thành Mày
+   - Vợ chồng/Người yêu: Anh/Em — KHÔNG đổi thành Mày/Tao (trừ khi đang cãi nhau dữ dội)
+   - ⚠️ Mày/Tao CHỈ được dùng khi CÓ BẰNG CHỨNG RÕ RÀNG 1 trong 3: (1) bạn bè THÂN cùng tuổi đã xưng tao ở câu trước, (2) đang cãi nhau/mắng chửi/đe dọa, (3) kẻ thù đối đầu trực tiếp.
+   - Hai người ngang hàng/cùng tuổi: dùng tớ/cậu hoặc tôi/bạn — KHÔNG dùng 'cô' làm đại từ cho phụ nữ ngang tuổi
+   - ⚠️ 'Cô' CHỈ dùng khi nhân vật THỰC SỰ có vai vế cô/dì/bác gái hoặc xưng hô với phụ nữ LỚN TUỔI HƠN RÕ RÀNG. KHÔNG dùng 'cô' như đại từ chung cho phụ nữ
+   - Nếu KHÔNG RÕ mối quan hệ → mặc định Anh/Em hoặc Tôi/Bạn hoặc Tớ/Cậu, TUYỆT ĐỐI KHÔNG dùng Mày
+   - Khi đang mỉa mai/chọc tức/nói xấu → dùng 'cậu' (hơi khinh) hoặc 'mày' (thù địch), KHÔNG dùng 'cô'
+   ★ DỊCH KHỚP KHẨU HÌNH — QUAN TRỌNG NHẤT:
+   - Bản dịch sẽ được AI đọc (TTS) trong cùng khoảng thời gian với câu gốc.
+   - Nếu dịch dài hơn gốc → AI đọc bị tăng tốc → nghe mất tự nhiên.
+   - Dịch khớp độ dài gốc, TỔNG KÝ TỰ KHÔNG VƯỢT QUÁ 100% TỔNG KÝ TỰ GỐC.
+   - ĐẾM KÝ TỰ (bao gồm dấu cách): câu gốc 50 ký tự → dịch ≤50 ký tự. Gốc 20 ký tự → dịch ≤20 ký tự. Gốc 10 ký tự → dịch ≤10 ký tự.
+   - ⚠️ Với tiếng Trung/Nhật/Hàn: 1 ký tự gốc ≈ 1-2 ký tự Việt, nên ước lượng tương đương, không đếm cứng từng chữ.
+   - Mỗi câu tối đa
+   - ⚠️ CÂU NGẮN (≤5 từ): ưu tiên GIỮ ĐỦ NGHĨA, không bóp cụt.
+   - ⚠️ DỰA VÀO TIMELINE: Câu timeline dài → dịch ĐỦ Ý. Câu timeline ngắn → dịch GỌN.
+   - ⚠️ BẮT BUỘC: Dịch ĐÚNG Ý, không dịch sát từng chữ. Nếu Timecode ≤1.5 giây → câu dịch KHÔNG ĐƯỢC QUÁ 20 KÝ TỰ.
+   - Giữ lại từ cảm thán/biểu cảm (à, ơi, nhỉ, nhé, đấy, chứ, đi, thôi...) để câu không bị cụt lủn, mất tự nhiên.
+   - Ngắn gọn, đủ nghĩa, hoàn chỉnh câu.
+   ★ DỊCH TOÀN BỘ NGÔN NGỮ:
+   - Dịch TẤT CẢ các ngôn ngữ trong câu gốc sang
+   - Nếu gốc có xen tiếng Anh, Trung, Nhật, Hàn... → dịch hết sang
+   - KHÔNG để sót bất kỳ từ/cụm từ tiếng nước ngoài nào chưa dịch.
+   - Ví dụ: 'I love you 你知道吗' → dịch toàn bộ sang
+   LƯU Ý: Phụ đề gốc do AI nhận diện giọng nói, có thể sai chính tả.
+   - Từ vô nghĩa/lạc ngữ cảnh → suy luận từ phát âm gần giống.
+   - Từ có nghĩa hợp lý → dịch đúng theo chữ gốc.
+   - Giữ nhất quán tên nhân vật xuyên suốt.
+   KHÔNG THÊM TỪ ĐỆM: Không thêm từ không có trong gốc (lắm, thật, quá, vậy). Nhưng được dùng từ cảm thán (à, ơi, nhỉ, nhé, đấy, chứ, đi, thôi...) nếu phù hợp giọng điệu nhân vật.
+   CHÚ THÍCH ÂM THANH: Không dịch (nhạc nền), (tiếng cười), [music]...
+   - Câu chỉ có chú thích → thay bằng ...
+   - Câu có lời + chú thích → chỉ dịch phần lời.
+   Không tự thêm tiếng cười viết chữ (hahaha, hihi...) nếu gốc không có. 哈哈哈 → dịch 'Ha ha ha'.
+   ★ KÝ ỨC LIÊN TỤC: Sau khi dịch xong TẤT CẢ các dòng, THÊM ĐÚNG 1 dòng cuối cùng:
+   [MEMORY] <tóm tắt ngắn gọn quy tắc xưng hô, tên riêng, mối quan hệ, AI NÓI VỚI AI>
+   Ví dụ: [MEMORY] Trần Nghị (con trai, bề dưới) xưng 'tôi', gọi cha là 'ông'. Lục Minh Viễn (cha, bề trên) xưng 'ta', gọi con là 'cậu/nó'. Sư phụ (Dược Trần) xưng Lão phu, đệ tử xưng Con.
+   Dòng [MEMORY] PHẢI ghi rõ ai là bề trên/bề dưới để đoạn tiếp theo không đảo xưng hô.
+   ★ DỊCH TỰ NHIÊN — VĂN NÓI VIỆT (RẤT QUAN TRỌNG):
+   - ƯU TIÊN dịch THOÁT Ý theo văn nói Việt thường ngày, TUYỆT ĐỐI KHÔNG dịch word-for-word từng chữ.
+   - Nếu cấu trúc câu gốc khác Việt → SẮP LẠI cho mượt, không bám sát ngữ pháp gốc.
+   - Dùng từ thuần Việt, hạn chế Hán-Việt cứng. Ưu tiên cách nói ngắn, đời thường thay vì sách vở.
+   - Câu hỏi/cảm thán: 'Sao thế?', 'Trời ơi!', 'Thật á?', 'Ờ thì...', 'Đúng rồi đó.' — văn nói thật.
+   - ⚠️ TEST: đọc thành tiếng câu dịch — nếu nghe NGANG / CỨNG / lủng củng / sách vở → VIẾT LẠI cho tự nhiên.
+   ★ DẤU CÂU CHO TTS (BẮT BUỘC — ƯU TIÊN CAO):
+   - CHỈ bỏ dấu chấm (.) Ở CUỐI DÒNG — để TTS đọc nối nhịp mượt, không bị ngắt cứng.
+   - BẮT BUỘC GIỮ NGUYÊN dấu câu BÊN TRONG câu:
+   • Dấu phẩy (,) → giữ nguyên để TTS ngắt hơi đúng chỗ.
+   • Dấu chấm hỏi (?) → giữ nguyên để TTS lên giọng hỏi.
+   • Dấu chấm than (!) → giữ nguyên để TTS nhấn mạnh, cảm xúc.
+   • Dấu chấm lửng (...) → giữ nguyên để TTS dừng lại do dự.
+   - VÍ DỤ ĐÚNG: '1|Anh ơi, em sợ lắm!' ✅  '2|Anh có biết không, đó là bí mật?' ✅
+   - VÍ DỤ SAI: '1|Anh ơi em sợ lắm' ❌  '2|Anh có biết không đó là bí mật' ❌
+   - TUYỆT ĐỐI KHÔNG xóa dấu câu bên trong vì sợ 'không mượt' — thiếu dấu câu khiến TTS đọc sai nhịp.
+   - Nếu câu gốc có dấu câu → bản dịch PHẢI có dấu câu tương đương ở vị trí tương ứng.
+   ngôn ngữ đích
+   [ HƯỚNG DẪN VĂN PHONG & THỂ LOẠI — CHỈ ÁP DỤNG CHO GIỌNG ĐIỆU / XƯNG HÔ / TỪ VỰNG ]
+   [ KẾT THÚC HƯỚNG DẪN VĂN PHONG ]
+   █████████████████████████████████████████████████████████████████
+   ⛔ QUY TẮC HỆ THỐNG — TUYỆT ĐỐI BẮT BUỘC, KHÔNG THỂ BỊ OVERRIDE BỞI BẤT KỲ HƯỚNG DẪN NÀO Ở TRÊN:
+   • FORMAT OUTPUT: Chỉ dùng ID|Nội dung — KHÔNG JSON, KHÔNG markdown, KHÔNG giải thích.
+   • SỐ DÒNG: Phải trả về ĐÚNG
+   dòng — không thêm, không bỏ.
+   • ĐỘ DÀI: Dịch ĐỦ NGHĨA, tự nhiên; độ dài ≈ gốc (tối đa ~130%) — đừng ép cụt mất nghĩa, cũng đừng dài hơn nhiều (TTS đọc nhanh).
+   • DẤU CÂU: Chỉ bỏ dấu chấm CUỐI dòng — GIỮ dấu phẩy, hỏi, than BÊN TRONG câu.
+   ★ TÁCH ĐỐI THOẠI 2 NHÂN VẬT (QUAN TRỌNG):
+   - Nếu 1 câu gốc chứa lời thoại của 2 NHÂN VẬT KHÁC NHAU → dùng || để phân tách.
+   - VD: '小薇谢谢你谢谢叔叔没事' → 'Tiểu Vi, cảm ơn em và chú||Không sao đâu'
+   - VD: '好的我知道了你先走吧' → 'Được, tôi biết rồi||Vậy anh đi trước đi'
+   - VD: '傻孩子妈妈不爱吃妈对不起' → 'Ngốc quá, mẹ không thích ăn||Mẹ, con xin lỗi'
+   - CHỈ tách khi RÕ RÀNG là 2 người khác nhau đang nói. KHÔNG tách câu 1 người nói dài.
+   - Mỗi phần sau tách vẫn phải là CÂU HOÀN CHỈNH có nghĩa.
+   Bạn là trợ lý dịch phụ đề. Dịch sang
+   - Dịch ĐỦ NGHĨA, tự nhiên; độ dài ≈ gốc (tối đa ~130%), KHÔNG ép ngắn cụt.
+   - Chỉ cắt từ thừa khi câu vượt giới hạn ký tự; giữ trọn ý chính.
+   prompt_tpl: user-chosen genre template từ prompts.json (cổ trang, anime,
+   kiếm hiệp, hài...). Inject để áp dụng VĂN PHONG/XƯNG HÔ/TÊN RIÊNG khi
+   target khác vi (trước đây template chỉ áp cho target=vi).
+   ★ OUTPUT FORMAT (CRITICAL):
+   ★ WORD LIMIT:
+   - ⚠️ Each translation MUST be a COMPLETE sentence — do NOT cut off mid-thought.
+   ★ DUBBING LENGTH & LIP-SYNC (MANDATORY — HIGHEST PRIORITY):
+   - ✅ GOAL: translate FULLY & NATURALLY, conveying COMPLETE meaning, WITHIN the per-line char limit.
+   - ⚠️ Do NOT exceed the per-line char limit [≤Ych] (much longer → voice sped up, breaks lip-sync).
+   - ⚠️ But do NOT make it artificially SHORTER than needed — use available length to keep meaning natural & complete.
+   - Per-line char limit [≤Ych] is THE BINDING CONSTRAINT (an upper cap). Word count is secondary.
+   - Hard cap: each line ≤
+   words AND ≤ the per-line char limit shown in user prompt.
+   ★ LENGTH GUIDANCE (natural & complete — KHÔNG ép cụt):
+   - ★ TARGET: translated length ≈ source, up to ~130% — enough to express FULL meaning naturally.
+   ★ LENGTH EXAMPLES (CONCISE — English is verbose, fit the TTS timing):
+   - '你怎么来了' → 'Why are you here?' ✅ | 'Why did you come all the way here?' ❌ (too long)
+   - '走吧' → 'Let’s go' ✅
+   - '我不相信' → 'I don’t believe it' ✅ | 'I absolutely cannot believe what you said' ❌
+   - Favor the SHORTEST natural phrasing that keeps the meaning. The [≤Ych] cap is strict.
+   ★ NATURAL & COMPLETE IN
+   - Convey the FULL meaning naturally; length ≈ source, up to ~130%.
+   - ⚠️ Exceeding the per-line char cap = voice sped up = bad dubbing;
+   ★ ASR ERROR CORRECTION (before translating):
+   - Nonsensical words → infer from similar pronunciation.
+   ★ TRANSLATION STYLE:
+   - Audio annotations like (background music), (laughter), [music] → do NOT translate.
+   Lines with only annotations → replace with ...
+   Lines with speech + annotations → translate only the speech part.
+   ★ DIALOGUE SPLITTING (IMPORTANT):
+   - If ONE source line contains speech from 2 DIFFERENT CHARACTERS → use || to separate.
+   - Example: '小薇谢谢你谢谢叔叔没事' → 'Tieu Vi, thank you and uncle||It's okay'
+   - Example: '好的我知道了你先走吧' → 'OK I understand||You go ahead then'
+   ★ MEMORY: After translating ALL lines, add exactly 1 line at the end:
+   ⚠️ NEVER return the original source text unchanged. Every single line MUST be translated into
+   Khi `durations` được cung cấp → dùng inline annotation `[⏱Xs|≤Ych]`
+   per dòng (giống DeepSeek/Grok), giúp AI bám sát length constraint.
+   Khi không có (vd retry path) → simple `ID|text` format.r
+   - ENGLISH is verbose → keep translations CONCISE so the voice fits the timing without rushing. Stay within [≤Ych]; shorter natural phrasing wins.
+   ⚠️ CHAR LIMIT [≤Ych] IS THE BINDING CONSTRAINT (upper cap):
+   Each line shows [⏱Xs|≤Ych] — TTS has ~X seconds to read.
+   - Keep translation ≤Y characters (an upper CAP). USE the available room to convey FULL meaning naturally.
+   - Much longer than ≤Y = TTS sped up = broken dubbing. But do NOT compress below what the meaning needs.
+   - Trim filler ONLY when the line would exceed ≤Y. Keep core meaning complete & natural.
+   ⚠️ Each line ≤
+   words. Translate naturally & completely — length ≈ source, up to ~130%. Do NOT pad needlessly, but do NOT cut meaning just to be short.
+   ★ CONTEXT FROM PREVIOUS BATCH:
+   ★ IMAGE CONTEXT:
+   Build user_text với annotation [⏱Xs|≤Ych] per dòng — đồng nhất pattern
+   DeepSeek/Grok. Dùng cho mọi provider để tránh drift khi fallback.
+   - vi target: Vietnamese wording (xưng hô + length warning).
+   - durations cung cấp → inline [⏱Xs|≤Ych]; thiếu → [≤Ych] (chỉ char limit).
+   - cjk_ratio_override: override ratio CJK→target nếu cần (vd Groq cần
+   rộng hơn vì gpt-oss-120b dịch cụt khi budget chật). KHÔNG set → 2.5 vi.
+   ★ QUY TẮC TỐI THƯỢNG TỪ ĐOẠN TRƯỚC:
+   BẮT BUỘC áp dụng đúng quy tắc xưng hô này! Dịch xong, cập nhật lại [MEMORY] nếu có thêm nhân vật mới.
+   ⚠️ LENGTH: Each line shows [⏱Xs|≤Ych] — TTS has X sec; ≤Y chars is the UPPER CAP.
+   - Translate FULLY & naturally within the ≤Y cap (length ≈ source, up to ~130%).
+   - Exceeding ≤Y = TTS sped up = bad dubbing. But do NOT over-compress or cut meaning.
+   ngôn ngữ gốc
+   ⚠️ NHẮC LẠI: kính ngữ Hàn (-요/-습니다) → xưng khiêm + 'ạ'; 반말 → xưng thân. 저→'tôi/con/em', 나→'tôi/tớ'. KHÔNG dùng 'tao/mày' trừ khi cãi nhau/đe dọa.
+   ⚠️ NHẮC LẠI: MẶC ĐỊNH 我→'tôi', 你→'anh/em/bạn'. TUYỆT ĐỐI KHÔNG dùng 'tao/mày' trừ khi bạn thân cùng tuổi hoặc đang cãi nhau/đe dọa.
+   Dịch
+   câu phụ đề
+   . Trả về ĐÚNG
+   dòng định dạng ID|Nội dung dịch.
+   ⚠️ BẮT BUỘC — ĐỘ DÀI: Mỗi dòng ghi [⏱Xs|≤Ych] = TTS chỉ có X giây, tối đa Y ký tự.
+   - Bản dịch PHẢI ≤Y ký tự. Vượt quá → TTS đọc nhanh → mất tự nhiên.
+   - Khi quá dài: bỏ từ thừa (rất, thật, lắm, quá), giữ ý chính. NGẮN hơn ĐỦ Ý.
+   ★ NAME RULES:
+   - Chinese names → Pinyin (e.g. 顾未易 → Gu Weiyi, 萧炎 → Xiao Yan)
+   - Japanese names → Romaji (e.g. 田中太郎 → Tanaka Taro)
+   - Korean names → Romanized (e.g. 이민호 → Lee Min Ho)
+   - Western names/organizations → keep original (FBI, NASA, John)
+   - Martial arts terms → translate meaning (e.g. 降龙十八掌 → Eighteen Dragon-Subduing Palms)
+   ★ 名称规则:
+   - 中文人名 → 保持原文 (顾未易、萧炎)
+   - 日文名 → 保持原文汉字或注音 (田中太郎)
+   - 韩文名 → 音译中文 (이민호 → 李敏镐)
+   - 西方名/组织 → 保持原文 (FBI, NASA, John)
+   - 武术术语 → 保持中文 (降龙十八掌、太极拳)
+   ★ 名前のルール:
+   - 中国語の名前 → カタカナ表記 (顾未易 → グー・ウェイイー, 萧炎 → シャオ・イェン)
+   - 日本語の名前 → そのまま (田中太郎)
+   - 韓国語の名前 → カタカナ表記 (이민호 → イ・ミンホ)
+   - 西洋の名前/組織 → そのまま (FBI, NASA, John)
+   ★ 이름 규칙:
+   - 중국어 이름 → 한국어 음독 (顾未易 → 고미역)
+   - 일본어 이름 → 한국어 표기 (田中太郎 → 다나카 타로)
+   - 한국어 이름 → 원본 유지
+   - 서양 이름/조직 → 원본 유지 (FBI, NASA, John)
+   ★ NAME RULES (Thai output):
+   - Chinese/Japanese/Korean names & terms → TRANSLITERATE into THAI script (phonetic). Do NOT keep Han/Chinese/Kanji characters.
+   - ⚠️ EVERY output line MUST be 100% Thai script — NO Chinese/Han character may remain in the output. Transliterate any leftover term into Thai rather than leaving it in Chinese.
+   - Western names/organizations → keep original (FBI, NASA, John).
+   - Chinese names → Pinyin romanization.
+   - Western names → keep original.
+   Parse 'ID|text' response format → {0-based index: translated text}.r
+   Câu nào model bỏ sót (không có trong result_map) → giữ nguyên text gốc
+   nhưng ĐÁNH DẤU bằng prefix ★ để dễ debug.
+   Đồng thời kiểm tra: nếu bản dịch GIỐNG HỆT bản gốc → cũng coi là chưa dịch.r
+   Tìm câu nào vẫn giống bản gốc (chưa dịch) → dịch lại micro-batch.
+   Detect bằng exact-match VÀ CJK ratio (cho nguồn tiếng Trung).r
+   Dịch bù
+   dòng theo định dạng ID|Nội dung dịch.
+   Bắt buộc MỌI câu được dịch (user policy 2026-05-29).
+   Sau khi dịch xong, video dài (10-20 chunk) đôi khi 1 chunk fail → trả raw
+   (== text gốc, hoặc bản dịch còn dính CJK khi target non-CJK). Hàm này lặp
+   tối đa `max_rounds` vòng: mỗi vòng tìm câu còn raw → dịch lại bằng CHÍNH
+   model user chọn (model-sticky, KHÔNG fallback model khác — xem
+   [[feedback-no-cross-model-fallback]]). Bỏ qua câu không thể dịch được
+   (rỗng / thuần số / ký hiệu) để không retry vô ích.
+   Cập nhật `translated` in-place + trả (translated, rolling_memory).r
+   [Vòng r
+   ] dịch lại
+   câu chưa dịch (giữ
+   ⚠️ Retry vòng
+   lỗi: r
+   ✅ vá
+   ⚠️ Còn
+   câu chưa dịch sau
+   vòng (giữ
+
+########## batch_naming.pyc (9)
+   batch_naming.py — Đặt tên file output cho Xuất Batch.
+   Module THUẦN (không import nặng) để test cô lập được trong gate.
+   Đường dẫn output batch DUY NHẤT cho 1 video (tránh đè nhau).
+   Bug khách (2026-06-16): tên video DÀI bị cắt `stem[:50]` → nhiều video khác
+   nhau (vd các part "中文…_part1"/"_part2" tên Trung ≥50 ký tự) trùng 50 ký tự
+   đầu → CÙNG 1 file `{50ký}_edit.mp4` → đè nhau → "chỉ còn 1 video / mất video
+   ở thư mục xuất". Douyin tên ngắn (<50) không bị. Fix: giữ tên gốc khi không
+   trùng; chỉ chèn hậu tố số khi đụng video KHÁC trong cùng batch.
+   `out_dir` là pathlib.Path (out_dir / name). `used` được cập nhật tại chỗ.
+
+########## bcut_asr_api.pyc (25)
+   bcut_asr_api.py — Gọi trực tiếp Hàng Ỉm (必剪/Bilibili) ASR API, không cần cài app.
+   KHÔNG cần auth, cookie, hay ký salt (đơn giản hơn CapCut).
+   Hàng Ỉm resource/create error
+   Hàng Ỉm resource/complete error rc
+   Hàng Ỉm task error rc
+   Hàng Ỉm query error rc
+   [Hàng Ỉm] Đang upload audio (
+   phần)...
+   [Hàng Ỉm] Đang xác nhận upload...
+   [Hàng Ỉm] Đang gửi yêu cầu nhận dạng giọng nói...
+   [Hàng Ỉm] Đang chờ kết quả...r
+   [Hàng Ỉm] Hoàn thành —
+   đoạn.
+   [Hàng Ỉm] Đang xử lý... (state=
+   [Hàng Ỉm] Timeout — không nhận được kết quả.r^
+   Cho caller PRE-CHECK trước khi extract audio tốn kém.
+   Return (đang_nghỉ, số_giây_còn_lại).r
+   Trả (srt_path, info). Nếu return_status=True → (srt_path, info, status)
+   với status thuộc {ok, no_speech, timeout, error, cooldown}.c
+   Hàng Ỉm đang tạm nghỉ
+   Hàng Ỉm: video không có giọng nói.r
+   lần liên tiếp
+   Hàng Ỉm ASR timeout (không trả về kết quả).r^
+   Chỉ nhận được
+   [Hàng Ỉm] Thử lại lần 2...r
+
+########## capcut_asr_api.pyc (1)
+   biet 'API khang dinh khong co giong' (no_speech) vs 'API khong bóc duoc'
+
+########## capcut_auto.pyc (30)
+   capcut_auto.py — Tự động ký sinh CapCut: tạo project + import audio + watch draft → auto extract SRT.
+   1. Trích audio từ video → WAV
+   2. Tạo project CapCut mới chứa audio đã import sẵn
+   3. Mở CapCut (nếu chưa chạy)
+   4. Poll CapCut draft directory → phát hiện khi có subtitle mới
+   5. Tự động extract SRT → callback về tool
+   Tìm CapCut.exe trên máy (scan %LOCALAPPDATA% + running process).r
+   Kiểm tra CapCut có đang chạy không.r
+   Kill tất cả process CapCut. Returns True nếu đã kill ít nhất 1.Fr
+   Tự động click vào nút 'Tạo phụ đề tự động' trong CapCut.
+   Dùng Win32 API qua ctypes — không cần external dependency.
+   Returns: True nếu đã trigger thành công, False nếu cần làm thủ công.
+   ⚠️ Không tìm thấy cửa sổ CapCut để auto-clickF
+   Lấy duration (microseconds) từ audio file qua ffprobe.r
+   Tạo project CapCut mới với audio đã import sẵn vào timeline.
+   CapCut sẽ thấy project này khi mở/reload.
+   audio_path: Đường dẫn tuyệt đối tới file audio (WAV/MP3)
+   project_name: Tên project (mặc định: tên file audio)
+   Đường dẫn thư mục project, hoặc None nếu lỗi.
+   Poll CapCut draft directory, phát hiện khi subtitle mới xuất hiện.
+   Khi phát hiện → extract SRT → gọi callback.
+   Nếu project_dir được chỉ định → chỉ theo dõi project đó (không scan global).
+   Chạy trong background thread.
+   ❌ Không tìm thấy thư mục CapCut!
+   ️ Đang theo dõi CapCut... (
+   ⏱️ Hết thời gian chờ CapCut (10 phút)r;
+   ⏳ CapCut đang tạo sub... (
+   Đang trích xuất SRT từ CapCut...
+   ⚠️ Không trích được SRT, tiếp tục chờ...
+   ️ Theo dõi CapCut...
+
+########## capcut_batch.pyc (22)
+   capcut_batch.py — Gộp audio nhiều video → 1 file cho CapCut tạo sub,
+   rồi tách SRT CapCut về từng video.
+   1. User chọn thư mục / danh sách video
+   2. Gộp Audio  → merged_capcut.wav + manifest_capcut.json
+   3. User kéo merged_capcut.wav vào CapCut → Auto Sub → Export SRT
+   4. Tách SRT   → mỗi video nhận lại file _capcut.srt riêng
+   Trả về duration (giây, float) của file media bằng ffprobe.
+   3723.456 → '01:02:03,456'r
+   Trích audio từ mỗi video → nối liền → lưu 1 file WAV + manifest JSON.
+   Đang ghép audio thành 1 file …
+   ✅ Xong!
+   video → merged_capcut.wav (
+   Trích audio từ 1 video duy nhất → file WAV.
+   Trích audio: c
+   ' KHÔNG có audio — không tách được tiếng. Cần video có âm thanh.
+   Trích audio thất bại:
+   Tách 1 file SRT lớn (từ CapCut) → nhiều file _capcut.srt theo manifest.
+   Mỗi file SRT được lưu cạnh video gốc, trong thư mục 'Phụ Đề SRT'.
+   Returns danh sách đường dẫn SRT đã tạo.
+   Phụ Đề SRTTrG
+   dòng sub
+   Đã tách xong
+
+########## capcut_extractor.pyc (28)
+   capcut_extractor.py — Trích xuất phụ đề từ dự án CapCut gần nhất.
+   Đọc draft_content.json → parse materials.texts + tracks.segments → xuất SRT.
+   Trả về thư mục gốc chứa các dự án CapCut, hoặc None.
+   Kiểm tra nhiều vị trí cài đặt (regular, Pro, Business...).
+   Tìm thư mục dự án CapCut được sửa đổi gần nhất.
+   ^(?:[\s]*(?:[哈呵嘿嗯啊哎哦哟诶]+|(?:ha|he|hi)+|haha+|hehe+|hihi+)[\s,.]*)+$
+   ^đừng\s+cười(\s+nữa)?\s*,?\s*
+   \s*,?\s*đừng\s+cười(\s+nữa)?$
+   哈{3,}
+   呵{3,}
+   嘿{3,}
+   嗯{2,}
+   Làm sạch tiếng cười — giữ timecode, chỉ xoá chữ cười, giữ khoảng trắng.r6
+   ^[哈呵嘿]{2,}\s*
+   \s*[哈呵嘿]{2,}$
+   Làm sạch file SRT từ CapCut: chuẩn hoá tiếng cười, giữ nguyên timecode.
+   input_path: Đường dẫn file SRT gốc (từ CapCut ASR/extract)
+   output_path: Đường dẫn file output. None → ghi đè file gốc.
+   Đường dẫn file output.
+   Trích xuất phụ đề từ dự án CapCut gần nhất và lưu ra file SRT tạm.
+   (srt_path, warning) — srt_path là đường dẫn file SRT tạm hoặc None nếu thất bại.
+   warning là chuỗi cảnh báo nếu kết quả có vẻ không đúng (None nếu OK).
+   mặc định
+   ⚠️ Project CapCut '
+   ' chỉ có
+   segment với nội dung mặc định.
+   ⚠️ Chỉ trích xuất được
+   segment từ project '
+
+########## disk_guard.pyc (7)
+   disk_guard.py — Pre-flight kiểm tra dung lượng đĩa trước khi xuất video.
+   Tách riêng (chỉ stdlib) để test cô lập + dùng chung single/batch export.
+   Trả chuỗi cảnh báo nếu ổ chứa %TEMP% hoặc thư mục output sắp đầy.
+   Cần free ≥ max(5GB, 3× kích thước video gốc). Đủ chỗ → trả "".
+   GB trống.
+   Xuất video (nhất là 'Kéo dài video theo TTS') cần khoảng
+   GB chỗ trống cho file tạm. Ổ gần đầy có thể làm máy treo hoặc văng giữa chừng.
+
+########## export_batch.pyc (79)
+   Tách từ exporter_export_actions.py để giảm kích thước file.
+   Cảnh báo
+   Đang tạo giọng đọc, vui lòng chờ xong rồi mới xuất!
+   Thông báo
+   Không có video trong danh sách!c
+   Phụ Đề SRTc
+   ⚠️ OCR mode đang bật +
+   video chưa có SRT. OCR ưu tiên — KHÔNG fallback CapCut. Hãy click 'Bóc OCR' cho từng video trước.
+   OCR mode ưu tiên
+   OCR đang bật +
+   video chưa có SRT.
+   OCR mode được ưu tiên — KHÔNG tự fallback CapCut/Whisper.
+   Click 'Bóc OCR' từng video → hoặc tắt OCR để chuyển sang CapCut.
+   video chưa có SRT — quá giới hạn 200 video. Tự động chuyển qua CapCut...
+   Dịch SRT nhiều video cùng lúc — mỗi video dùng key Gemini riêng.
+   Chỉ xử lý video đã có SRT gốc nhưng chưa dịch.
+   ⚡ Dịch song song
+   luồng)...c
+   ✅ Pre-translate:
+   ⚠️ Pre-translate
+   lỗi:
+   ⚡ Dịch song song xong: rW
+   Chế độ Phim bộ: Bật — Giữ xưng hô xuyên suốt cả thư mụcr
+   ⏸ Đã dừng lại sửa Phụ Đề — sửa xong ấn Xuất tiếp để chạy.
+   ⛔ Đã dừng
+   ' ≠ target '
+   : Tìm thấy SRT trên đĩa: c
+   : Dùng bản dịch sẵn trên đĩa:
+   : Dùng SRT có sẵn (không dịch):
+   : Dịch SRT có sẵn: rG
+   : Dịch sub xong:
+   ⏸ Đã dừng lại sửa Phụ Đề:
+   — sửa xong ấn Xuất tiếp để chạy.
+   ═══ Tổng Batch
+   ═══c
+   ⛔ Batch đã bị dừng bởi người dùng.
+   file lỗi:
+   Xuất xong
+   : Dịch sub thất bại, dùng sub gốc.
+   : Dùng sub có sẵn:
+   : Dịch phụ đề: r%
+   : Đã chọn 'File giọng' nhưng CHƯA bật Lồng tiếng — file giọng bị bỏ qua.
+   : Dùng lại
+   giọng đọc đã có.
+   : Đang tạo giọng đọc...c
+   : Tạo giọng đọc lỗi: c
+   ⚠️ Stretch preview update lỗi:
+   : Tạo xong
+   giọng đọc!
+   : Tạo giọng đọc (TTS): rb
+   giọng gốc
+   nhạc nền
+   : Tách audio (bỏ
+   ) — demucs (lần đầu)…c
+   : Demucs lỗi:
+   : Tách giọng + giữ hội thoại (
+   đoạn)
+   : Tách giọng (không sub → nhạc nền)
+   : Tách giọng (chưa có audio gốc cache)
+   : Tách giọng → nhạc nền WAV có sẵn.
+   : Áp dụng
+   đoạn KHÔNG tách
+   : Xuất video (FFmpeg):
+   : Dùng file giọng đọc đã gộp sẵn.
+   file audio bị thiếu.
+   : Đang lồng tiếng...
+   : Bỏ qua stretch — TTS đã vừa khít video.
+   : stretch_video lỗi:
+   : voice KHÔNG khớp stem (
+   : Lồng tiếng xong!
+   : Lồng tiếng bị dừng.
+   : Lồng tiếng lỗi:
+   : Không có segment giọng hợp lệ để ghép. Xuất chỉ có phụ đề.
+   : Ghép nhạc nền xong!
+   : Mix SFX lỗi:
+   MB →
+   : Tổng:
+   : Xuất xong!
+   : Xuất bị dừng / lỗi lồng tiếng!
+
+########## export_single.pyc (64)
+   Tách từ exporter_export_actions.py để giảm kích thước file.
+   phút
+   Cảnh báo
+   Đang tạo giọng đọc, vui lòng chờ xong rồi mới xuất!
+   Chưa chọn video đầu vào!r
+   ⚠️ Video dài r
+   phút — quá 1h30.
+   Video quá dài
+   ' dài
+   phút (quá 1h30).
+   CapCut/ByteDance không xử lý được video ≥ 2 giờ.
+   Vui lòng qua tab Download → Cắt Tách Video để tách đoạn trước.
+   Lưu Video
+   ArÉaj&
+   ✅ Dùng SRT có sẵn (không dịch):
+   Dịch SRT có sẵn:
+   ✅ Dịch sub xong: r
+   ⏸ Đã dừng lại sửa Phụ Đề — sửa xong ấn Xuất tiếp để chạy.
+   Chờ sửa subF
+   Đang AI tạo phụ đề...
+   Đang AI bóc băng & dịch:
+   ✅ Tạo sub xong:
+   ⚠️ Tạo sub thất bại — dừng xuất. Hãy dùng CapCut bóc băng SRT rồi kéo vào tool.
+   ⚠️ Đã chọn 'File giọng' nhưng CHƯA bật Lồng tiếng — file giọng bị bỏ qua. Hãy bật Lồng tiếng để dùng.
+   Mode 'Kéo dài...' — cache cũ ở mode tăng tốc, tạo lại.
+   ✅ Dùng
+   ♻️ Dùng lại
+   giọng đọc đã có trên đĩa.
+   Đang tạo giọng đọc (song song với xuất video)...c
+   Lồng tiếng: TTS đang chạy song song với xuất video.
+   Lồng tiếng:
+   segment(s) giọng đọc sẵn sàng.c
+   Tách giọng + giữ hội thoại (
+   đoạn)
+   Áp dụng
+   đoạn KHÔNG tách giọng
+   Xuất video (FFmpeg):
+   ❌ Lỗi export:
+   ⏳ Đang xử lý giọng đọc... (
+   ⚠️ TTS xử lý quá
+   phút, bỏ qua lồng tiếng.c
+   ✅ Tạo xong
+   giọng đọc!
+   Tạo giọng đọc (TTS):
+   ⚠️ Tạo giọng đọc lỗi:
+   ♻️ Dùng file giọng đọc đã gộp sẵn.
+   file audio bị thiếu, bỏ qua.
+   Đang lồng tiếng vào video...
+   ℹ️ Bỏ qua stretch — TTS đã vừa khít video.
+   ⚠️ stretch_video lỗi:
+   (khớp slider), voice_vol=
+   ✅ Lồng tiếng xong!
+   ⛔ Lồng tiếng bị dừng.
+   ⚠️ Lồng tiếng lỗi:
+   ⚠️ Không có segment giọng hợp lệ để ghép. Video sẽ xuất chỉ có phụ đề.
+   ✅ Ghép nhạc nền xong!
+   ✅ SFX mixed:
+   ⚠️ Mix SFX lỗi:
+   MB →
+   ⚠️ Output lớn hơn gốc
+   ! Kiểm tra bitrate/codec.
+   ═══ Tổng thời gian:
+   ═══c
+   Xuất xong!
+
+########## export_srt_resolve.pyc (15)
+   export_srt_resolve.py — Logic THUẦN chọn nguồn SRT khi xuất video.
+   Tách khỏi export_single.py để test được cô lập (không kéo Tkinter/ffmpeg).
+   Bug §(2026-06-11): export ĐƠN để file dịch cũ trên đĩa (`expected_srt`,
+   tên theo video) che mất SRT khách vừa chọn thủ công → ra video sub cũ. Gốc:
+   nhánh check `expected_srt` đứng TRƯỚC nhánh "User chọn SRT" (export_batch thì
+   đúng thứ tự). Fix: khi khách chọn SRT thủ công (skip_translate) thì ưu tiên
+   file khách chọn TRƯỚC expected_srt.
+   Trả về action quyết định nguồn SRT lúc export đơn:
+   "already_translated" — SRT pointer đã là bản dịch → dùng luôn
+   "manual_or_translate" — có raw_srt: skip_translate→dùng luôn, else→dịch
+   "use_expected_seg"    — (có segments) dùng file dịch cũ trên đĩa
+   "use_expected_noseg"  — (chưa có segments) dùng file dịch cũ trên đĩa
+   "generate"            — chưa có gì → AI bóc băng & dịch
+   "none"                — không làm gì (giữ trạng thái sub hiện tại)
+   Thứ tự phản chiếu export_batch (manual pick ƯU TIÊN trước expected_srt).
+
+########## exporter_ai_sub.pyc (10)
+   Model-specific code tách ra các file riêng:
+   - ai_translate_gemini.py  → GeminiTranslateMixin
+   - ai_translate_groq.py    → GroqTranslateMixin
+   - ai_translate_openai.py  → OpenAITranslateMixin
+   - ai_translate_deepseek.py → DeepSeekTranslateMixin
+   - ai_translate_grok.py    → GrokTranslateMixin
+   - ai_translate_utils.py   → TranslateUtilsMixin
+   - ai_stt_groq.py          → GroqSTTMixin
+   Legacy no-op — Whisper đã được thay bằng Gemini STT.r
+   Load SRT vào UI sub panel từ background thread.c
+
+########## exporter_export_actions.pyc (22)
+   start/end của segment có thể là float giây HOẶC chuỗi SRT 'HH:MM:SS,mmm'
+   Ưu tiên dùng _tts_full.mp3 nếu đã có (segments đã bị dọn).
+   Fallback: tìm từng file segment riêng lẻ.
+   prefer_segments=True (mode stretch_video): skip _tts_full, scan N file riêng.
+   Loại bỏ voice segment nằm ngoài vùng trim.r
+   Sau khi xuất xong: dọn folder 'Giọng Đọc TTS'.
+   - Mode tăng tốc (có _tts_full): xóa segment lẻ, giữ _tts_full.
+   - Mode stretch (N segment, không _tts_full): GỘP N segment → 1 file
+   {stem}_tts_full.mp3 rồi xóa segment lẻ (user muốn folder gọn + 1 file
+   full giống hành vi cũ; đánh đổi cache re-export §26.13).Nc
+   File giọng đầy đủ:
+   (dọn
+   segment lẻ).
+   ⚠️ Gộp file full không thành — giữ nguyên segment.
+   ⚠️ Gộp file full lỗi, giữ segment: rX
+   Đã dọn
+   Đảm bảo đồng bộ hóa luồng: Ép UI chuyển sang video hiện tại và nạp thẳng SRT để sửa.c
+   Hiển thị bảng đếm ngược 60s hỏi người dùng có muốn sửa sub không.
+   Trả về 'edit' nếu chọn Sửa, 'skip' nếu Bỏ qua, 'timeout' nếu hết giờ.r
+   Tự động xuất video tiếp sau: r-
+   ✏️ Dừng lại để sửac
+   ▶ Bỏ qua & Xuất ngayc
+
+########## exporter_ffmpeg_logic.pyc (67)
+   Sinh cờ -metadata giả ngẫu nhiên (iPhone ~60% / Android ~40%) cho mỗi
+   lần xuất. -map_metadata -1 xoá metadata gốc trước. iPhone dùng tag QuickTime,
+   Android dùng tag com.android.* (không lẫn để tránh lộ).r
+   Mix list SFX events vào audio của video.
+   output_path: file output mới (caller phải swap với input).
+   Mỗi event = 1 ffmpeg input thêm, dùng adelay + volume + amix.
+   Video stream copy (không re-encode) để nhanh + giữ chất lượng.
+   Load SFX events từ JSON cạnh video.r
+   Load exclude ranges từ {video}.vocal_excl.json.r
+   excludes: list of (start_sec, end_sec) tuples — đoạn KHÔNG tách giọng.
+   High-level helper: trả về path tới WAV combined nếu có excludes,
+   trả về sep_wav_path nếu không có excludes.
+   Cache theo hash của exclude list để không rebuild mỗi lần.
+   ❌ Không tìm thấy ffmpeg!
+   Check `ffmpeg -encoders` xem encoder có được compile vào binary không.
+   Phân biệt 2 loại fail:
+   • Encoder không có trong list → FFmpeg build thiếu → đầu hàng
+   • Encoder có trong list nhưng probe fail → driver/HW issue →
+   Test encoder bằng FFmpeg dry-run, cache kết quả per-process.
+   2-tier probe để robust với Pascal/Maxwell driver alignment quirks:
+   • Tier 1: pattern 320x240/0.2s — chạy thành công cho 99% case.
+   • Tier 2 (chỉ NVENC, khi tier 1 fail): pattern 640x480/0.2s — một
+   số driver Pascal cũ reject input < 256px do alignment cứng.
+   Diagnostic: nếu encoder có trong `ffmpeg -encoders` (compile-in OK)
+   ⚠ probe
+   Gợi ý: cài/cập nhật driver NVIDIA mới nhất, hoặc GPU này không có chip NVENC (GT 1030, GT 1010, Quadro K series cũ) → buộc dùng CPU.
+   Probe `ffmpeg -h encoder=X` để xác định capability của driver/HW.
+   Cần thiết vì:
+   • NVENC `-multipass`, `-b_ref_mode` chỉ có trên Turing+ (RTX 20+,
+   GTX 16 series). Pascal/Maxwell sẽ CRASH nếu đẩy args này.
+   • QSV `-look_ahead_depth` cần Skylake+ + driver mới.
+   • AMF `-rc vbr_peak` cần driver Adrenalin tương đối mới (~2020+).
+   Kiểm tra NVENC...r
+   Auto-detect GPU backend khả dụng. Trả về 'nvenc'/'qsv'/'amf'/'cpu'.
+   Probe 3 backend song song qua ThreadPoolExecutor → cold-start latency
+   giảm từ ~6-9s (serial) xuống ~2-3s (parallel) trên máy không có
+   backend ưu tiên (vd AMD-only). Sau đó pick theo priority:
+   NVENC (NVIDIA) → QSV (Intel) → AMF (AMD) → CPU.
+   ✅ Dùng backend:
+   Chọn encoder FFmpeg dựa trên codec name + GPU preference.
+   - is_auto=True (codec="auto"): smart fallback chain GPU H265 → GPU H264 → CPU
+   (cốt lõi: tool tự chọn codec tốt nhất khả dụng).
+   - is_auto=False (user ÉP chọn codec): fallback trong CÙNG codec family
+   (H.265 GPU không có → H.265 CPU, KHÔNG downgrade xuống H.264 vì
+   customer chọn H.265 là vì chất lượng cao hơn).
+   ⚠️ AV1 GPU không khả dụng, chuyển H.265 GPU
+   ⚠️ H.265 GPU không khả dụng (auto) → H.264 GPU
+   §20.6 — Chèn MP4 'uuid' atom với UUID v4 + minimal payload để làm mới
+   mã hash. Trước: 'free' atom với 64-256 bytes random → Zalo Android player
+   reject (parser strict, random bytes có thể chứa pattern giả atom header).
+   random payload, format chuẩn, parser standard luôn skip → Zalo + iOS +
+   Android MediaPlayer + ExoPlayer + VLC đều mở OK.
+   Đã làm mới mã file (uuid atom)r
+   ⚠️ Đổi MD5 thất bại: file bị khoá sau 5 lần thử
+   Render gradient dọc TỐI ra PNG tạm (tw×th) để dùng làm nền 2 bên.r
+   Đủ điều kiện cho nhánh song song đốt sub (Option A). Mặc định flag TẮT.
+   CHỈ bật cho case ĐƠN GIẢN NHẤT để rủi ro thấp:
+   clean export + NVENC + sub-trong-vf (không logo/overlay) + video dài +
+   không trim + không speed. Mọi case khác → single-pass như cũ.r
+   1080p→2Ku
+   s → ~
+   kbps → maxrate=
+   giọng gốc
+   nhạc nền
+   ✨ Effects:
+   ⏱️ Thời lượng xuất: ~
+   ⚡ Đốt phụ đề song song x
+
+########## exporter_presets.pyc (18)
+   exporter_presets.py — Save/Load user presets (cài đặt người dùng).
+   Lưu file JSON trong thư mục presets/ cạnh exe.
+   Thư mục lưu presets — cạnh file exe (hoặc main.py khi dev).r
+   File lưu tên preset cuối cùng đã dùng.
+   ── Mặc định ──c
+   Quét thư mục presets/ → danh sách tên preset (có mục Mặc định đầu).
+   Hỏi tên preset mới, trả về tên đã sanitize hoặc None.
+   Lưu cài đặt
+   Lưu cài đặt hiện tại thành preset.
+   Đã có cài đặt «
+   • Yes = Lưu đè
+   • No = Tạo mới với tên khácrL
+   Đã lưu cài đặt: rX
+   Load preset theo tên (hoặc từ combobox).Nr~
+   Không thể đọc: rL
+   Xóa preset đang chọn.N
+   Xóa cài đặt
+   Xoá cài đặt «
+
+########## exporter_preview_engine.pyc (126)
+   Mở video qua cv2.VideoCapture với fallback chain.
+   OpenCV trên Windows + filename có ký tự non-ASCII (tiếng Việt có dấu)
+   thường fail silently — `cap.isOpened()` False mà không throw exception.
+   2. Nếu filename non-ASCII → Win32 GetShortPathName → 8.3 ASCII path → retry
+   3. Try CAP_MSMF (Windows Media Foundation) — Unicode handling khác
+   Trả về VideoCapture object (caller gọi `cap.isOpened()` để check).c
+   Phân tích lý do video không mở được, trả về message cụ thể cho user.
+   Dùng ffprobe để check file có hợp lệ không, từ đó phân biệt:
+   • File hỏng/truncated/không tồn tại
+   • Codec không hỗ trợ (AV1, HEVC lạ)
+   • Lỗi không xác định
+   Không tìm thấy file.r
+   OpenCV không decode được codec '
+   '. Tải lại với format MP4 H.264 hoặc convert qua FFmpeg.
+   ) nhưng OpenCV không mở được. Có thể do tên file có ký tự lạ → thử đổi tên không dấu.
+   File MP4 hỏng/thiếu moov atom — tải lại.
+   File hỏng / dữ liệu không hợp lệ — tải lại.
+   Tạo Win32 Job Object với JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
+   Mọi subprocess gán vào Job này sẽ tự chết khi process cha tắt.r
+   Giải phóng GDI bitmap của PhotoImage NGAY LẬP TỨC (không đợi GC).
+   Mỗi PhotoImage Tkinter tiêu 1 GDI handle; Windows limit 10k/process.
+   Trả về đường dẫn audio cho preview. Khi bật 'Tắt giọng gốc' và/hoặc
+   Kill ffplay: proc.kill() = TerminateProcess (instant, process chết ngay).
+   wait() inline với timeout ngắn — KHÔNG tạo reap thread tránh tích lũy.N
+   Vị trí hiện tại tính từ wall-clock sync — thread-safe, không đọc cap.
+   Khi speed_en bật: position advance × speed_f → video & audio đồng bộ tốc độ.r
+   [AudioPos] cap.get →
+   [AudioPos] fallback → 0 (no cap)r
+   Cache path cho vocals-only stem (CapCut ASR input, sạch tiếng động).r
+   Tách audio bằng demucs htdemucs (4 stem: vocals/drums/bass/other).
+   Trả (True, "") hoặc (False, lỗi).
+   remove_stems (ƯU TIÊN nếu set): output = tổng các stem KHÔNG nằm trong
+   danh sách này. VD ["vocals"]→nhạc+tiếng động (Tắt giọng gốc);
+   ["drums","bass"]→giọng+other (Tắt nhạc nền); ["vocals","drums","bass"]→
+   chỉ còn other (bật cả 2). Đây là đường dùng cho combo 2 toggle.
+   → dùng làm input cho CapCut ASR.
+   extract_vocals=False (mặc định): output = instrumental (giọng đã xóa).Nc
+   Đang tải thư viện...r
+   .x), kiểm tra...r}
+   ✅ GPU OK — dùng CUDA
+   ⚠️ GPU test fail (
+   ), dùng CPU
+   .x quá cũ
+   → dùng CPU
+   Tải model htdemucs (
+   | Không có quyền ghi cache — chạy as AdministratorF
+   Tải model thất bại (
+   ⚠️ VRAM cần ~
+   Đang tách giọng AI (
+   AI đang xử lý... (
+   GPU lỗi, chuyển CPU... (rh
+   Lưu file vocals (đã loại tạp âm)...
+   Lưu file instrumental...c
+   Tách giọng hoàn tất!r
+   Gọi mỗi khi user thay đổi vocal exclude ranges → rebuild merged WAV
+   + restart audio nếu đang play để áp dụng ngay.Nr
+   Stem cần BỎ theo combo 2 toggle (htdemucs: vocals/drums/bass/other):
+   - Tắt giọng gốc  → bỏ 'vocals'                (giữ nhạc nền)
+   - Tắt nhạc nền   → bỏ 'drums','bass','other'  (chỉ giữ giọng nói)
+   'other' chứa nhạc giai điệu (guitar/piano/synth) → PHẢI bỏ mới sạch nhạc
+   (đánh đổi: mất tiếng động vì cũng nằm trong 'other').
+   Bật cả 2 → bỏ hết 4 stem → im lặng.rH
+   Cache WAV theo COMBO stem bị bỏ (mỗi combo 1 file riêng).
+   Combo chỉ bỏ 'vocals' → DÙNG LẠI tên legacy '_instrumental.wav' để
+   tương thích keep_dialogue (_original/_dialogue_mix) + cache cũ.r
+   Xoá cache stretch audio gốc khi nguồn audio thay đổi (tách giọng/nhạc).
+   Dựng track audio đã tách theo COMBO 2 toggle (Tắt giọng gốc / Tắt nhạc
+   nền). Output gộp → self._vocal_sep_audio (1 track duy nhất, đường ống export
+   tái dùng). Dùng chung cho cả 2 handler.rH
+   Tắt giọng gốc
+   Đang tách...
+   Đang tách audio...c
+   Tách
+   Bật/tắt 'Tắt nhạc nền' → dựng lại track tách theo combo.Nr
+   Mix instrumental + original audio dựa trên subtitle timestamps.
+   dialogue_segments: [{start, end}, ...] — timestamp tính bằng giây.
+   Đoạn có hội thoại → dùng original. Đoạn không có → dùng instrumental.
+   Crossfade mượt ở ranh giới.
+   Trả về True nếu thành công.
+   Ưu tiên file giọng ngoài (ext_voice_file) — luôn hoạt động dù TTS tắt.
+   Chỉ tìm _tts_full.mp3 khi TTS đang bật.
+   Giọng Đọc TTS
+   Main thread: cài đặt VideoCapture đã mở + hiển thị frame đầu tiên.r
+   Main-thread: mở rộng preview timeline cho chế độ 'Kéo dài video theo TTS'.
+   Chỉ gọi từ main thread (qua self.after(0, ...)).r:
+   Map vị trí OUTPUT timeline (ms) → SOURCE video (ms) theo _stretch_pieces.
+   pieces = list[(src_start_s, src_end_s, ratio)]; output_len mỗi piece =
+   (src_end-src_start)*ratio. Ở zone slow (ratio>1) source tiến chậm hơn output
+   → video tự giữ frame = slow-motion khớp file xuất.rN
+   Trả (pieces, new_results, total_sec) nếu mode 'Kéo dài video theo TTS'
+   bật + có TTS per-segment dài hơn slot. Ngược lại None.
+   Dùng CHUNG compute_stretch_plan với export → preview khớp file xuất.
+   Kéo dàirZ
+   Dựng track giọng preview đặt từng segment ở vị trí ĐÃ GIÃN (hết đè).
+   Dùng _merge_tts_to_single_file (tự chia batch inputs ≤150) thay vì gọi
+   _run_adelay_amix trực tiếp: _run_adelay_amix chỉ batch FILTER, KHÔNG batch
+   input `-i` → video DÀI nhiều segment dồn hết `-i` lên 1 command line >32 KB
+   → WinError 206 → track câm (preview "Kéo dài video theo TTS" mất tiếng).r
+   Dựng track giọng giãn ở background (cache theo chữ ký results).
+   Khi xong + đang phát stretch → (re)start voice tại vị trí hiện tại.c
+   Restart ĐỒNG THỜI âm gốc + giọng + BGM tại vị trí output hiện tại để
+   chúng chia chung 1 mốc clock (tránh lệch khi 2 track build xong lệch giờ).r
+   Dựng track ÂM GỐC đã slow per-zone (atempo) khớp pieces → output timeline.
+   audio_src = _get_preview_audio_src() nên TỰ tôn trọng tách giọng (remove_vocal).
+   Mỗi piece atrim đoạn nguồn; zone slow (ratio>1) atempo=1/ratio rồi concat.Nr
+   Dựng track âm gốc giãn ở background (cache theo nguồn audio + pieces).
+   Khi xong + đang phát stretch + không mute → (re)start âm gốc tại vị trí hiện tại.r%
+   Pre-build stretch audio tracks NGAY sau TTS xong (gọi từ bg thread
+   của _on_voice_ready). Tránh race condition: _start_playback gọi
+   _start_audio/_start_voice_audio trước khi async track builder kịp xong.
+   Chạy ĐỒNG BỘ trong bg thread (đã là bg thread → không block UI).r%
+   Gọi đầu _start_playback: kích hoạt/huỷ chế độ stretch preview theo
+   mode + TTS hiện có. Giãn timeline + chuẩn bị track giọng giãn.r
+   Đang tạo giọng đọc
+   ⏸ Pause
+   Stretch preview: `ms` là OUTPUT timeline → cv2 seek tới SOURCE = _out2src(ms),
+   nhưng clock/audio vẫn theo output (track giọng dựng ở output timeline).r
+   Chỉ làm _make_preview_pil ở đây — overlay (sub/logo/text) draw ở main thread.Nr
+   ▶ ReplayrJ
+   Chạy nền để không block main thread — dùng _render_gen_id tránh race.
+   Throttle: chỉ cho phép 1 render thread tại 1 thời điểm.
+   Nếu reuse_frame=True và có _last_raw_frame → dùng lại frame đã cache,
+   tránh cap.grab() làm nháy video khi đang pause chỉnh blur/text overlay.rF
+   pos_ms = thời điểm SOURCE (cho subtitle/overlay khớp frame). slider_ms =
+   thời điểm OUTPUT timeline (cho slider/đồng hồ); None → dùng pos_ms.
+   Stretch preview tách 2 trục này; bình thường chúng trùng nhau.r
+
+########## exporter_processor.pyc (14)
+   Chụp ảnh toàn bộ cài đặt để thread phụ dùng — KHÔNG gọi .get() trong thread.
+   Nền TĨNH (không đổi theo frame): gradient / ảnh / video(frame đầu).
+   Nền 2 bên (cw×ch): lấp vùng trống bằng kiểu nền rồi dán frame sắc nét
+   (resized) vào giữa tại (ox,oy).
+   BGR frame → display-ready PIL Image (with subtitle if enabled).
+   Nhẹu
+   Trung bìnhu
+   Tùy chỉnhr;
+   Trên-trái
+   Trên-phải
+   Giải phóng VideoCapture overlay khi không cần nữa.
+   Khóa _cap_lock: tránh release() chồng lên cap.read() của _composite_overlay
+   OpenCV preview cho built-in video effects — khớp với ffmpeg _build_video_effect_filter.
+   img: BGR uint8. intensity: 0-100. pos_ms: thời gian frame (cho time-based fx).r"
+
+########## exporter_sub_services.pyc (73)
+   Dir lưu user_personal.json / user_custom_prompts.json (persistent).
+   Handler for prompt combobox selection — show popup if 'Tùy chỉnh'.
+   Thiếu tên
+   Thiếu nội dung
+   Vui lòng nhập nội dung prompt!
+   Trùng tên
+   Tên '
+   ' đã được dùng bởi prompt mặc định.
+   Vui lòng đặt tên khác!
+   Đã lưu
+   Chưa chọn
+   Chọn prompt cần xóa!r
+   Xác nhận
+   Xóa prompt '
+   Chọn prompt muốn dùng!r
+   Trả _gemini_all_keys; nếu rỗng (relay fetch lúc mở app lỗi transient)
+   thì nạp lại 1 lần — server giờ có thể đã reachable. Tránh kẹt 'nhập key'.rw
+   Key Gemini để dùng — nguyên tắc 'đường sống' (2026-06-19):
+   - Khách CÓ key riêng (nhập ô / đã lưu) → CHỈ key họ, KHÔNG hút pool relay
+   của mình (bảo vệ pool free — đường sống cho người KHÔNG có key).
+   - Khách KHÔNG key → override_keys (batch) hoặc pool relay (free bait).
+   Fetch a small pool (≤5) of Gemini keys from relay server.
+   Thêm key từ ô nhập vào danh sách key cá nhân.re
+   ❌ Key không hợp lệ (quá ngắn)rA
+   ✅ Đã thêm key thành côngrD
+   Xóa key theo index từ dropdown.ru
+   Rebuild nội dung dropdown key.ru
+   Cập nhật label đếm key — chỉ hiện số key cá nhân.ru
+   key cá nhân
+   Có sẵn Key Admin - Nếu lỗi nhập key của bạnc
+   Toggle hiện/ẩn key trong ô nhập (chỉ cho personal key).Nri
+   ❌ Chưa nhập API key!rA
+   ✅ Key hoạt động! (đã thêm vào danh sách)rD
+   ❌ HTTP rA
+   ❌ Lỗi: HTTP
+   ❌ rA
+   ✅ AI Key hoạt động! (đã lưu)rD
+   Return effective DeepSeek key (user entry → bundled).r
+   Khi user GÕ phím (không phải chỉ click) + đang dùng admin placeholder → clear để user nhập key riêng.r
+   ❌ Chưa nhập DeepSeek API key!rA
+   ✅ DeepSeek Key hoạt động! (đã lưu)rD
+   ❌ DeepSeek HTTP rA
+   Return effective Grok key (user entry → bundled).r^
+   Khi user GÕ phím + đang dùng admin placeholder → clear để user nhập key riêng.r^
+   ❌ Chưa nhập Grok API key!rA
+   ✅ Grok Key hoạt động! (đã lưu)rD
+   ❌ Grok HTTP rA
+   ✅ Đã chọn: rD
+   Trích xuất phụ đề từ dự án CapCut gần nhất.
+   Cảnh báo
+   Đang xuất video, vui lòng chờ xuất xong!r
+   Lấy Sub từ CapCut
+   Chức năng này sẽ tự động lấy phụ đề (subtitle text) từ dự án CapCut gần nhất trên máy.
+   Hướng dẫn:
+   1. Mở CapCut PC (bản free), thêm video vào project
+   2. Qua tab Chú thích → Tạo phụ đề tự động
+   3. Quay lại tool bấm OK — tool sẽ tự cào data sub từ CapCut
+   ❌ Lỗi CapCut: rA
+   ⚠️ Không tìm thấy sub. Kiểm tra CapCut đã cài & có dự án chứa text.
+   CapCut: không tìm thấy dự án hoặc không có text subtitle.
+   Cảnh báo CapCut
+   ✅ Đã lấy sub từ CapCut!rD
+   Khi user đổi 'Đích' lang ở Sub panel:
+   - Strict match `_sub_{lang}.srt` hoặc `_{lang}.srt` cho video đang load
+   (cả `Phụ Đề SRT` subdir + thư mục video).
+   - Có → load vào editor + notify TTS panel + sync timeline.
+   - Không có → CLEAR editor (user yêu cầu "chưa có để trống").
+   - Đồng bộ TTS panel `_lang_var` → voice + TTS đọc đúng lang user chọn.
+   ⚠ Chưa có sub cho '
+   ✅ Đã load: rD
+   ❌ Chưa có file SRT!rA
+   ✅ Đã lưu
+   câurD
+
+########## exporter_ui.pyc (8)
+   Mở rộng
+   Ghép Video
+   OCR: Tắt
+   Bóc OCR
+   Áp dụng cho tất cả
+   Lọc:r*
+   Tất cảu
+   Lưu ý: Sửa một video rồi ấn Áp dụng cho tất cả sau đó Xuất Video để Xuất hàng loạt.
+
+########## exporter_ui_batch.pyc (105)
+   Sort 'tự nhiên' theo GIÁ TRỊ số: part1<part2<…<part10 (sort chuỗi cho
+   part10<part2 → batch/Phim bộ chạy sai thứ tự part). Bản sao của
+   downloader_utils.natural_sort_key (tránh import chéo package nặng).
+   KhôngrQ
+   Tự độngrU
+   Dướir_
+   Tiếng Việtre
+   Prompt Dịchrg
+   Trên-phảirr
+   Sọc nhiễu (Anti reup)
+   Chưa chọnr
+   Tắt nhạc nền
+   Trước: batch_out_folder đã load ở __init__ nhưng label vẫn 'Chưa chọn'.
+   Ghép Video
+   Vui lòng chọn ít nhất 2 video để ghép.
+   Load 1 file vào hệ thống (tách ra từ _pick_file cũ).r;
+   Phụ Đề SRTc
+   Giọng Đọc TTSr
+   Chọn từng file video (Ctrl+click) thay vì cả thư mục.
+   Chọn Video cho Batch (Ctrl+Click chọn nhiều)r
+   Định dạng không phải MP4
+   file không phải MP4:
+   Tool xử lý chuẩn nhất với MP4 (H.264/AAC). Convert sang MP4 ngay?
+   • Có = convert (đè file gốc) rồi thêm — h264 sẵn thì nhanh, codec lạ lâu hơn
+   • Không = thêm nguyên bản (có thể lỗi khi dịch/lồng tiếng)r
+   ⚠️ Convert lỗi
+   ✅ Convert MP4 xong
+   Nạp danh sách video vào batch (folder + exclusion). Tách từ
+   _pick_batch_files để gọi lại sau bước convert MP4.Nr
+   Tất cảr
+   Lỗiu
+   cảnh báou
+   Lấy Audio: dùng danh sách Listbox làm chuẩn.
+   Chọn video hoặc thư mục trước!r"
+   Đã trích audio →
+   Kéo file WAV vào CapCut → Auto Sub → Export SRT
+   Rồi bấm 'Tách SRT'
+   ❌ Không tìm thấy ffmpeg/ffprobe!
+   Cần cài ffmpeg! Kiểm tra PATH.
+   ❌ Lỗi trích audio:
+   Đã gộp
+   video → merged_capcut.wav
+   ❌ Lỗi gộp audio: r
+   Tách SRT: dùng danh sách Listbox làm chuẩn.
+   ⏳ Đang tạo sub, vui lòng chờ!rb
+   Cảnh báo
+   ⚠️ Không tìm thấy sub. Mở CapCut → Auto Sub trước.
+   Cảnh báo CapCut
+   Chưa có manifest!
+   Bấm 'Lấy Audio' trước.
+   ⏳ Đang lấy sub từ CapCut …
+   Không tìm thấy sub trong CapCut!
+   Kiểm tra:
+   • Đã mở CapCut và tạo Auto Sub chưa?
+   Đã tách
+   Đã tách xong
+   Lưu trong thư mục 'Phụ Đề SRT' cạnh mỗi video.
+   ❌ Lỗi tách SRT: r
+   ⛔ Đã dừng theo dõi CapCutrb
+   Bước 1: Trích audio...
+   Đang trích audio...rb
+   ✅ Audio gộp: r
+   ✅ Audio: r
+   Bước 2: Tạo project CapCut...
+   ⚠️ Không tạo được project CapCut:
+   ✅ Đã tạo project CapCut:
+   Audio đã import sẵn vào timeline!
+   ⚠️ Không tạo được project, cần kéo audio thủ công
+   ✅ CapCut đã mở
+   ⚠️ Không mở được CapCut — hãy mở thủ côngTc
+   ✅ Đã tạo project CapCut với audio import sẵn!
+   1. Mở project '
+   ' (project mới nhất)
+   2. Tab 'Chú thích' → 'Tạo phụ đề tự động'
+   Tool sẽ TỰ ĐỘNG lấy SRT khi CapCut xong!
+   (Bấm lại nút để dừng theo dõi)
+   ⚠️ Không tạo được project tự động.
+   Thủ công:
+   1. Mở CapCut → Tạo dự án mới
+   2. Kéo file audio vào timeline:
+   3. Tab 'Chú thích' → 'Tạo phụ đề tự động'
+   ️ Bước 3: Theo dõi CapCut (tối đa 10 phút)...c
+   CapCut đã tạo sub! SRT:
+   Đã tắt CapCutr2
+   ✅ Đã tự lấy
+   file SRT từ CapCut!r-
+   ✅ Đã tự động tách
+   Auto-load SRT vào editor sau khi CapCut watch thành công.r
+   ✅ Tự động lấy sub từ CapCut!r-
+   ✅ Đã tự động lấy sub từ CapCut!
+   ⛔ Đã dừng CapCut APIrb
+   [API] Bước 1: Trích audio...
+   [API] Đang trích audio...rb
+   ✅ [API] Audio:
+   ❌ [API] Lỗi trích audio: rc
+   ☁️ [API] Bước 2: Gọi Hàng Ỉm ASR API (chạy ngầm)...
+   [API] Hàng Ỉm thất bại, thử CapCut...c
+   ✅ [API] CapCut OK → SRT:
+   ⚠️ [API] CapCut cũng thất bại:
+   ❌ [API] Thất bại:
+   ❌ API bóc băng thất bại
+   API bóc băng
+   ✅ [API] SRT:
+   ⚠️ [API]
+   ✅ [API] Đã lấy sub!r-
+
+########## exporter_ui_preview.pyc (4)
+   Ẩn Timeline
+   Hiện Timeline
+   Tắt giọng gốc
+   Chặn pan để ảnh không thoát hoàn toàn khỏi canvas.rO
+
+########## exporter_ui_settings.pyc (67)
+   Chống trùng (Reup)
+   Tuỳ chỉnh nâng caorh
+   Phản chiếu
+   Trên-tráiu
+   Trên-phảiu
+   Dưới-tráiu
+   Dưới-phảiu
+   Tùy chỉnhc
+   Kích thước:c
+   Độ trong:c
+   Xóa nền logo
+   Hiệu ứng:
+   Cường độ:c
+   Mờ video)
+   Đen)
+   Trắng)
+   Xám)
+   Gradient tối)
+   Tự chọn
+   Kiểu:rG
+   Tốc:
+   Màu:
+   Làm mờ:c
+   Cảnh báo khi user bật chức năng reup chuyên sâu (đang fix tạm thời).
+   Thông báo
+   Chức năng reup chuyên sâu đã bị fix tạm thời không có tác dụng.
+   Vùng r,
+   reset_positions: Nếu False, giữ nguyên vị trí blur/sub/text (preset đã lưu).
+   Chạy trên main thread — KHÔNG mở cv2.VideoCapture.r
+   User CLICK toggle → popup cảnh báo (nếu bật) + đồng bộ widget.
+   CHỈ gọi khi user bấm — KHÔNG gọi lúc restore state (sẽ nổ popup khi
+   xuất/stop). Restore dùng _apply_overlay_state().r
+   Hiệu ứng video
+   Lưu ý: bật Hiệu ứng video sẽ làm XUẤT CHẬM HƠN
+   (phần hiệu ứng xử lý bằng CPU; video vẫn encode bằng GPU).
+   True nếu video nguồn đang mở là NGANG (rộng > cao).r
+   Bật/tắt Nền 2 bên. CHỈ hỗ trợ video DỌC (dọc → xuất ngang, lấp 2 bên).
+   Bật khi nguồn NGANG → popup báo + tự tắt.r
+   Nền 2 bên
+   Chức năng 'Nền 2 bên' CHỈ hỗ trợ video DỌC
+   (video dọc → xuất thành ngang, lấp 2 bên).
+   Video đang mở là video NGANG → đã tự tắt.Fr7
+   Đổi Kiểu nền → hiện slider Độ mờ (Mờ) / nút chọn file (Tự chọn).rF
+   Chọn ảnh/video làm nền 2 bên (Stage 2).
+   Tất cảz
+   Chọn màu chữ overlayrO
+   Chọn hiệu ứng chữ phủr/
+   Mặc định (Không)
+   Viền cơ bản
+   Viền mỏng 8 hướng quanh chữ
+   Viền dày
+   Viền kép 16 hướng, nổi bật trên mọi nền
+   Phát sáng (Glow)
+   3 lớp viền mờ dần - hiệu ứng neon
+   Đổ bóng (Shadow)
+   Bóng đổ phía dưới phải - điện ảnh
+   Nổi 3D (Emboss)
+   Hiệu ứng chữ nổi lên - highlight trên, bóng dưới
+   Viền kép (Double)
+   2 lớp viền màu - viền ngoài trắng, viền trong đậm
+   Bóng dài (Long Shadow)
+   Bóng kéo dài theo đường chéo - TikTok style
+   Chữ rỗng (Hollow)
+   Chỉ có viền - không tô màu bên trong
+   Bóng mềm (Soft Shadow)
+   Bóng đổ làm mờ bằng Gaussian - sang trọng
+   Retro lệch (VHS)
+
+########## exporter_ui_subtitle.pyc (112)
+   Tùy chỉnhN
+   Classic Vàng
+   Trắng sạch
+   Cổ điển
+   Bóng mờ sang
+   Neon Hồng
+   Neon Tím
+   Neon Đỏ
+   Neon Xanh lá
+   Neon Trắng
+   Đỏ mạnh mẽ
+   Vàng đen
+   Trắng viền xanh
+   Đỏ viền vàng
+   Xanh viền trắng
+   Vàng sang trọng
+   Bạc ánh kim
+   Ngọc trai
+   Xanh lá
+   Xanh dương
+   Hồng dễ thương
+   San hô
+   Tím pastel
+   Hồng pastel
+   Cam cháy
+   Nền xanh chữ trắng
+   Nền tím chữ trắng
+   Đen trắng
+   Trắng mờz
+   Mặc định
+   Viền cơ bản
+   Viền dày
+   Phát sáng
+   Đổ bóng
+   Nổi 3D
+   Viền kép
+   Bóng dài
+   Chữ rỗng
+   Bóng mềm
+   Không
+   10_000_000 → '10M', 8_200_000 → '8.2M', 500_000 → '0.5M'.r
+   Hỏi worker /api/relay/usage → cập nhật label 'còn/tổng' token DeepSeek.
+   Chạy nền (network), update label trên main-thread qua .after. Lỗi/không
+   Popup 2 gói nâng hạn mức token (bấm mũi tên ⬆ cạnh token).r
+   Chọn gói để cộng thêm token dịch:r)
+   Token miễn phí reset sau
+   ngày
+   Gói cá nhân
+   100.000đ
+   TOKENCN順
+   Gói doanh nghiệp
+   200.000đ
+   Đóng
+   QR thanh toán gói token (sepay) + poll /api/activate-token tự cộng quota.r
+   ⏳ Đang tải QR...
+   Nội dung CK: r+
+   ⚠️ Không tải được QR.
+   Nângrd
+   Tiếng Việt
+   Mẫu:  c
+   Hiệu ứng:  c
+   ██ r#
+   Nền subc
+   Cỡ:c
+   Đậm:c
+   AI Sửa Sub
+   Thay tất cả
+   ⏫ Đầu
+   ⏬ Cuốic
+   Cắt        Ctrl+Xc
+   Sao chép   Ctrl+Cc
+   Dán        Ctrl+Vc
+   Chọn tất cả  Ctrl+Ac
+   ⚠️ Lồng tiếng không khả dụng:
+   True nếu widget w là ô sửa sub HOẶC nằm trong vùng giữ (thanh cuộn,
+   Focus rời ô: chỉ thu nếu focus KHÔNG chuyển sang vùng cuộn/nav.
+   Click ngoài VÙNG ô (không phải ô, thanh cuộn hay nav) → thu lại +
+   bỏ focus (caret ngừng nhấp nháy). Click trong vùng → giữ mở rộng để
+   Tìm file _tts_{voice_key}_full.mp3 hoặc _tts_full.mp3 (fallback) trong Giọng Đọc TTS.Nr
+   Kéo dàir
+   Giọng Đọc TTSr
+   Scroll tới Prompt frame + auto-open dropdown để user chọn ngay.
+   Dùng khi user xuất video mà chưa chọn prompt dịch.rQ
+   Nếu user chọn 1 template font từ dropdown mà font chưa cache → download
+   background (không block UI). Sau khi xong → refresh preview.Nr
+   Reset các style fields về default khi user thoát template mode bằng
+   cách click trực tiếp vào font/color/effect/bg. Tránh trường hợp template's
+   bg/outline/color còn lưu lại làm preview trông như template chưa được tắt.r#
+   Nếu preset là sentinel `{"_picker_group": N}` → mở popup picker.Nr
+   Nhập từ cần tìmrS
+   Đã thay 1
+   Không tìm thấyr
+   Đã thay
+   chỗr
+   ⏳ Đang sửa sub, vui lòng chờ!r+
+   ❌ Tạo hoặc chọn file SRT trước!r-
+   ❌ Nhập Gemini API key trước!T
+   AI đang tìm kiếm câu sub timeline quá dày và câu quá dài...
+   Bắt đầu tìm kiếm và sửa sub timeline quá dày và câu quá dàic
+   Đang sửa sub timeline quá dày: r
+   câu...r+
+   Đang quét
+   Sub đã OK!
+   ✅ Đã sửa xong
+   câu → sửa
+   câu (local: rb
+   Đã sửa xong
+   câu timeline quá dày và câu quá dài!
+   • Sửa local (xóa từ đệm):
+   • Sửa bằng AI Gemini:
+   • Bỏ qua (đã OK):
+   ❌ AI Sửa Sub lỗi: r-
+
+########## exporter_ui_timeline.pyc (74)
+   • Click lane → seek video tới timestamp đó
+   • Mouse wheel → zoom in/out (tâm vào con trỏ chuột)
+   • Middle-click drag → pan ngang khi đang zoom in
+   • Double-click track SFX → thêm marker placeholder (Phase 3: full dialog)
+   Giọngz
+   Tách giọng
+   Canvas x coordinate → timestamp in seconds (current view range).rR
+   Cuộn view sao cho cursor A ở giữa (chỉ khi zoom in).r
+   Click trên scrollbar: jump (click ngoài thumb) hoặc grab thumb.r
+   Compute new view_start từ x click + offset, apply + redraw.r
+   Mở video / load preview để hiển thị timeline
+   KHÔNG TÁCHr7
+   Đặt 2 thanh dọc vàng-xanh ở 2 đầu đoạn → click chuột phải vào đây → 'Xóa tách'
+   Bật 'Tắt giọng gốc' ở preview để dùng tách giọng — chọn đoạn không muốn tách, click chuột phải và xóarf
+   Click chuột phải vào dòng này và chọn hiệu ứng âm thanhr>
+   ⏱ rh
+   Kéo cursor A/B về mép view hiện tại — view không di chuyển.
+   Cho phép user gim cursor vào chỗ đang xem rồi tinh chỉnh bằng drag,
+   không phải đi tìm lại vị trí khi nhảy view.
+   Trả (track_key, idx) nếu click vào block sub/voice; None nếu empty.r
+   Convert giây → SRT timestamp 'HH:MM:SS,mmm'.r
+   Click near cursor B (xanh dương)?r
+   Hit-test xem có click vào 1 đoạn vocal exclude không. Returns idx hoặc None.r
+   Mouse down — phân loại: cursor / sel handle / sub-voice block / SFX marker.r
+   Mouse motion với button 1 — nếu di chuyển >4px thì là drag block.Nr$
+   Release — drag → save SRT; click sub block → edit; click SFX marker → panel.Nr'
+   Right-click: sub/voice block → menu; SFX marker → menu;
+   vocalrm exclude → menu; empty SFX/vocalrm track → add menu; else pan.r
+   ✏️  Sửa câu nàyc
+   ️  Xóa câu nàyc
+   ️  Xóa giọng đọc đoạn nàyc
+   Xóa NỘI DUNG sub đoạn idx (giữ timecode để không lệch các câu sau).
+   Xóa voice segment đoạn idx (xóa file TTS riêng nếu có, không đụng sub).r
+   Click → seek; nếu click vào block sub → mở popup edit sub.r
+   Double-click SFX track → thêm marker placeholder.r
+   (chưa chọn)r
+   Mouse wheel = zoom in/out, tâm vào vị trí con trỏ chuột.
+   Return 'break' để chặn propagation lên parent scrollframe.r
+   Bắt đầu kéo pan (middle/right click).r
+   Kéo pan ngang qua timeline.NrT
+   Kết thúc pan.Fr3
+   Auto-center view on cursor A khi đang play + đang zoom in
+   Lưu list excludes + trigger rebuild merged audio cho preview.r
+   Right-click trên track Tách giọng:
+   - Nếu click vào 1 exclude có sẵn → menu "Xóa exclude này"
+   - Nếu click giữa cursor 1 và cursor 2 → menu "Xóa tách [c1..c2]"
+   - Nếu click chỗ khác → menu "Hướng dẫn"
+   Đoạn r
+   → ry
+   ️ Bỏ exclude này (tách giọng trở lại)c
+   (2 thanh quá gần nhau — kéo ra ≥0.5s)
+   Bỏ 1 exclude → đoạn đó tách giọng trở lại.r
+   Persist SFX events → JSON cạnh video.Nr
+   Hit-test SFX marker — returns idx hoặc None.r
+   Menu chọn SFX khi right-click vào SFX track trống.r
+   ⏱ Thêm SFX tại r
+   (Chưa có preset trong assets/sfx)
+   Chọn file khác...c
+   Browse 1 file SFX bất kỳ + thêm vào timeline.
+   Right-click menu cho marker SFX có sẵn.r
+   ▶  Nghe thửc
+   ⚙️  Chỉnh volume / vị tríc
+   ️  Xóa SFX nàyc
+   Xóa 1 SFX event + save.r
+   Schedule ffplay subprocess cho mỗi SFX event với delay tương ứng.
+   Gọi từ preview engine `_start_playback`.NrE
+   Inline panel cho SFX marker: volume + nghe thử + xóa.r
+   ▶ Ngher
+   Đóng SFX edit panel.r[
+   Quét disk tìm file TTS đã sinh (full mp3 hoặc segment lẻ).
+   Nếu có → set Voice track theo time range của _sub_segments.
+   Tạo 1 tk.Entry overlay đè lên canvas tại (x, y) để sửa text in-place.
+   Lưu khi mất focus / Enter; hủy khi Escape.r,
+   API: tìm sub ở vị trí playback hiện tại + mở inline editor TRÊN preview.
+
+########## ffmpeg_filters.pyc (31)
+   Tách từ exporter_ffmpeg_logic.py để giảm kích thước file.
+   Đếm ký tự CJK định-hình-chữ vs ký tự non-Latin (Thái/Nga/Hindi/Ả-rập/Bengali).
+   Dùng để chọn font theo chữ CHIẾM ĐA SỐ thay vì 'có-bất-kỳ-CJK': phụ đề Thái
+   lẫn vài chữ Hán sót (tên riêng chưa phiên âm) vẫn phải dùng font Thái — nếu
+   không, font CJK nuốt sạch glyph Thái → ô vuông. Bỏ qua dấu câu/fullwidth
+   (không định hình chữ viết) để 1 ký tự lạc không lật font sai.r
+   Không hiệu ứng
+   Sọc nhiễu (Anti reup)
+   Mờ góc (Vignette)
+   Cổ điển (Vintage)
+   Hạt phim (Film grain)
+   Rò sáng (Light leak)
+   Phát sáng (Glow)
+   TV cũ (Vintage CRT)
+   Máy quay (Camera REC)
+   Trả về ffmpeg filter string cho hiệu ứng video built-in.
+   intensity 0-100 → ánh xạ về tham số của từng filter.
+   Trả "" nếu effect=none/custom hoặc intensity<=0.
+   720p→1080p
+   1080p→2K
+   1080p→4K
+   Trung bình
+   Mạnh
+   Trên-trái
+   Trên-phải
+   Dưới-trái
+   Bake 'xóa nền logo' bằng PIL — DÙNG CHUNG thuật toán preview
+   (_remove_logo_bg: ngưỡng luminance+saturation, viền mềm) → PNG tạm RGBA.
+   Export overlay PNG này (KHÔNG colorkey ffmpeg) nên KHỚP preview, hết cảnh
+   'logo trong + mờ' do colorkey similarity cao ăn lẹm viền/vùng sáng.
+   Trả '' nếu lỗi (caller fallback giữ logo gốc).r
+
+########## ocr_extractor.pyc (48)
+   ocr_extractor.py — Bóc sub cứng từ video qua OCR.
+   Sample frame theo interval → crop region user chỉ định → RapidOCR →
+   clean text → dedup (Levenshtein) → gap bridging → merge thành SRT.
+   Check CUDA EP available — chạy 1 lần, cache kết quả.
+   `onnxruntime.get_available_providers` thành CPU-only để tránh crash AMD/Intel
+   GPU khi load piper model. Ta phải bypass patch để OCR thấy CUDA thật.
+   Solution: gọi raw `onnxruntime.capi._pybind_state.get_available_providers()`
+   (function thật, không bị patch).
+   Lazy-load RapidOCR singleton. Auto-select CUDA nếu có, fallback CPU.
+   - GPU (CUDA EP): nhanh 3-5x, RapidOCR truyền `det/cls/rec_use_cuda=True`
+   - CPU fallback: cap 1 ONNX thread/worker → tổng ~75% CPU với num_workers default
+   §21.14: NgocHuyen monkey-patches `ort.get_available_providers` thành CPU-only.
+   RapidOCR check this fn → fallback CPU. Phải temp restore raw fn khi init.
+   True nếu 2 chuỗi đủ giống (Levenshtein ratio).
+   Dùng cho dedup text frame liên tiếp — text OCR thường có 1-2 char noise.
+   [一-鿿぀-ヿ가-힯]c
+   Lõi 'chữ' của 1 dòng: bỏ token rỗng-CJK (vd 3N09 / MARTELL / XO / 000) tách
+   bởi khoảng trắng, ghép lại token có CJK. Dùng để SO SÁNH trùng — KHÔNG đổi text
+   giữ lại. Không token nào có CJK (vd câu thuần số '263,421') → fallback raw.
+   Số ký tự RÁC (ngoài lõi CJK) — để chọn bản đọc sạch hơn khi gộp.rd
+   Gộp segment LIÊN TIẾP cùng 1 dòng (phụ đề đứng lâu → sample nhiều lần, hoặc
+   nhiễu OCR/rác lẫn làm text lệch → merge cũ trượt) thành 1.
+   CHỈ gộp adjacent → kéo dài `end`, GIỮ NGUYÊN start/end mọi segment khác →
+   timeline không lệch → TTS vẫn khớp khẩu hình. Giữ bản đọc SẠCH hơn (ít rác).
+   Clean OCR noise ngay sau khi nhận dạng.
+   Xử lý:
+   - Ký tự rác/hallucination (ASCII symbols đơn độc, non-printable)
+   - Dấu câu thừa ở đầu/cuối (OCR thường hallucinate dấu chấm/phẩy lẻ)
+   - Whitespace thừa, newline lạc
+   - Dòng chỉ toàn symbols/numbers (không phải chữ)
+   ^[.,;:!?)\]}»>、。，；：！？」』】〉》」\s]+
+   [.,;:([{«<、。，；：」『【〈《「\s]+$
+   OCR 1 crop → list box {text, cx, cy, h, contrast, color}.
+   Giữ NGUYÊN thứ tự OCR trả về (không sort). Toạ độ chuẩn hoá theo crop.
+   Học khuôn phụ đề: H (cỡ trội), Y (dải-y trội), color (màu trội).
+   Lấy từ box căn-giữa + contrast cao + ≥2 ký tự (đặc trưng phụ đề). Trả None nếu
+   không đủ box ứng viên → caller bỏ filter (an toàn, không nuốt nhầm phụ đề).
+   Ghép box → text (giữ thứ tự OCR). prof=None → không filter (an toàn).rd
+   Bóc sub cứng từ video → SRT file.
+   video_path: đường dẫn video
+   crop_norm: (left, top, right, bottom) normalized 0-1 của frame
+   output_srt: đường dẫn SRT đầu ra
+   sample_interval: giây/lần sample frame (default 0.5s)
+   min_confidence: ngưỡng confidence text (default 0.5)
+   num_workers: 0 = auto-cap ~75% CPU (max 8); >0 = override cụ thể
+   cancel_event: threading.Event để stop giữa chừng
+   Đường dẫn SRT đã ghi.
+   Đã huỷ bóc OCR giữa chừngc
+
+########## ocr_gpu_pack.pyc (22)
+   - Khách có Nvidia GPU + opt-in → download ~200MB GPU pack từ R2
+   - Pack chỉ chứa onnxruntime-gpu DLLs (CUDA EP + tensorrt)
+   - CUDA runtime DLLs (cudart/cudnn/cublas) reuse từ torch lib (đã bundled 4.1GB)
+   - Pack cached %LOCALAPPDATA%/VideoToolsPro/gpu_pack/ → tải 1 lần
+   True nếu pack đã download + extract đúng version.
+   Trả True nếu có ít nhất 1 GPU CUDA-capable.
+   Tìm thư mục torch/lib chứa CUDA DLLs (cudart, cudnn, cublas...).
+   §22.1 — NEVER `import torch` trong function này. Pre-load chạy ở main.py
+   line 25 TRƯỚC PyInstaller hook init torch hoàn tất → `import torch` ở đây
+   tạo partial init state → demucs sau truy cập `torch.fft` bị
+   Dùng direct path scanning thay vì import.
+   Kích hoạt GPU pack — phải gọi TRƯỚC khi import onnxruntime.
+   1. Add torch lib + pack capi vào PATH (cho native DLL loader của onnxruntime)
+   3. sys.path.insert pack root → import onnxruntime sẽ pick GPU version
+   Returns True nếu pack ready và đã enable. False = pack chưa có hoặc thiếu deps.
+   Stream download pack từ R2 qua worker relay.
+   relay_url: base URL của license server (vd https://vtp-license.../)
+   Returns True nếu thành công.
+   Đang tải GPU pack v
+   Đang giải nén GPU pack...r"
+   ❌ Pack thiếu file CUDA — file lỗir!
+   ❌ Tải GPU pack lỗi mạng:
+
+########## ocr_ui_mixin.pyc (32)
+   ocr_ui_mixin.py — UI helpers cho OCR bóc sub cứng.
+   Vẽ 4 đường guide (left/top/right/bottom) trên preview canvas, drag handlers,
+   và action button gọi ocr_extractor.extract_srt.
+   Trộn vào ExporterTab: vẽ guide + drag + run extract.c
+   OCR: Tắt
+   Vẽ/cập nhật 4 guide trên preview canvas.
+   Tối ưu: track item IDs trong `_ocr_canvas_ids`, dùng `coords()` để move
+   thay vì delete + create mỗi frame → tránh flicker khi preview chạy 24-30fps.
+   Trả 'l'/'t'/'r'/'b' nếu click gần 1 trong 4 đường, else None.
+   Phải bật OCR mode mới active.
+   Cập nhật vị trí edge khi user kéo. Trả True nếu đã handle.Fr
+   OCR đang chạy
+   Chưa chọn video
+   Hãy chọn 1 video trong danh sách trước khi bóc OCR.
+   Chưa bật OCR
+   Bật 'OCR Sub Cứng' trước rồi kéo 4 thanh trên preview để chọn vùng.rT
+   Vùng OCR quá nhỏ
+   GPU NVIDIA phát hiện
+   Phát hiện GPU NVIDIA trên máy này.
+   Tải GPU pack (~
+   MB, 1 lần) để OCR nhanh 3-5x?
+   YES → Tải pack rồi bắt đầu OCR (GPU).
+   ⬇️ GPU pack
+   Auto-restart tool sau khi cài GPU pack xong.r
+   ⚠️ Tự restart fail:
+   ⬇️ Bắt đầu tải GPU pack OCR (~210 MB)...F
+   ✅ GPU pack v
+   cài xong — bắt đầu OCR (GPU)r
+   Phát hiện GPU NVIDIA — user chọn tải GPU pack (~
+   OCR tiến độ: r
+   OCR bắt đầu [
+   OCR file lưu:
+
+########## parallel_burn.pyc (21)
+   parallel_burn.py — Helper cho Option A: song song hóa Pass-1 đốt phụ đề.
+   CHỈ chứa helper THUẦN + orchestration; KÍCH HOẠT qua feature flag (mặc định TẮT)
+   ở _process. Khi flag OFF, KHÔNG file nào gọi vào đây → 0 ảnh hưởng khách.
+   Ý tưởng (đã benchmark 2-2.6x, seam <0.06s): chia video thành N chunk tại KHE
+   phụ đề, mỗi chunk render video-only (vf đầy đủ + ASS đã cắt-dịch-giờ), concat
+   copy, rồi ghép audio 1 pass (audio giống hệt single-pass).
+   'Dialogue: L,start,end,Style,...,Text' → 10 field (Text giữ dấu phẩy).
+   Cắt ASS cho range [t0,t1): giữ NGUYÊN header/styles; Dialogue chạm range
+   thì dịch start/end về local (−t0), clamp [0, t1−t0]; ngoài range thì bỏ.r&
+   Mốc (start,end) các cue từ Dialogue (dedupe layer trùng giờ).r&
+   Chia [0,total_dur] thành n_chunks range, mốc cắt rơi vào KHE giữa 2 cue
+   (gần mốc đều nhất) → KHÔNG cắt ngang 1 câu phụ đề. Không có khe phù hợp →
+   cắt tại mốc đều (hiếm; cue dày đặc liên tục).r
+   Đốt phụ đề song song N chunk → concat copy → mux audio 1 pass.
+   Trả True nếu xuất xong `out` thành công; False nếu BẤT KỲ chunk/concat/mux
+   lỗi (caller PHẢI fallback single-pass). KHÔNG raise (bọc try toàn bộ).
+   Chunk: cùng `vf` (đổi tên ASS → bản cắt-dịch-giờ) + cùng `common_tail`
+   (fps/gop/profile/level/pix_fmt → mọi chunk đồng nhất + bắt đầu bằng keyframe
+   → concat `-c:v copy` sạch). Audio ghép 1 pass từ input gốc (asoftclip/alimiter
+   stateless → giống hệt single-pass, 0 seam).
+   ↩️ Parallel mux fail (rc=
+
+########## preview_playback.pyc (16)
+   preview_playback.py — Logic THUẦN quyết định vị trí + cách seek khi Play/Replay.
+   Tách khỏi exporter_preview_engine.py để test được (engine dính cv2/thread/UI).
+   Bug khách (2026-06-11): hết video bấm Play → ĐỨNG NGUYÊN ở cuối, không chạy lại.
+   Gốc: mode thường khi resume lấy `cap.get(POS_MSEC)` (tin cap đứng đúng chỗ, tránh
+   HEVC re-decode lag). Nhưng lúc video đã hết, cap ở EOF — `cap.set(POS_MSEC,0)` KHÔNG
+   ăn → cap.get vẫn trả vị trí cuối → phát ngay tại cuối → lại Ended. Mode stretch
+   không dính vì nó luôn _seek_to() thật.
+   Fix: replay-từ-cuối phải _seek_to(0) THẬT.
+   Trả (target_ms, real_seek) khi bấm Play/Replay.
+   real_seek=True  → phải _seek_to() THẬT (cap đang KHÔNG đứng đúng chỗ):
+   pos tường minh (skip/slider) / stretch / replay-từ-cuối.
+   real_seek=False → tin cap đang đứng đúng chỗ, KHÔNG seek (tránh HEVC
+   re-decode lag 2-3s khi chỉ resume tại chỗ).
+   `orig_pos_ms`: tham số pos truyền vào _start_playback (None = resume/replay).
+   `cur_pos_ms` : vị trí hiện tại (cap.get với mode thường, _stretch_cur_out_ms
+   với stretch).
+
+########## processor_mouse.pyc (2)
+   Tách từ exporter_processor.py để giảm kích thước file.
+   Tùy chỉnh
+
+########## processor_subtitle.pyc (17)
+   Tách từ exporter_processor.py để giảm kích thước file.
+   Kéo thả chỉnh vị trí phụ đề trên video này
+   拖拽调整字幕在视频上的位置
+   ドラッグして字幕の位置を調整
+   드래그하여 자막 위치를 조정하세요
+   Arrastra para ajustar la posición del subtítulo
+   Arraste para ajustar a posição da legenda
+   Sub (kéo để căn vị trí)
+   字幕 (拖拽定位)
+   字幕 (ドラッグで配置)
+   자막 (드래그하여 위치 조정)
+   Subtítulo (arrastrar)
+   Khung phụ đề luôn hiển thị khi sub bật — kể cả khi không có text tại vị trí hiện tại.
+   Cached: nếu text/font/position/size không đổi, dùng lại overlay đã vẽ.NrY
+   Đây là phụ đề mẫu để bạn căn chỉnh chiều rộng vị trí và kích thước phụ đề trên video trước khi tạo nội dung chính
+   这是用于调整字幕在视频上的宽度位置和大小的示例文字
+   ビデオ上の字幕の幅と位置とサイズを調整するためのサンプル字幕
+
+########## processor_text_overlay.pyc (1)
+   Tách từ exporter_processor.py để giảm kích thước file.
+
+########## sub_template_catalog.pyc (16)
+   sub_template_catalog.py — Catalog các mẫu phụ đề lazy-download (Nhóm 1/2/3).
+   Mỗi template = font Google Fonts (download runtime) + preset style.
+   Khi user chọn → fetch font TTF → cache → apply preset vào sub vars.
+   KHÔNG bundle vào RAR (giữ size build nhỏ).
+   Vàng Sang Trọng
+   Phim Tài Liệu
+   Bạc Ánh Kim
+   Bút Lông
+   Dancing Hồng
+   Encode Cổ Điển
+   Slab Bản Tin
+   Nhóm 1 — Năng động
+   Nhóm 2 — Sang trọng
+   Map font_family → font_filename cho mọi template fonts.
+   Dùng để fallback _FONT_FILE_MAP khi user pick template font từ dropdown.r
+   Tìm URL Google Fonts cho 1 font_family. Trả None nếu không có template.r
+
+########## sub_template_loader.pyc (12)
+   1. App startup → ensure merged_dir exists, copy bundled fonts (one-time).
+   2. User chọn template → download font TTF from Google Fonts → cache vào sub_fonts/.
+   3. Copy font vào merged_dir để FFmpeg libass tìm thấy qua fontsdir.
+   - Bundled fonts: <_MEIPASS>/fonts (frozen) hoặc videoiphone/fonts (dev) — read-only.
+   Return path to cached font, or None nếu chưa download.rP
+   Download font TTF từ Google Fonts CDN.
+   File tải về quá nhỏ (server trả lỗi?)F
+   Không lưu được file:
+   Kết nối thất bại:
+   Đảm bảo font template đã ở trong merged_dir (cho FFmpeg fontsdir).
+   Trả True nếu font đã sẵn hoặc copy thành công.rP
+   Merged_dir nếu setup OK, else fallback bundled_dir.c
+
+########## sub_template_picker.pyc (24)
+   sub_template_picker.py — Popup chọn mẫu phụ đề lazy-download.
+   UI: grid card 3 cột × N hàng. Mỗi card hiển thị:
+   - Preview text với font template (render bằng PIL nếu font đã cached)
+   - Tên template
+   - Button: "Áp dụng" (font cached) hoặc "Tải về & Áp dụng" (chưa cached)
+   - Download font nếu chưa có (background thread)
+   - Sync vào merged_dir
+   - Áp dụng preset vào sub vars (font, color, outline, effect, bg, bg_opacity)
+   Mixin cho ExporterTab — mở popup chọn mẫu phụ đề.c
+   Mở popup picker cho nhóm template (1, 2, 3).
+   Thông báo
+   Nhóm
+   (Font tải về 1 lần, lưu vĩnh viễn)
+   (preview lỗi)
+   Áp dụng
+   Tải & Dùng
+   Đóng
+   KHÔNG đóng popup — user có thể thử nhiều mẫu rồi tự đóng.
+   ✓ Đã áp dụngr
+   ✓ Đã tải & áp dụngr
+   ✗ Tải lỗir
+   Thử lạirn
+   Tải font thất bại
+   Không tải được font cho 'r
+
+########## sub_transcription.pyc (42)
+   Tách từ exporter_sub_services.py để giảm kích thước file.
+   Phụ Đề SRT
+   (nhấn\s+)?(like|subscribe|đăng\s*ký|chia\s*sẻ|ủng\s*hộ|theo\s*dõi|bấm\s*chuông).*?(kênh|channel)?
+   一键三连c
+   Kiểm tra 1 dòng sub có phải CTA/filler (like, đăng ký, chia sẻ…) không.
+   Chỉ loại khi PHẦN LỚN dòng là CTA (>60% ký tự khớp), tránh xoá nhầm
+   câu thoại có chứa 1 từ trùng.Fr
+   Rút gọn tên hiển thị trên log/UI. Thêm '...' nếu dài hơn max_len.
+   Tìm SRT có sẵn cho 1 video. Returns (has_srt: bool, srt_path: str|None).r
+   Cảnh báo
+   Đang xuất video, vui lòng chờ xuất xong rồi mới tạo sub!
+   Dịch hàng loạt
+   video trong danh sách.
+   Bạn có muốn dịch TOÀN BỘ không?
+   ✔  Yes  →  Dịch tất cả
+   ❌ Nhập API key để dịch!r]
+   ⏳ Đang dịch sub đã có...
+   Dịch SRT có sẵn:
+   OCR đang bóc băng & dịch...
+   ⏳ Đang AI bóc băng & dịch...
+   ⏸️ API bóc băng đang nghỉ
+   ️ Đang lọc audio... (
+   ✅ Audio lọc xong (
+   ⚠️ ffmpeg filter lỗi: r
+   ⚠️ Hàng Ỉm fail (
+   ⚠️ Hàng Ỉm lỗi: rH
+   , thử CapCut...r+
+   ✅ CapCut API OK → SRT: r>
+   ⚠️ CapCut API fail (
+   ⚠️ CapCut API lỗi: rH
+   SRT có sẵn:
+   ] AI dịch
+   ] Model lỗi: r
+   , giữ nguyênr+
+   SRT gốc: r>
+   OCR đang bóc băng → AI dịch...
+   ❌ Không tạo được sub. Hãy thử lại hoặc dùng CapCut bóc băng SRT.rb
+   ❌ Auto sub error: rb
+   Thử lại
+   ✅ Xong
+   ✅ Xong!
+   câu → r
+
+########## sub_translation.pyc (48)
+   Tách từ exporter_sub_services.py để giảm kích thước file.
+   Khi có cả _capcut.srt và _ocr.srt cho video hiện tại → popup hỏi.
+   Chỉ 1 file → silent (giữ nguyên _sub_srt_path hoặc auto-select).
+   Phụ Đề SRTc
+   Chọn file SRT để dịch
+   Tìm thấy 2 file SRT cho video này:
+   Hiện tại:
+   Yes = dịch CapCut
+   No  = dịch OCR
+   Cảnh báo
+   Đang xuất video, vui lòng chờ xuất xong!
+   ❌ Nhập API key để dịch!
+   ⏳ Đang dịch →
+   ❌ SRT rỗng hoặc lỗi formatrR
+   ✅ Dịch xong
+   ❌ rR
+   ngôn ngữ gốc
+   ★ QUY TẮC TỐI THƯỢNG TỪ ĐOẠN TRƯỚC:
+   BẮT BUỘC áp dụng đúng quy tắc xưng hô này! Dịch xong, cập nhật lại [MEMORY] nếu có thêm nhân vật mới.
+   Prompt Dịch
+   ⚠️ NHẮC LẠI: MẶC ĐỊNH 我→'tôi', 你→'anh/em/bạn'. TUYỆT ĐỐI KHÔNG dùng 'tao/mày' trừ khi bạn thân cùng tuổi hoặc đang cãi nhau/đe dọa.
+   Dịch
+   câu phụ đề
+   . Trả về ĐÚNG
+   dòng định dạng ID|Nội dung dịch.
+   ⚠️ ĐỘ DÀI: Mỗi dòng ghi [⏱Xs|≤Ych] = TTS có X giây, ≤Y ký tự là GIỚI HẠN TRÊN.
+   - Dùng đủ chỗ để dịch TRỌN NGHĨA tự nhiên (≈gốc, tối đa ~130%), nhưng ≤Y ký tự.
+   - Chỉ bỏ từ thừa (rất, thật, lắm, quá) KHI vượt ≤Y. Đừng cắt cụt làm mất nghĩa.
+   ⚠️ AI trả về text gốc (r}
+   câu CJK), đổi model...r
+   ⚠️ AI chỉ dịch được r}
+   câu, thử key/model khác...r
+   ⚠️ Rate limit, chờ
+   ⚠️ Rate limit (
+   s), nhảy key (
+   còn)...r
+   ⚠️ Key bị chặn (403), nhảy key...r
+   ⚠️ Model không tồn tại, thử model khác...r
+   ⚠️ Tools đang quá tải (HTTP
+   ), chờ
+   Nhập key API miễn phí tại: https://aistudio.google.com/apikeyr
+   ⚠️ HTTP
+   , nhảy key...r
+   ⚠️ Tools đang quá tải (timeout)...
+   ⏳ Tools đang quá tải, chờ 10s rồi thử lại...
+   ⚠️ Chỉ dịch được tốt nhất r}
+   câu, dùng kết quả này.r
+   ⚠️ Tools đang quá tải!
+
+########## ui_batch_ops.pyc (29)
+   Tách từ exporter_ui_batch.py để giảm kích thước file.
+   Đang xử lý
+   Cảnh báo
+   Đang xuất video, vui lòng chờ xuất xong!r
+   Chạy ffmpeg qua Popen, kiểm tra stop_event, lưu vào current_proc.
+   Ghép nhanh
+   Convert 1 file sang .ts — chạy song song.Nr.
+   Đồng bộ định dạng: rl
+   tệp (
+   luồng song song)...r
+   ⚡ Parallel merge:
+   FFmpeg lỗi tệp
+   Đang hợp nhất các phân đoạn video...r
+   FFmpeg merge lỗi (rc=c
+   Sẵn sàngr`
+   Ghép Video
+   Đã ghép thành công rl
+   File đầu ra:
+   Lỗi dữ liệu
+   Tệp đầu vào bị hỏng hoặc lỗi bộ mã hóa:
+   Load TTS segments trong background thread để không block UI.N
+   Giọng Đọc TTSr
+   Apply the current video's UI settings to ALL videos (mọi tỉ lệ).
+   Phụ đề và voice được auto-load riêng cho từng video.
+   Thông báo
+   Chưa chọn thư mục vào!Nr
+   ✅ Đã áp dụng cấu hình cho
+   video (tất cả tỉ lệ).
+   Phụ đề & voice được tự động load riêng cho từng video.
+
+########## ui_sub_pickers.pyc (29)
+   Tách từ exporter_ui_subtitle.py để giảm kích thước file.
+   Render preview text với font + color + outline + bg theo preset.
+   Mở popup chọn mẫu phụ đề với preview màu sắc.
+   Tải về khi chọn
+   Viền
+   Viền dày
+   Phát sáng
+   Đổ bóng
+   Viền kép
+   Bóng dài
+   Rỗng
+   Mặc định
+   Viền cơ bảnr
+   Nổi 3Dr$
+   Chữ rỗngr'
+   (preview lỗi)
+   Mặc định (Không)
+   Chạy chữ (Typewriter)
+   Hiện từng ký tự từ trái sang phải - giống đánh máy
+   Từng từ (Word by word)
+   Hiện từng từ một - dễ đọc và nổi bật
+   Hiện dần (Fade in)
+   Mờ dần từ trong suốt đến rõ nét - nhẹ nhàng
+   Trượt lên (Slide up)
+   Chữ trượt từ dưới lên vị trí - giống CapCut
+   Phóng to (Scale pop)
+   Chữ phóng to từ nhỏ đến lớn - nổi bật
+   Nảy lên (Bounce)
+   Không
+
+########## visual_sub_editor.pyc (3)
+   the subtitle's timing within prev_end → next_start range.
+   ⤡ kéo:
+   Shift start/end by delta seconds (click ▲/▼).r
+
+########## voice_reuse.pyc (8)
+   voice_reuse.py — Logic THUẦN cho việc DÙNG LẠI giọng đọc đã tạo khi xuất.
+   Tách để export_single & export_batch dùng CHUNG → 2 luồng KHÔNG lệch nhau
+   (bug 2026-06-11: xuất lẻ + mode Kéo dài bỏ qua khôi-phục-từ-đĩa → tạo lại giọng
+   oan; xuất batch thì có → 2 luồng lệch). Test ở tests/test_voice_reuse.py.
+   File giọng khôi phục từ đĩa có DÙNG được cho mode hiện tại không.
+   - stretch_video: cần >1 file TỪNG-ĐOẠN (prefer_segments) — 1 file lẻ thường
+   là _tts_full gộp, không xài cho stretch được.
+   - speed_up: chấp nhận cả file gộp lẫn file riêng (>=1 là OK).

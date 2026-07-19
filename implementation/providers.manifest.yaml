@@ -1,0 +1,129 @@
+providers:
+  - id: gemini
+    capability: image
+    name: Gemini Image
+    adapter_class: omnicast.media.providers.image_gemini.GeminiImageProvider
+    runtime: remote
+    priority: 20
+    cost_per_unit: 0.03
+    requires_credential: true
+    config_schema:
+      api_key:
+        type: secret
+        provider: google
+      model:
+        type: select
+        source: provider_models
+
+  - id: flow
+    capability: image
+    name: Google Flow Browser
+    adapter_class: omnicast.media.providers.flow_browser.FlowProvider
+    runtime: browser
+    priority: 10
+    cost_per_unit: 0.0
+    requires_credential: false
+    config_schema:
+      browser_profile:
+        type: path
+      model:
+        type: select
+        source: provider_models
+
+  - id: local-sd
+    capability: image
+    name: Local Stable Diffusion
+    adapter_class: omnicast.media.providers.image_local.LocalDiffusionProvider
+    runtime: local
+    priority: 30
+    cost_per_unit: 0.0
+    min_vram_mb: 8000
+    requires_credential: false
+    config_schema:
+      base_url:
+        type: url
+
+  - id: gemini
+    capability: video
+    name: Gemini Video
+    adapter_class: omnicast.media.providers.video_gemini.GeminiVideoProvider
+    runtime: remote
+    priority: 20
+    cost_per_unit: 0.25
+    requires_credential: true
+    config_schema:
+      api_key:
+        type: secret
+        provider: google
+      model:
+        type: select
+        source: provider_models
+
+  - id: flow
+    capability: video
+    name: Google Flow Browser
+    adapter_class: omnicast.media.providers.flow_browser.FlowProvider
+    runtime: browser
+    priority: 10
+    cost_per_unit: 0.0
+    requires_credential: false
+    config_schema:
+      browser_profile:
+        type: path
+
+  - id: kokoro
+    capability: tts
+    name: Kokoro TTS
+    adapter_class: omnicast.media.providers.tts_local.KokoroTTSProvider
+    runtime: local
+    priority: 10
+    cost_per_unit: 0.0
+    min_vram_mb: 0
+    requires_credential: false
+    config_schema:
+      voice_id:
+        type: select
+        source: provider_models
+
+  - id: edge
+    capability: tts
+    name: Edge TTS
+    adapter_class: omnicast.media.providers.tts_edge.EdgeTTSProvider
+    runtime: remote
+    priority: 20
+    cost_per_unit: 0.0
+    requires_credential: false
+    config_schema:
+      voice_id:
+        type: select
+        source: provider_models
+
+  - id: xttsv2
+    capability: tts
+    name: XTTS v2
+    adapter_class: omnicast.media.providers.tts_local.XTTSv2Provider
+    runtime: local
+    priority: 30
+    cost_per_unit: 0.0
+    min_vram_mb: 6000
+    requires_credential: false
+
+  - id: f5tts
+    capability: tts
+    name: F5 TTS
+    adapter_class: omnicast.media.providers.tts_local.F5TTSProvider
+    runtime: local
+    priority: 40
+    cost_per_unit: 0.0
+    min_vram_mb: 8000
+    requires_credential: false
+
+  - id: piper
+    capability: tts
+    name: Piper TTS
+    adapter_class: omnicast.media.providers.tts_local.PiperTTSProvider
+    runtime: local
+    priority: 50
+    cost_per_unit: 0.0
+    min_vram_mb: 0
+    requires_credential: false

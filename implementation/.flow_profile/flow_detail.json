@@ -1,0 +1,327 @@
+{
+  "switched_video": false,
+  "detail": [
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_left",
+      "aria": "Trước",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_right",
+      "aria": "Tiếp theo",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_back\nQuay lại",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "input",
+      "role": "",
+      "text": "",
+      "aria": "Văn bản có thể chỉnh sửa",
+      "alt": "",
+      "type": "text"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "info\nXem thêm thông tin về nội dung nghe nhìn ",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "favorite\nYêu thích",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "download\nTải xuống",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "share\nChia sẻ",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "history\nẨn nhật ký",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "Xong",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "crop\nCắt",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "select\nChọn",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "draw\nVẽ",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "div",
+      "role": "textbox",
+      "text": "Bạn muốn thay đổi điều gì?",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "add_2\nTạo",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "🍌 Nano Banana Pro\ncrop_16_9",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_forward\nTạo",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "img",
+      "role": "",
+      "text": "",
+      "aria": "",
+      "alt": "Hình ảnh được tạo",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "redo\nSử dụng lại câu lệnh bằng văn bản",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "keyboard_arrow_down\nMở rộng câu lệnh",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    }
+  ],
+  "after": [
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_left",
+      "aria": "Trước",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_right",
+      "aria": "Tiếp theo",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_back\nQuay lại",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "input",
+      "role": "",
+      "text": "",
+      "aria": "Văn bản có thể chỉnh sửa",
+      "alt": "",
+      "type": "text"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "info\nXem thêm thông tin về nội dung nghe nhìn ",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "favorite\nYêu thích",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "download\nTải xuống",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "share\nChia sẻ",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "history\nẨn nhật ký",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "Xong",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "crop\nCắt",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "select\nChọn",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "draw\nVẽ",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "div",
+      "role": "textbox",
+      "text": "Bạn muốn thay đổi điều gì?",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "add_2\nTạo",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "🍌 Nano Banana Pro\ncrop_16_9",
+      "aria": "",
+      "alt": "",
+      "type": "button"
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "arrow_forward\nTạo",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "img",
+      "role": "",
+      "text": "",
+      "aria": "",
+      "alt": "Hình ảnh được tạo",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "redo\nSử dụng lại câu lệnh bằng văn bản",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    },
+    {
+      "tag": "button",
+      "role": "",
+      "text": "keyboard_arrow_down\nMở rộng câu lệnh",
+      "aria": "",
+      "alt": "",
+      "type": ""
+    }
+  ]
+}

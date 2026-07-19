@@ -1,0 +1,95 @@
+{
+  "channel_id": "beat_glp1_nausea",
+  "name": "Beat GLP-1 Nausea",
+  "niche": "health",
+  "sub_niche": "GLP-1 side effect relief",
+  "market": "US",
+  "visual_style": "clean_educational",
+  "channel_style": "footage",
+  "music_mood": "ambient",
+  "voice_profile": "kokoro:af_heart",
+  "voice_fallback": [
+    "edge:en-US-JennyNeural",
+    "edge:en-US-EmmaMultilingualNeural",
+    "edge:en-US-AriaNeural"
+  ],
+  "voice_persona": "empathetic_female_40",
+  "brand_voice": "Empathetic expert guiding women through GLP-1 side effects with actionable, science-backed tips.",
+  "tone": "empathetic",
+  "hook_format": "Struggling with nausea on Ozempic? Here's what your doctor isn't telling you.",
+  "brand_color_hex": "#10B981",
+  "font_vibe": "sans_modern",
+  "competitor_handles": [
+    "@RegenicsWomensHealth",
+    "@OzempicJourney",
+    "@WeightLossWithGLP1"
+  ],
+  "audience": {
+    "age_range": "45-65",
+    "pain_points": [
+      "constant nausea ruining daily life",
+      "fear of starvation and malnutrition",
+      "missing out on non-weight benefits like inflammation reduction"
+    ],
+    "content_triggers": [
+      "what NOT to eat on GLP-1s",
+      "hidden benefits beyond weight loss",
+      "simple hacks to stop nausea fast"
+    ],
+    "engagement_drivers": [
+      "share your worst nausea story",
+      "comment your favorite anti-nausea snack"
+    ]
+  },
+  "trends_keywords": [
+    "GLP-1 nausea relief",
+    "Ozempic side effects women",
+    "Wegovy nausea tips",
+    "semaglutide anti-nausea",
+    "GLP-1 hidden benefits"
+  ],
+  "rss_feeds": [
+    "https://www.health.harvard.edu/blog/feed",
+    "https://www.webmd.com/rss/news.xml",
+    "https://www.mayoclinic.org/feed/rss/news"
+  ],
+  "subreddits": [],
+  "rpm_floor": 12.0,
+  "target_duration_min": 10,
+  "destinations": [
+    {
+      "destination_id": "beat_glp1_nausea_youtube",
+      "platform_id": "youtube",
+      "account_id": "beat_glp1_nausea",
+      "format_variant": "youtube_16x9",
+      "enabled": true,
+      "approval_required": true,
+      "schedule_policy": "prime_time",
+      "market": "US",
+      "metadata_overrides": {}
+    },
+    {
+      "destination_id": "beat_glp1_nausea_tiktok",
+      "platform_id": "tiktok",
+      "account_id": "beat_glp1_nausea_tiktok",
+      "format_variant": "tiktok_9x16",
+      "enabled": false,
+      "approval_required": true,
+      "schedule_policy": "manual",
+      "market": "US",
+      "metadata_overrides": {
+        "privacy_level": "SELF_ONLY"
+      }
+    }
+  ],
+  "channel_created_at": null,
+  "channel_type": "hub",
+  "language": "en",
+  "ref_channels": [
+    "@RegenicsWomensHealth",
+    "@OzempicJourney",
+    "@WeightLossWithGLP1"
+  ],
+  "source_niche_id": "glp1_medication_optimization",
+  "strip_script_outro": false
+}

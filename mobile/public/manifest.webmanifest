@@ -1,0 +1,11 @@
+{
+  "name": "OmniCast Mobile",
+  "short_name": "OmniCast",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#efe7ff",
+  "theme_color": "#efe7ff",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

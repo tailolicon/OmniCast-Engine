@@ -1,0 +1,290 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Be Vietnam Pro', system-ui, sans-serif;
+  --font-display: 'Baloo 2', 'Be Vietnam Pro', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text2: var(--text2);
+  --color-text3: var(--text3);
+  --color-heading: var(--heading);
+  --color-ink: var(--ink);
+  --color-accent: var(--accent);
+  --color-blue: var(--blue);
+  --color-green: var(--green);
+  --color-purple: var(--purple);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+}
+
+/* ── Fonts ── */
+@font-face {
+  font-family: 'Baloo 2';
+  src: url('/fonts/Baloo2-latin.woff2') format('woff2');
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Baloo 2';
+  src: url('/fonts/Baloo2-vietnamese.woff2') format('woff2');
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Be Vietnam Pro';
+  src: url('/fonts/BeVietnamPro-Regular.ttf') format('truetype');
+  font-weight: 400 500;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Be Vietnam Pro';
+  src: url('/fonts/BeVietnamPro-Bold.ttf') format('truetype');
+  font-weight: 600 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/IBMPlexMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+/* ═══ OmniCast "Ao Cá" — theo bộ pin 鱼塘 (water tracker mint-sage):
+   nền sage lặng, card trắng nét mảnh, minh hoạ line-art cá/rong/sóng sống trong UI.
+   Dark = "Hoàng Hôn": trời dusk navy→mận→đào (pin landscape onboarding). ═══ */
+:root, .light {
+  --bg: #b5c5ba;
+  --bg-gradient: linear-gradient(178deg, #bccbc0 0%, #b0c2b6 55%, #a6bbae 100%);
+  --surface: #fdfefd;
+  --surface2: #eff5f0;
+  --border: #dbe6dd;
+  --border-soft: #e7efe8;
+  --ink: #51665a;
+  --text: #51665a;
+  --text2: #85998b;
+  --text3: #a9bcae;
+  --heading: #40544a;
+
+  --accent: #6fa885;          /* rêu — primary */
+  --accent-hover: #5d9674;
+  --accent-soft: #e2efe6;
+  --grad-cta: linear-gradient(135deg, #85b998, #62a07c);
+
+  --green: #6fa885;
+  --green-soft: #e2efe6;
+  --green-ink: #4e8465;
+  --blue: #7fb6c4;            /* nước */
+  --blue-soft: #e3f0f3;
+  --purple: #9d97c4;
+  --purple-soft: #eceafd;
+  --amber: #d8b25f;
+  --amber-soft: #f8f0da;
+  --red: #dd8f7f;             /* san hô — cảnh báo dịu */
+  --red-soft: #fbe9e4;
+
+  --fish-coral: #e8a087;
+  --fish-mustard: #d8c26a;
+  --fish-blue: #9dc3cd;
+
+  --water: #d7e8ea;           /* mặt ao */
+  --water-deep: #c3dde0;
+  --wave-ink: #fdfefd;
+
+  --shadow-card: 0 6px 18px -6px rgba(81, 102, 90, 0.25);
+  --shadow-pill: 0 4px 10px -3px rgba(81, 102, 90, 0.28);
+  --glow-pink: 0 0 0 rgba(0,0,0,0);
+  --radius-card: 20px;
+  --star: #f2d98c;
+}
+
+.dark {
+  --bg: #2e3a55;
+  --bg-gradient: linear-gradient(178deg, #2a3550 0%, #45415f 45%, #7a5b6b 78%, #c98d7d 100%);
+  --surface: #33405c;
+  --surface2: #3d4a68;
+  --border: #4b5a7a;
+  --border-soft: #42506e;
+  --ink: #aab6cf;
+  --text: #ecf0f7;
+  --text2: #b3bed4;
+  --text3: #8492b0;
+  --heading: #ffffff;
+
+  --accent: #e8a68c;          /* đào hoàng hôn */
+  --accent-hover: #f0b89e;
+  --accent-soft: #4d4059;
+  --grad-cta: linear-gradient(135deg, #e8a68c, #cf7f74);
+
+  --green: #8fc4a3;
+  --green-soft: #33473e;
+  --green-ink: #8fc4a3;
+  --blue: #92b7d6;
+  --blue-soft: #2f4258;
+  --purple: #ac9fd4;
+  --purple-soft: #413d5f;
+  --amber: #e5c377;
+  --amber-soft: #4a4230;
+  --red: #e69185;
+  --red-soft: #4c3535;
+
+  --fish-coral: #e8a087;
+  --fish-mustard: #d8c26a;
+  --fish-blue: #9dc3cd;
+
+  --water: #253049;
+  --water-deep: #1f2a41;
+  --wave-ink: #33405c;
+
+  --shadow-card: 0 6px 18px -6px rgba(0, 0, 0, 0.45);
+  --shadow-pill: 0 4px 10px -3px rgba(0, 0, 0, 0.4);
+  --glow-pink: 0 0 0 rgba(0,0,0,0);
+  --radius-card: 20px;
+  --star: #f2d98c;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Card trắng nét mảnh — chuẩn bộ 鱼塘 */
+.sticker {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.sticker-sm {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-pill);
+}
+
+.press {
+  transition: transform 120ms ease;
+}
+.press:active {
+  transform: scale(0.95);
+}
+
+.cta {
+  background-image: var(--grad-cta);
+  color: #ffffff;
+  border: none;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--heading);
+  line-height: 1.05;
+}
+
+.font-display { font-family: var(--font-display); }
+
+.pt-safe { padding-top: max(env(safe-area-inset-top), 10px); }
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
+
+.log-box {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble {
+  background: var(--surface2);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  border-top-left-radius: 4px;
+}
+
+/* ── Chuyển động ao cá ── */
+@keyframes swim {
+  0%   { transform: translateX(-12vw) scaleX(1); }
+  46%  { transform: translateX(105vw) scaleX(1); }
+  50%  { transform: translateX(105vw) scaleX(-1); }
+  96%  { transform: translateX(-12vw) scaleX(-1); }
+  100% { transform: translateX(-12vw) scaleX(1); }
+}
+.swim { animation: swim 26s linear infinite; }
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.bob { animation: bob 4s ease-in-out infinite; }
+
+@keyframes sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+.sway { animation: sway 5s ease-in-out infinite; transform-origin: bottom center; }
+
+@keyframes ripple-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-24px); }
+}
+.ripple-drift { animation: ripple-drift 9s ease-in-out infinite; }
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.25; }
+}
+.twinkle { animation: twinkle 2.8s ease-in-out infinite; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+/* ── Chuyển cảnh giữa tab: slide theo hướng + fade ── */
+@keyframes screen-in-r {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes screen-in-l {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+/* fill-mode backwards (không dùng both): nếu môi trường tắt animation
+   (animator scale 0 trên emulator) phần tử vẫn hiện trạng thái tự nhiên. */
+.screen-in-r { animation: screen-in-r 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.screen-in-l { animation: screen-in-l 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+
+/* Card nổi lên lần lượt khi vào màn */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 360ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+
+/* Bubble nav nảy nhẹ khi đáp xuống hõm */
+@keyframes bubble-pop {
+  0% { transform: scale(0.6); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.bubble-pop { animation: bubble-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
