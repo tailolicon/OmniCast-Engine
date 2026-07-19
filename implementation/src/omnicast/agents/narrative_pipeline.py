@@ -4301,6 +4301,12 @@ class NarrativeUnitPipeline:
         compliance_reviews, compliance_valid = await self._audit_stories(
             plan, stories, strategy
         )
+        if not compliance_valid:
+            stories, gate, compliance_reviews, compliance_valid = (
+                await self._rescue_unauditable_stories(
+                    plan, stories, gate, compliance_reviews, per_story, strategy
+                )
+            )
         if compliance_valid:
             score, critic_valid, _ = await self._score_validated(
                 plan, stories, gate, strategy, compliance_reviews=compliance_reviews
@@ -5234,6 +5240,65 @@ class NarrativeUnitPipeline:
             errors=errors,
             challenger_is_independent=independent,
         ), False, []
+
+    # The unauditable-structure marker: beat evidence that cannot be quoted as
+    # separate spans, i.e. the prose merged plan beats into one sentence.
+    _UNAUDITABLE_MARKER = "ordered and non-overlapping"
+
+    async def _rescue_unauditable_stories(
+        self,
+        plan: CompilationPlan,
+        stories: list[StoryDraft],
+        gate: GateReport,
+        compliance_reviews: dict[str, StoryComplianceReview],
+        per_story: int,
+        strategy: NamedChannelStrategy,
+    ) -> tuple[list[StoryDraft], GateReport, dict[str, StoryComplianceReview], bool]:
+        """One bounded rewrite for stories whose compliance audit failed its
+        contract because beat evidence could not be quoted separately.
+
+        Live 2026-07-19 (self-storage 2119, 4th occurrence of the class):
+        story_2 merged plan beats, the auditor failed 'strictly ordered and
+        non-overlapping' twice, and a compilation with three written stories
+        and near-clean gates died at 0/100 with no repair attempted. Merged
+        beats ARE a prose defect (unauditable = unreleasable) — but a
+        REWRITABLE one, the same routing length defects already get. Any
+        other contract-failure class still fails closed unchanged."""
+        failing = {
+            sid: errs for sid, errs in self._last_compliance_errors.items()
+            if errs and all(self._UNAUDITABLE_MARKER in e for e in errs)
+        }
+        if not failing or set(failing) != set(self._last_compliance_errors):
+            return stories, gate, compliance_reviews, False
+        plans_by_id = {item.story_id: item for item in plan.stories}
+        originals = {item.story_id: item for item in stories}
+        rewritten: dict[str, StoryDraft] = {}
+        for story_id, errs in failing.items():
+            if story_id not in plans_by_id or story_id not in originals:
+                return stories, gate, compliance_reviews, False
+            replacement = await self._rewrite_fallback(
+                plan, plans_by_id[story_id], stories, gate, originals[story_id],
+                [], [
+                    "The compliance auditor could not ground this story twice: "
+                    + "; ".join(errs)
+                    + ". Give every plan beat its OWN sentence, in plan order — "
+                    "especially the escape decision and the completed escape — so "
+                    "each beat can be quoted as a separate, non-overlapping span.",
+                ], per_story, strategy,
+                "beat evidence could not be quoted separately (unauditable)",
+            )
+            if replacement is None:
+                return stories, gate, compliance_reviews, False
+            rewritten[story_id] = replacement
+        candidate = [rewritten.get(item.story_id, item) for item in stories]
+        candidate_gate = gate_compilation(plan, candidate, strategy)
+        reviews, valid = await self._audit_stories(
+            plan, candidate, strategy,
+            only_ids=set(rewritten), prior=compliance_reviews,
+        )
+        if not valid:
+            return stories, gate, compliance_reviews, False
+        return candidate, candidate_gate, reviews, True
 
     async def _audit_stories(
         self,

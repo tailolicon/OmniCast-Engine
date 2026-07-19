@@ -5,6 +5,8 @@ threat-withdrawal escape shape."""
 
 from __future__ import annotations
 
+import pytest
+
 import omnicast.agents.narrative_pipeline as np
 from omnicast.agents.narrative_pipeline import (
     NamedChannelStrategy,
@@ -377,6 +379,66 @@ def test_near_miss_minor_wave_guards():
     assert not np._near_miss_minor_ids(
         _scorecard(1, issues=[vague]), gate, strategy, expected, repair_waves=0
     )
+
+
+@pytest.mark.asyncio
+async def test_unauditable_beats_get_one_rewrite_instead_of_zero_score():
+    """Live 2026-07-19 (self-storage 2119, 4th occurrence of the class):
+    story_2 merged plan beats, compliance failed 'strictly ordered and
+    non-overlapping' twice, and a fully-written compilation died 0/100 with
+    zero repair calls. That class now earns one bounded rewrite + re-audit;
+    every other contract-failure class still fails closed unchanged."""
+    pipe = np.NarrativeUnitPipeline(object(), object(), object(), None)
+    plan = _plan()
+    stories = [_draft(i) for i in range(1, 4)]
+    marker = "story compliance beat evidence must be strictly ordered and non-overlapping"
+    pipe._last_compliance_errors = {"story_2": [marker]}
+
+    rewritten = stories[1].model_copy(update={
+        "narration": stories[1].narration + " He stepped back first. Then I locked the door."
+    })
+
+    async def fake_rewrite(plan_, item, stories_, gate_, original, issues,
+                           gate_messages, per_story, strategy, reason):
+        assert item.story_id == "story_2"
+        assert marker in gate_messages[0]
+        assert "OWN sentence" in gate_messages[0]
+        return rewritten
+
+    audited: dict = {}
+
+    async def fake_audit(plan_, candidate, strategy, *, only_ids=None, prior=None):
+        audited["only_ids"] = only_ids
+        return {s.story_id: object() for s in candidate}, True
+
+    pipe._rewrite_fallback = fake_rewrite
+    pipe._audit_stories = fake_audit
+
+    out, _gate2, _reviews, ok = await pipe._rescue_unauditable_stories(
+        plan, stories, np.GateReport(), {}, 750, _horror(),
+    )
+    assert ok is True
+    assert out[1] is rewritten
+    assert audited["only_ids"] == {"story_2"}
+
+    # Any other contract-failure class still fails closed unchanged.
+    pipe._last_compliance_errors = {"story_2": ["schema or provider error: boom"]}
+    _o, _g, _r, ok2 = await pipe._rescue_unauditable_stories(
+        plan, stories, np.GateReport(), {}, 750, _horror(),
+    )
+    assert ok2 is False
+
+    # A rewrite that dead-ends leaves the fail-closed verdict in place.
+    pipe._last_compliance_errors = {"story_2": [marker]}
+
+    async def dead_rewrite(*_a, **_k):
+        return None
+
+    pipe._rewrite_fallback = dead_rewrite
+    _o, _g, _r, ok3 = await pipe._rescue_unauditable_stories(
+        plan, stories, np.GateReport(), {}, 750, _horror(),
+    )
+    assert ok3 is False
 
 
 def test_still_watcher_slot_must_earn_a_fresh_angle():
