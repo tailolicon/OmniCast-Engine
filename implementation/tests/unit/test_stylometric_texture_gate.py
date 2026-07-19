@@ -147,6 +147,32 @@ def test_i_like_the_preference_declaration_is_rationed_across_stories():
                 if f.code == "stylometric_rationed_tic" and "preference" in f.message]
 
 
+def test_composure_claim_is_rationed_across_stories():
+    """Live 2026-07-19 mall attempt 2 (critic minor): two narrators asserted
+    composure with the same stock 'I don't spook/scare' device at their most
+    exposed beat. Classic wordings are rationed deterministically; paraphrases
+    stay the critic's job."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " I don't spook on the job, never have.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    codes = [f for f in gate_compilation(*once, _horror()).failures
+             if f.code == "stylometric_rationed_tic" and "composure" in f.message]
+    assert not codes
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " I don't spook on the job, never have.",
+        "story_2": _clean("bravo") + " I never scare easy, but that night was different.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(*twice, _horror())
+    tic = [f for f in report.failures
+           if f.code == "stylometric_rationed_tic" and "composure" in f.message]
+    assert tic, "the shared composure claim must be rationed"
+    assert tic[0].story_ids == ["story_2"]
+
+
 def test_soma_cliche_fails_on_first_use():
     plan, stories = _compilation({
         "story_1": _clean("alpha") + " My heart pounded in my chest.",

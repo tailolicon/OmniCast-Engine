@@ -307,6 +307,78 @@ def test_plan_prompt_varies_recognition_point_and_routes_lens_through_voice_rule
     assert "only that role would notice" in prompt
 
 
+def _scorecard(total_gap_from_84: int, issues=None, critical=None):
+    """Scorecard whose total lands at 84 - total_gap_from_84 (floor is 84).
+
+    Base dims sum to 80; ending_discipline supplies the remainder (gap <= 4)."""
+    assert 0 <= total_gap_from_84 <= 4
+    dims = dict(
+        continuity_believability=25, distinct_authentic_voices=20,
+        dread_escalation=20, plausible_response=10, structural_variety=5,
+        originality=0, ending_discipline=4 - total_gap_from_84,
+    )
+    return np.NarrativeScorecard(
+        **dims,
+        critical_issues=list(critical or []),
+        story_issues=list(issues or []),
+    )
+
+
+def _minor(story_id: str, quote: str = "an exact quote") -> "np.StoryIssue":
+    return np.StoryIssue(
+        story_id=story_id, severity="minor",
+        problem="object state flips mid-scene",
+        repair_instruction="make the two lines agree",
+        issue_kind="contradiction", evidence_quote=quote,
+    )
+
+
+def test_near_miss_minor_wave_targets_quoted_minors():
+    """Live 2026-07-19 mall attempt 2: 83 vs floor 84, gates clean, three
+    quoted repairable minors — and repair_writer=0 because repair only ever
+    chased gate failures and majors. The one bounded minor wave exists for
+    exactly this compilation."""
+    gate = np.GateReport()
+    strategy = _horror()  # approval_score = editorial_floor = 84
+    expected = {"story_1", "story_2", "story_3"}
+    score = _scorecard(1, issues=[_minor("story_2"), _minor("story_3")])
+    assert score.total_score == 83
+    ids = np._near_miss_minor_ids(score, gate, strategy, expected, repair_waves=0)
+    assert ids == {"story_2", "story_3"}
+
+
+def test_near_miss_minor_wave_guards():
+    gate = np.GateReport()
+    strategy = _horror()
+    expected = {"story_1", "story_2", "story_3"}
+    near = _scorecard(1, issues=[_minor("story_2")])
+
+    # Only the first wave qualifies — this is a bounded rescue, not a loop.
+    assert not np._near_miss_minor_ids(near, gate, strategy, expected, repair_waves=1)
+    # A big gap is a weak draft, not a near-miss.
+    far = _scorecard(4, issues=[_minor("story_2")])
+    assert far.total_score == 80
+    assert not np._near_miss_minor_ids(far, gate, strategy, expected, repair_waves=0)
+    # At or above the floor there is nothing to rescue.
+    at_floor = _scorecard(0, issues=[_minor("story_2")])
+    assert at_floor.total_score == 84
+    assert not np._near_miss_minor_ids(at_floor, gate, strategy, expected, repair_waves=0)
+    # Any major means the normal repair path owns the wave.
+    major = _minor("story_1").model_copy(update={"severity": "major"})
+    assert not np._near_miss_minor_ids(
+        _scorecard(1, issues=[major, _minor("story_2")]),
+        gate, strategy, expected, repair_waves=0,
+    )
+    # A failing gate means this is not an objectively clean compilation.
+    failed_gate = np.GateReport(failures=[np._failure("x", "msg", "story_1")])
+    assert not np._near_miss_minor_ids(near, failed_gate, strategy, expected, repair_waves=0)
+    # An unquoted minor gives the patcher nothing to grab.
+    vague = _minor("story_2", quote="")
+    assert not np._near_miss_minor_ids(
+        _scorecard(1, issues=[vague]), gate, strategy, expected, repair_waves=0
+    )
+
+
 def test_escape_dependent_props_must_be_planted_in_the_plan():
     """Live 2026-07-19 self-storage (2 attempts, 0 prose): three prop_staging
     blockers of one shape — escape hinged on a fire door propped 'generally',

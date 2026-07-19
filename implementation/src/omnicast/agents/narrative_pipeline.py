@@ -1493,6 +1493,14 @@ _RATIONED_TICS = (
     ("'I like the ...' preference declaration", re.compile(
         r"\bI\s+(?:like|love)d?\s+the\b", re.I,
     )),
+    # "I don't spook on the job" / "I don't scare easy" — the stock composure
+    # claim before admitting unease. Two narrators used it at their most
+    # exposed beat in one compilation (live 2026-07-19 mall attempt 2, critic
+    # minor); the semantic paraphrases stay the critic's job, the classic
+    # wordings are rationed here.
+    ("'I don't spook/scare' composure claim", re.compile(
+        r"\bI\s+(?:don'?t|do\s+not|never)\s+(?:spook|scare|rattle)\b", re.I,
+    )),
 )
 
 _THE_WAY_COMPARISON_RE = re.compile(
@@ -1750,6 +1758,38 @@ def _stylometric_texture_findings(
             coda_seen = (story.story_id, hit.strip())
 
     return failures, flags
+
+
+def _near_miss_minor_ids(
+    score: NarrativeScorecard,
+    gate: GateReport,
+    strategy: NamedChannelStrategy,
+    expected_ids: set[str],
+    repair_waves: int,
+) -> set[str]:
+    """Stories eligible for the one bounded minor-repair wave.
+
+    A compilation with clean gates, zero critical/major issues, and a score
+    just under the floor used to die needs_edit with ZERO repair calls (live
+    2026-07-19 mall: 83 vs floor 84, three quoted repairable minors,
+    repair_writer=0) — repair only ever chased gate failures and majors.
+    Quoted minors are exactly the locally-patchable kind; one wave may close
+    the gap. Guards keep this from rescuing weak drafts: gates must pass, no
+    critical/major anywhere, the gap must be small, and only the first wave
+    qualifies."""
+    if repair_waves != 0 or not gate.passed or score.critical_issues:
+        return set()
+    if any(i.severity in {"critical", "major"} for i in score.story_issues):
+        return set()
+    gap = strategy.approval_score - score.total_score
+    if gap <= 0 or gap > 3:
+        return set()
+    return {
+        issue.story_id for issue in score.story_issues
+        if issue.story_id in expected_ids
+        and issue.severity == "minor"
+        and issue.evidence_quote.strip()
+    }
 
 
 def _ending_region(narration: str) -> str:
@@ -4279,6 +4319,10 @@ class NarrativeUnitPipeline:
                 if issue.story_id in expected_ids
                 and issue.severity in {"critical", "major"}
             )
+            if not failing_ids:
+                failing_ids = _near_miss_minor_ids(
+                    score, gate, strategy, expected_ids, repair_waves
+                )
             if not failing_ids:
                 break
             # The second wave is a cheap salvage for an already strong, objectively
