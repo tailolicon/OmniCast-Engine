@@ -441,6 +441,19 @@ async def test_unauditable_beats_get_one_rewrite_instead_of_zero_score():
     assert ok3 is False
 
 
+def test_escape_clauses_must_be_timestampable_events():
+    """Live 2026-07-20 (airport shuttle 0018, 5th unauditable-beats case): the
+    plan's escape chain sandwiched a continuous state ('keeps to the main
+    route') between events, the prose delivered the beats in a different order
+    — states have no order against events — and compliance could not quote the
+    clauses as ordered spans. The trap is set at plan time, so the rule lives
+    in the plan prompt."""
+    prompt = np._plan_prompt(_brief(), 3, 2250, None, "", _horror())
+    assert "PERFORMANCE SEQUENCE" in prompt
+    assert "timestampable EVENT" in prompt
+    assert "Standing states belong in the continuity_ledger" in prompt
+
+
 def test_still_watcher_slot_must_earn_a_fresh_angle():
     """Live 2026-07-19 (mall try-5 + self-storage try-1): FIVE consecutive
     plan-audit kills were the same stock still-watcher rendering — glimpsed in

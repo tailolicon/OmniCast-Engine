@@ -2676,7 +2676,14 @@ own — and a different ending shape. If escape_mechanism is threat_withdraws_un
 escape_action MUST be two ordered clauses: first the narrator's deliberate decision
 under pressure, then the threat's withdrawal (e.g. "stays flat behind the counter with
 911 dialed AND the man steps back off the porch before anyone arrives"); with a human
-threat this mechanism forbids safety_obligation=not_applicable. At most one story may use one restrained evidence
+threat this mechanism forbids safety_obligation=not_applicable.
+escape_action clauses are a PERFORMANCE SEQUENCE: the story must deliver them in
+clause order and the compliance auditor must quote each clause as a separate span in
+that order. So every clause must be a discrete, timestampable EVENT. A continuous
+state ("keeps to the main route", "stays calm") is not an event — it cannot be
+ordered against one, and a chain that mixes them becomes unauditable and kills the
+story after it is written. Standing states belong in the continuity_ledger; keep the
+escape chain to 2-3 actions a viewer could put on a clock. At most one story may use one restrained evidence
 beat; at least one must use none. cold_open is one short first-person line whose promised
 moment will occur in a story. No monsters, omniscient knowledge, CTAs, analysis, police-
 report framing, camera static, disappearing footprints, or proof-stacking. For three
