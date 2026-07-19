@@ -441,6 +441,16 @@ async def test_unauditable_beats_get_one_rewrite_instead_of_zero_score():
     assert ok3 is False
 
 
+def test_plan_prompt_rations_the_no_record_aftermath():
+    """Live 2026-07-20 (shuttle 0153): three empty record-searches under three
+    different aftermath labels. The plan prompt now caps the device at one
+    story and names what varied aftermaths can yield instead."""
+    prompt = np._plan_prompt(_brief(), 3, 2250, None, "", _horror())
+    assert "NO-RECORD aftermath" in prompt
+    assert "AT MOST ONE story" in prompt
+    assert "one device worn three ways" in prompt
+
+
 def test_ritual_coda_slot_is_assigned_to_the_first_story_only():
     """Three consecutive live runs (self-storage 1947, mall 0108) died with the
     shared-ritual-coda gate firing: writers cannot avoid duplicating the coda

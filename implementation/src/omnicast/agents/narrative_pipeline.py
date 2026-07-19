@@ -1501,6 +1501,18 @@ _RATIONED_TICS = (
     ("'I don't spook/scare' composure claim", re.compile(
         r"\bI\s+(?:don'?t|do\s+not|never)\s+(?:spook|scare|rattle)\b", re.I,
     )),
+    # The no-record aftermath device: an authority/records check that comes
+    # back empty. Live 2026-07-20 (shuttle 0153): ALL THREE stories closed on
+    # it under three different aftermath labels — the axis cannot see a shared
+    # surface device. Classic wordings rationed to one story; paraphrases stay
+    # with the critic/challenger.
+    ("'nothing on file' no-record device", re.compile(
+        r"\bnothing (?:on file|in the (?:system|logs?))\b"
+        r"|\bno (?:record|match|report) (?:of|for|in|came back)\b"
+        r"|\bnever matched (?:a|the) name\b"
+        r"|\b(?:log|file|system|records?) (?:showed|turned up|had) nothing\b",
+        re.I,
+    )),
 )
 
 _THE_WAY_COMPARISON_RE = re.compile(
@@ -2706,6 +2718,12 @@ setting: a figure glimpsed at a distance (or in glass) that is gone when approac
 tapping or knocking that stops when observed, a motionless shape that leaves one
 inexplicable trace. Relocating the trope is not a fresh angle. If you cannot state in
 one clause what makes this watcher unlike the stock one, plan a threat that ACTS.
+The same one-slot rationing applies to the NO-RECORD aftermath: an authority or
+records check that comes back empty ("nothing on file", "no one matched the name",
+"the log showed nothing") may close AT MOST ONE story per compilation — three empty
+searches under three different aftermath labels are one device worn three ways. Vary
+what the aftermath YIELDS: a partial answer that explains nothing, a wrong explanation
+others accept, an object that should not exist, or no check at all.
 Vary the recognition point across the three stories — one narrator may read the danger
 early, another late, another only in hindsight. Where a narrator has a trade or role,
 write that story's voice_rules to include 2-3 role-specific ways of seeing; in at least

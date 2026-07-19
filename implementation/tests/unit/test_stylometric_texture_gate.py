@@ -147,6 +147,31 @@ def test_i_like_the_preference_declaration_is_rationed_across_stories():
                 if f.code == "stylometric_rationed_tic" and "preference" in f.message]
 
 
+def test_no_record_aftermath_device_is_rationed_across_stories():
+    """Live 2026-07-20 (shuttle 0153): all three stories closed on an empty
+    records check under three DIFFERENT aftermath labels — the typed axis
+    cannot see a shared surface device. One story may own it."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " Dispatch said there was nothing on file for that stop.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    hits = [f for f in gate_compilation(*once, _horror()).failures
+            if f.code == "stylometric_rationed_tic" and "no-record" in f.message]
+    assert not hits
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " Dispatch said there was nothing on file for that stop.",
+        "story_2": _clean("bravo") + " The pickup sheet never matched a name to him.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(*twice, _horror())
+    tic = [f for f in report.failures
+           if f.code == "stylometric_rationed_tic" and "no-record" in f.message]
+    assert tic, "the shared no-record device must be rationed"
+    assert tic[0].story_ids == ["story_2"]
+
+
 def test_composure_claim_is_rationed_across_stories():
     """Live 2026-07-19 mall attempt 2 (critic minor): two narrators asserted
     composure with the same stock 'I don't spook/scare' device at their most
