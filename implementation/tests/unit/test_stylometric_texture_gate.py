@@ -113,6 +113,40 @@ def test_body_acted_before_mind_tic_catches_paraphrases_across_stories():
     assert tic[0].story_ids == ["story_2"]  # second occurrence is the one to change
 
 
+def test_i_like_the_preference_declaration_is_rationed_across_stories():
+    """Live 2026-07-19 (mall attempt 2, 81): story_1 opened on 'I like the
+    quiet part of the job' and story_2 established its narrator with the same
+    'I like the ___' declaration — only the Opus challenger caught the shared
+    habit. One narrator may own the move; the second is the tic."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " I like the quiet part of the job, usually.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_rationed_tic" not in _codes(gate_compilation(*once, _horror()))
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " I like the quiet part of the job, usually.",
+        "story_2": _clean("bravo") + " I liked the early loop best, before the town woke up.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(*twice, _horror())
+    tic = [f for f in report.failures if f.code == "stylometric_rationed_tic"
+           and "preference" in f.message]
+    assert tic, "the shared 'I like the ...' declaration must be rationed"
+    assert tic[0].story_ids == ["story_2"]
+
+    # Negated preference is not the declaration ("I didn't like the look of it").
+    negated = _compilation({
+        "story_1": _clean("alpha") + " I like the quiet part of the job, usually.",
+        "story_2": _clean("bravo") + " I didn't like the look of the dock door.",
+        "story_3": _clean("charlie"),
+    })
+    report2 = gate_compilation(*negated, _horror())
+    assert not [f for f in report2.failures
+                if f.code == "stylometric_rationed_tic" and "preference" in f.message]
+
+
 def test_soma_cliche_fails_on_first_use():
     plan, stories = _compilation({
         "story_1": _clean("alpha") + " My heart pounded in my chest.",
