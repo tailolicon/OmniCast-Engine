@@ -7,8 +7,16 @@ Phương pháp đã chứng minh ở script-gen (chạy thật → autopsy → v
 
 ## Luật cách ly (BẮT BUỘC cho mọi agent)
 
-1. **Mỗi luồng một nhánh git** (`ws/<tên-luồng>`); merge vào `main` chỉ khi
-   `python -m pytest tests/unit/ -q` xanh (≥1363 pass) — suite là cổng chung.
+1. **Mỗi luồng một GIT WORKTREE riêng** — `git worktree add ../omnicast-ws-<tên> ws/<tên-luồng>`
+   (thư mục NGOÀI repo gốc), làm việc + commit TRONG worktree đó. **CẤM checkout/switch
+   nhánh trong thư mục gốc `E:\Project\OmniCast Engine`**: checkout đổi code trên đĩa
+   dưới chân batch LIVE + các session khác (sự cố thật 14:31 19/07: session WS1 checkout
+   `ws/visuals-flow` tại gốc giữa lúc batch self-storage đang gen và session WS0 đang
+   commit — 2 commit dính chéo nhánh). Thư mục gốc Ở NGUYÊN `main`, thuộc WS0 + batch
+   runner. Lưu ý worktree không có `.env`/`.venv`/`output` (gitignored) — luồng cần chạy
+   test dùng `E:\Project\OmniCast Engine\implementation\.venv\Scripts\python.exe` với
+   `cd` vào worktree. Merge vào `main` chỉ khi `python -m pytest tests/unit/ -q` xanh
+   (≥1363 pass) — suite là cổng chung.
 2. **Ma trận sở hữu file** (dưới đây) — agent KHÔNG đụng file ngoài phạm vi luồng mình.
 3. **Interface đóng băng** (đổi phải qua điều phối, không tự ý):
    - Schema `script.json` sidecar (prosody: pace/pause_after_ms/emphasis)
