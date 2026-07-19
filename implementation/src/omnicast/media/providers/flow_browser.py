@@ -69,18 +69,49 @@ class _FlowSession:
     }
 
     def __init__(self, profile_dir: str, project_url: str, create_new: bool = False,
-                 image_model: str = "") -> None:
+                 image_model: str = "", ref_images: list[str] | None = None) -> None:
         self._profile = profile_dir
         self._project = project_url
         self._create_new = create_new
         # Desired Flow image model (label). Empty = keep Flow's current default.
         self._image_model = self._MODEL_LABELS.get((image_model or "").lower().strip(), "")
+        # Ingredients (WS1 character consistency): reference images attached to
+        # the composer so Nano Banana conditions every generation on the SAME
+        # character — the root fix for per-frame face drift that the text-DNA
+        # anchor alone cannot hold. Only existing files are kept.
+        self._ref_images: list[str] = self._existing_refs(ref_images)
+        self._ingredients_attached = False
         self._pw = None
         self._ctx = None
         self._page = None
         self._exec = ThreadPoolExecutor(max_workers=1, thread_name_prefix="flow")
         self._lock = threading.Lock()
         self._xlock_dir: Path | None = None  # cross-process Flow mutex (see below)
+
+    # Flow caps ingredients per prompt; keep a safe margin (calibrated cap in
+    # Flow's UI is small — 3 reference chips per prompt as of 2026-07).
+    MAX_INGREDIENTS = 3
+
+    @staticmethod
+    def _existing_refs(ref_images: list[str] | None) -> list[str]:
+        """Filter to existing, non-empty files, bounded by MAX_INGREDIENTS."""
+        out: list[str] = []
+        for r in ref_images or []:
+            try:
+                p = Path(r)
+                if p.exists() and p.stat().st_size > 0:
+                    out.append(str(p.resolve()))
+            except Exception:
+                continue
+        return out[:_FlowSession.MAX_INGREDIENTS]
+
+    def set_ref_images(self, ref_images: list[str] | None) -> None:
+        """Swap the ingredient set (e.g. per-video anchor). Resets the attached
+        flag so the next generation re-attaches the new chips."""
+        refs = self._existing_refs(ref_images)
+        if refs != self._ref_images:
+            self._ref_images = refs
+            self._ingredients_attached = False
 
     def submit(self, fn, *a):
         fut: Future = self._exec.submit(fn, *a)
@@ -357,6 +388,65 @@ class _FlowSession:
                 self._select_model(page, self._image_model)
             except Exception as e:
                 print(f"      [flow] model select skipped ({e})", flush=True)
+        if self._ref_images and not self._ingredients_attached:
+            self._attach_ingredients(page)
+
+    # Candidate openers for the ingredient/reference-image picker. Flow's UI
+    # (vi locale) exposes it from the composer; exact affordance shifts between
+    # releases, so we try several and then look for a file input. Best-effort:
+    # a failed attach logs and generation continues with the text-DNA anchor.
+    _INGREDIENT_OPENERS = (
+        'button:has-text("Thành phần")',       # "Ingredients" (vi)
+        'button:has-text("add_photo")',        # material icon in composer
+        'button:has-text("add_photo_alternate")',
+        'button:has-text("image")',            # material icon fallback
+        'button[aria-label*="nh"]:has-text("add")',
+    )
+
+    def _attach_ingredients(self, page) -> bool:
+        """Attach the reference images to Flow's composer as ingredients so the
+        image model conditions on the SAME character in every shot (WS1
+        character-consistency root fix; the text DNA block stays as layer 1).
+
+        Strategy: Playwright `set_input_files` on the composer's file input —
+        immune to drag-drop/chooser flakiness. If no input is present, click the
+        known opener buttons first. Never raises: on failure we log and return
+        False so generation proceeds exactly as before."""
+        try:
+            inp = page.locator('input[type="file"]')
+            if not inp.count():
+                for sel in self._INGREDIENT_OPENERS:
+                    try:
+                        btn = page.locator(sel)
+                        if btn.count():
+                            btn.first.click(timeout=3000)
+                            page.wait_for_timeout(800)
+                            inp = page.locator('input[type="file"]')
+                            if inp.count():
+                                break
+                    except Exception:
+                        continue
+            if not inp.count():
+                print("      [flow] ingredients: no file input found in the "
+                      "composer — needs a live DOM calibration; continuing "
+                      "with text-DNA anchor only", flush=True)
+                return False
+            inp.first.set_input_files(self._ref_images)
+            page.wait_for_timeout(2500)  # let the chips upload/appear
+            # Close any picker/popover the opener may have left on screen.
+            try:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(300)
+            except Exception:
+                pass
+            self._ingredients_attached = True
+            print(f"      [flow] ingredients attached: "
+                  f"{len(self._ref_images)} reference image(s)", flush=True)
+            return True
+        except Exception as e:
+            print(f"      [flow] ingredients attach failed ({str(e)[:120]}) — "
+                  "continuing with text-DNA anchor only", flush=True)
+            return False
 
     def _select_model(self, page, label: str) -> None:
         """Pick the image model. Flow UI (probed 2026-07-11): the composer
@@ -776,7 +866,26 @@ class FlowProvider:
         # and confusing the newest-first result mapping. Set FLOW_NEW_PROJECT=0 to
         # reuse FLOW_PROJECT_URL instead.
         self._create_new = os.environ.get("FLOW_NEW_PROJECT", "1") != "0"
+        # Ingredients (WS1): reference images for character consistency.
+        # env FLOW_INGREDIENTS = os.pathsep-separated image paths — lets the
+        # render set them per-channel/per-video without new CLI plumbing.
+        self._reference_images = self._refs_from_env()
         self._session: _FlowSession | None = None
+
+    @staticmethod
+    def _refs_from_env() -> list[str]:
+        raw = os.environ.get("FLOW_INGREDIENTS", "").strip()
+        if not raw:
+            return []
+        return [p.strip() for p in raw.split(os.pathsep) if p.strip()]
+
+    def set_reference_images(self, ref_images: list[str] | None) -> None:
+        """Set/replace the ingredient reference images (e.g. the per-character
+        anchor set from omnicast.media.character_anchor). Applies to the live
+        session immediately if one is open."""
+        self._reference_images = list(ref_images or [])
+        if self._session is not None:
+            self._session.set_ref_images(self._reference_images)
 
     def _sess(self) -> _FlowSession:
         if not self._create_new and not self._project:
@@ -791,7 +900,8 @@ class FlowProvider:
         if self._session is None:
             self._session = _FlowSession(self._profile, self._project,
                                          create_new=self._create_new,
-                                         image_model=self._image_model)
+                                         image_model=self._image_model,
+                                         ref_images=self._reference_images)
         return self._session
 
     async def _run_with_banana_fallback(self, call):
