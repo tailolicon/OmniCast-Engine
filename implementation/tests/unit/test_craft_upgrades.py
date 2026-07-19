@@ -379,6 +379,18 @@ def test_near_miss_minor_wave_guards():
     )
 
 
+def test_still_watcher_slot_must_earn_a_fresh_angle():
+    """Live 2026-07-19 (mall try-5 + self-storage try-1): FIVE consecutive
+    plan-audit kills were the same stock still-watcher rendering — glimpsed in
+    glass, gone when approached, tapping that stops. The prompt allowed one
+    still-watcher slot but never said the slot must earn itself; each stock
+    attempt burned a planner call for the audit to reject."""
+    prompt = np._plan_prompt(_brief(), 3, 2250, None, "", _horror())
+    assert "That one slot must EARN itself" in prompt
+    assert "Relocating the trope is not a fresh angle" in prompt
+    assert "plan a threat that ACTS" in prompt
+
+
 def test_escape_dependent_props_must_be_planted_in_the_plan():
     """Live 2026-07-19 self-storage (2 attempts, 0 prose): three prop_staging
     blockers of one shape — escape hinged on a fire door propped 'generally',

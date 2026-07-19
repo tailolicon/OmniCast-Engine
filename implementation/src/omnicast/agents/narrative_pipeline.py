@@ -2693,6 +2693,12 @@ not a workaround. The labels must describe the threat/escape/ending you actually
 threat_identity is an axis like the others — no two stories may share a value. At most
 one story per compilation may feature a silent, motionless lone stranger; a threat that
 speaks normally but says something subtly wrong is often scarier than stillness.
+That one slot must EARN itself with a concrete distinguishing mechanism the audit can
+name. Stock renderings are rejected as the tall-still-figure trope REGARDLESS of
+setting: a figure glimpsed at a distance (or in glass) that is gone when approached,
+tapping or knocking that stops when observed, a motionless shape that leaves one
+inexplicable trace. Relocating the trope is not a fresh angle. If you cannot state in
+one clause what makes this watcher unlike the stock one, plan a threat that ACTS.
 Vary the recognition point across the three stories — one narrator may read the danger
 early, another late, another only in hindsight. Where a narrator has a trade or role,
 write that story's voice_rules to include 2-3 role-specific ways of seeing; in at least
