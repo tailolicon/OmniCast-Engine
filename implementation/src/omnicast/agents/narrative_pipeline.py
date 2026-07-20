@@ -3152,9 +3152,11 @@ ENDING SHAPE: {plan.ending_shape}
 EVIDENCE ALLOWANCE: {plan.evidence_allowance}{'''
 "none" means NOTHING confirms the encounter afterwards: no second witness account, no
 relief-shift corroboration, no official report or record, no recovered trace, no camera.
-The narrator's word stands alone — that unconfirmed loneliness IS the dread. Adding even
-one validating detail in the aftermath is a release-blocking defect (third occurrence of
-this exact miss).''' if plan.evidence_allowance == "none" else ''}
+A PROMISE of follow-up is also confirmation ("they said someone would look into it",
+"dispatch flagged it for review") — corroboration-by-authority, same defect (5th
+occurrence of this class, this variant live 2026-07-20). The narrator's word stands
+alone — that unconfirmed loneliness IS the dread. Adding even one validating detail in
+the aftermath is a release-blocking defect.''' if plan.evidence_allowance == "none" else ''}
 VOICE RULES: {plan.voice_rules}
 CONTINUITY LEDGER: {json.dumps(plan.continuity_ledger, ensure_ascii=False)}
 COLD-OPEN PROMISE TO PAY OFF: {cold_open}
