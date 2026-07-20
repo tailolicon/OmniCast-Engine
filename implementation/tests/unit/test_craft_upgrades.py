@@ -441,6 +441,109 @@ async def test_unauditable_beats_get_one_rewrite_instead_of_zero_score():
     assert ok3 is False
 
 
+def _major(story_id: str, kind: str) -> "np.StoryIssue":
+    return np.StoryIssue(
+        story_id=story_id, severity="major", issue_kind=kind,
+        problem="synthetic", repair_instruction="fix it", evidence_quote="q",
+    )
+
+
+@pytest.mark.asyncio
+async def test_salvage_stacks_both_good_patches_when_wave_is_rejected():
+    """Live 2026-07-20 (courier 0719, 82 vs floor 84): a rejected wave held
+    TWO clean patches; the single-slot salvage saved one and the discarded
+    one's banned phrase stood. Salvage now stacks rounds, heaviest blocker
+    first, each accepted round becoming the base for the next."""
+    pipe = np.NarrativeUnitPipeline(object(), object(), object(), None)
+    plan = _plan()
+    stories = [_draft(i) for i in range(1, 4)]
+    patched = [
+        s.model_copy(update={"narration": s.narration + f" Patched {s.story_id}."})
+        for s in stories
+    ]
+    # story_1 carries a contradiction (weight 40), story_2 a style major (20).
+    base = _scorecard(1, issues=[
+        _major("story_1", "contradiction"), _major("story_2", "style"),
+    ])
+    round_scores = iter([
+        _scorecard(1, issues=[_major("story_2", "style")]),  # story_1 fixed
+        _scorecard(1, issues=[]),                            # story_2 fixed too
+    ])
+    audit_calls: list[set] = []
+
+    async def fake_audit(plan_, cand, strat, *, only_ids=None, prior=None):
+        audit_calls.append(set(only_ids))
+        reviews = dict(prior or {})
+        for sid in only_ids:
+            reviews[sid] = object()
+        return reviews, True
+
+    async def fake_score(plan_, cand, gate_, strat, compliance_reviews=None):
+        return next(round_scores), True, None
+
+    pipe._audit_stories = fake_audit
+    pipe._score_validated = fake_score
+    pipe._with_compliance_issues = lambda s, r: s
+
+    base_gate = np.gate_compilation(plan, stories, _horror())
+    result = await pipe._salvage_single_patch(
+        plan, stories, patched, {"story_1", "story_2"}, base, base_gate,
+        _horror(), {},
+    )
+    assert result is not None
+    final_stories = result[0]
+    assert "Patched story_1." in final_stories[0].narration
+    assert "Patched story_2." in final_stories[1].narration
+    # Heaviest blocker re-judged first, then the second stacked on top.
+    assert audit_calls == [{"story_1"}, {"story_2"}]
+
+
+@pytest.mark.asyncio
+async def test_salvage_round_rejection_is_skipped_not_fatal():
+    """A rejected round must not kill the rescue: the next round tries alone
+    on the previous accepted base (here round 1 regresses, round 2 wins)."""
+    pipe = np.NarrativeUnitPipeline(object(), object(), object(), None)
+    plan = _plan()
+    stories = [_draft(i) for i in range(1, 4)]
+    patched = [
+        s.model_copy(update={"narration": s.narration + f" Patched {s.story_id}."})
+        for s in stories
+    ]
+    base = _scorecard(1, issues=[
+        _major("story_1", "contradiction"), _major("story_2", "style"),
+    ])
+    round_scores = iter([
+        _scorecard(1, issues=[  # round 1: WORSE (new major) -> rejected
+            _major("story_1", "contradiction"), _major("story_2", "style"),
+            _major("story_3", "contradiction"),
+        ]),
+        _scorecard(1, issues=[_major("story_1", "contradiction")]),  # round 2 wins
+    ])
+
+    async def fake_audit(plan_, cand, strat, *, only_ids=None, prior=None):
+        reviews = dict(prior or {})
+        for sid in only_ids:
+            reviews[sid] = object()
+        return reviews, True
+
+    async def fake_score(plan_, cand, gate_, strat, compliance_reviews=None):
+        return next(round_scores), True, None
+
+    pipe._audit_stories = fake_audit
+    pipe._score_validated = fake_score
+    pipe._with_compliance_issues = lambda s, r: s
+
+    base_gate = np.gate_compilation(plan, stories, _horror())
+    result = await pipe._salvage_single_patch(
+        plan, stories, patched, {"story_1", "story_2"}, base, base_gate,
+        _horror(), {},
+    )
+    assert result is not None
+    final_stories = result[0]
+    assert "Patched story_1." not in final_stories[0].narration  # rejected round
+    assert "Patched story_2." in final_stories[1].narration      # accepted round
+
+
 def test_plan_prompt_rations_the_no_record_aftermath():
     """Live 2026-07-20 (shuttle 0153): three empty record-searches under three
     different aftermath labels. The plan prompt now caps the device at one

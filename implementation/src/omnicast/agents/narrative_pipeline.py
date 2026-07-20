@@ -6185,13 +6185,18 @@ class NarrativeUnitPipeline:
         strategy: NamedChannelStrategy,
         compliance_reviews: dict[str, StoryComplianceReview],
     ):
-        """One bounded rescue when a multi-story repair wave is rejected whole.
+        """Bounded rescue when a multi-story repair wave is rejected whole.
 
-        Keeps only the patch for the story carrying the heaviest blocker
-        (critical > continuity major > style major > gate failures), re-audits
-        that one story and re-scores once. Returns (stories, gate, score,
-        reviews) on a monotonic win, else None. Never runs for single-story
-        waves — there is nothing to disentangle."""
+        Stacks patches back one story at a time, heaviest blocker first
+        (critical > continuity major > style major > gate failures), each round
+        re-auditing that one story and re-scoring once against the last
+        ACCEPTED state. Two rounds max: the original single-slot rescue saved
+        one good patch and threw the other away (live 2026-07-20 courier 0719:
+        a rejected wave held TWO clean patches; the discarded one's banned
+        phrase stood and the build died at 82/84). A rejected round is skipped,
+        not fatal — the next round tries on the previous accepted base.
+        Returns (stories, gate, score, reviews) after ≥1 monotonic win, else
+        None. Never runs for single-story waves — nothing to disentangle."""
         if len(changed_ids) < 2:
             return None
         self._record_call("repair_salvage")
@@ -6208,29 +6213,39 @@ class NarrativeUnitPipeline:
             weight += sum(10 for f in gate.failures if sid in f.story_ids)
             return weight
 
-        target = max(sorted(changed_ids), key=_weight)
+        ranked = sorted(changed_ids, key=lambda sid: (-_weight(sid), sid))[:2]
         patched = {item.story_id: item for item in candidate_list}
-        solo = [
-            patched[item.story_id] if item.story_id == target else item
-            for item in stories
-        ]
-        if not self._stories_changed(stories, solo):
+        accepted = list(stories)
+        accepted_gate, accepted_score = gate, score
+        accepted_reviews = compliance_reviews
+        won = False
+        for target in ranked:
+            trial = [
+                patched[item.story_id] if item.story_id == target else item
+                for item in accepted
+            ]
+            if not self._stories_changed(accepted, trial):
+                continue
+            trial_gate = gate_compilation(plan, trial, strategy)
+            trial_reviews, trial_valid = await self._audit_stories(
+                plan, trial, strategy, only_ids={target}, prior=accepted_reviews,
+            )
+            if not trial_valid:
+                continue
+            trial_score, score_valid, _ = await self._score_validated(
+                plan, trial, trial_gate, strategy, compliance_reviews=trial_reviews,
+            )
+            trial_score = self._with_compliance_issues(trial_score, trial_reviews)
+            if not score_valid or not self._repair_is_monotonic(
+                accepted_score, accepted_gate, trial_score, trial_gate
+            ):
+                continue
+            accepted, accepted_gate, accepted_score = trial, trial_gate, trial_score
+            accepted_reviews = trial_reviews
+            won = True
+        if not won:
             return None
-        solo_gate = gate_compilation(plan, solo, strategy)
-        solo_reviews, solo_valid = await self._audit_stories(
-            plan, solo, strategy, only_ids={target}, prior=compliance_reviews,
-        )
-        if not solo_valid:
-            return None
-        solo_score, score_valid, _ = await self._score_validated(
-            plan, solo, solo_gate, strategy, compliance_reviews=solo_reviews,
-        )
-        solo_score = self._with_compliance_issues(solo_score, solo_reviews)
-        if not score_valid or not self._repair_is_monotonic(
-            score, gate, solo_score, solo_gate
-        ):
-            return None
-        return solo, solo_gate, solo_score, solo_reviews
+        return accepted, accepted_gate, accepted_score, accepted_reviews
 
     @staticmethod
     def _stories_changed(before: list[StoryDraft], after: list[StoryDraft]) -> bool:
