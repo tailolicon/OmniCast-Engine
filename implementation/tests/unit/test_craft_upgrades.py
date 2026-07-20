@@ -619,6 +619,7 @@ def test_plan_prompt_names_the_ambiguous_threat_stock_list():
     assert "closing in sequence behind" in prompt
     assert "sealed floor" in prompt
     assert "faking car trouble" in prompt
+    assert "dead phone line that rings anyway" in prompt  # 2nd occurrence 20/07
     assert "concrete fresh mechanism" in prompt
 
 
