@@ -1769,7 +1769,141 @@ def _stylometric_texture_findings(
                 break
             coda_seen = (story.story_id, hit.strip())
 
+    # 6. Verbatim phrase reuse across stories — the GENERIC form of 1-5.
+    # Checks 1-5 each name ONE tic, every one added reactively after a live
+    # catch; the critic kept surfacing new instances the whitelist could not
+    # see (live 2026-07-20 front desk, 74/100: "hands loose at his sides"
+    # verbatim across two unrelated men, plus a shared decisive-pivot
+    # scaffold). Any rare five-word run shared by two narrators reads as one
+    # author whichever tic it happens to instantiate, so match the SHAPE
+    # instead of enumerating the instances. Domain nouns from the locked plans
+    # are exempt — three shuttle drivers must be allowed to say "the overnight
+    # shuttle van" — and two content words are required so shared function-word
+    # runs ("and I went back to") never fire.
+    failures.extend(_shared_phrase_failures(stories, plan_by_id))
+
     return failures, flags
+
+
+_PHRASE_NGRAM = 5
+
+# Content words the window must carry to count. Replayed over the channel's
+# 66-script corpus, a two-word floor flagged procedural idiom any two workers
+# would land on independently ("and put it in park", "the stairs two at a
+# time"); a three-word floor keeps only the DESCRIPTIVE phrases ("hands loose
+# at his sides") that two narrators cannot invent word-for-word, and fires on
+# none of the scripts that were actually released.
+_PHRASE_MIN_CONTENT = 3
+
+# Function words plus the handful of bare narrative verbs that carry no voice.
+_PHRASE_STOPWORDS = frozenset({
+    "a", "an", "the", "and", "or", "but", "so", "if", "than", "then", "that",
+    "this", "these", "those", "of", "to", "in", "on", "at", "by", "for", "with",
+    "from", "into", "out", "up", "down", "over", "back", "off", "about",
+    "i", "me", "my", "mine", "myself", "he", "him", "his", "she", "her", "hers",
+    "it", "its", "they", "them", "their", "we", "us", "our", "you", "your",
+    "is", "was", "were", "are", "be", "been", "am", "do", "did", "does", "done",
+    "have", "has", "had", "will", "would", "could", "can", "should", "not",
+    "no", "there", "here", "when", "what", "who", "which", "all", "one", "two",
+    "just", "like", "as", "got", "get", "went", "go", "said", "say", "know",
+    "s", "t", "re", "ve", "ll", "d", "m",
+})
+
+
+def _phrase_tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z']+", (text or "").lower())
+
+
+def _plan_domain_words(
+    plan_by_id: dict[str, NarrativeStoryPlan] | None,
+) -> frozenset[str]:
+    """Vocabulary the premises legitimately share — the topic, the workplace,
+    the narrator's trade. Two stories using it verbatim is the assignment, not
+    a shared habit."""
+    if not plan_by_id:
+        return frozenset()
+    words: set[str] = set()
+    for plan in plan_by_id.values():
+        for field in ("topic_promise", "setting", "narrator_profile"):
+            words.update(_phrase_tokens(getattr(plan, field, "") or ""))
+    return frozenset(words)
+
+
+def _maximal_shared_run(
+    tokens: list[str], start: int, owner_tokens: list[str],
+) -> tuple[int, list[str]]:
+    """Grow the matching window outward in both texts while the tokens agree.
+
+    Returns (start index of the run in `tokens`, the run)."""
+    n = _PHRASE_NGRAM
+    gram = tokens[start:start + n]
+    origin = next(
+        (o for o in range(len(owner_tokens) - n + 1)
+         if owner_tokens[o:o + n] == gram),
+        None,
+    )
+    if origin is None:  # pragma: no cover - owner always holds the gram
+        return start, gram
+    lo, hi = start, start + n
+    olo, ohi = origin, origin + n
+    while lo > 0 and olo > 0 and tokens[lo - 1] == owner_tokens[olo - 1]:
+        lo -= 1
+        olo -= 1
+    while hi < len(tokens) and ohi < len(owner_tokens) and tokens[hi] == owner_tokens[ohi]:
+        hi += 1
+        ohi += 1
+    return lo, tokens[lo:hi]
+
+
+def _shared_phrase_failures(
+    stories: list[StoryDraft],
+    plan_by_id: dict[str, NarrativeStoryPlan] | None = None,
+) -> list[GateFailure]:
+    """One failure per story that repeats an earlier story's rare phrase."""
+    domain = _plan_domain_words(plan_by_id)
+    failures: list[GateFailure] = []
+    seen: dict[tuple[str, ...], str] = {}  # ngram -> story that owns it first
+    story_tokens: dict[str, list[str]] = {}
+
+    for story in stories:
+        tokens = _phrase_tokens(story.narration)
+        story_tokens[story.story_id] = tokens
+        own: set[tuple[str, ...]] = set()
+        hits: list[tuple[str, str]] = []  # (quoted run, owner)
+        consumed = 0  # end of the last reported run, so one habit reports once
+        for start in range(len(tokens) - _PHRASE_NGRAM + 1):
+            gram = tuple(tokens[start:start + _PHRASE_NGRAM])
+            own.add(gram)
+            owner = seen.get(gram)
+            if owner is None or owner == story.story_id or start < consumed:
+                continue
+            content = {
+                tok for tok in gram
+                if tok not in _PHRASE_STOPWORDS and tok not in domain
+            }
+            if len(content) < _PHRASE_MIN_CONTENT:
+                continue
+            # Quote the WHOLE shared run, not the window that found it — a
+            # half-quoted phrase sent earlier repair waves at the wrong half of
+            # the sentence.
+            lo, run = _maximal_shared_run(tokens, start, story_tokens[owner])
+            consumed = lo + len(run)
+            hits.append((" ".join(run), owner))
+        if hits:
+            quoted = "; ".join(f"{run!r} (also in {owner})" for run, owner in hits)
+            failures.append(_failure(
+                "stylometric_shared_phrase",
+                f"{story.story_id} reuses {len(hits)} phrase(s) word-for-word "
+                f"from an earlier story: {quoted}. Two narrators sharing an "
+                "exact turn of phrase read as one author — rewrite EVERY "
+                "occurrence listed here in wording specific to THIS narrator's "
+                "vantage and trade, keeping each beat unchanged",
+                story.story_id,
+            ))
+        for gram in own:
+            seen.setdefault(gram, story.story_id)
+
+    return failures
 
 
 def _near_miss_minor_ids(
@@ -4157,6 +4291,12 @@ class NarrativeUnitPipeline:
             # story's voice_rules and burned a whole concept for it; one
             # contract-only retry naming the exact missing field is cheaper than a
             # replan and does not invent creative content to paper over it.
+            # Live 2026-07-20 06:38 (and 2026-07-19 21:19, 2026-07-20 03:50): the
+            # retry only listed REQUIRED FIELDS, so a continuity_ledger entry over
+            # 24 words was answered with "return the SAME plan" — the planner
+            # resent the identical over-long entry and burned both tries
+            # (planner=4/planner_schema_retry=4, zero writer calls). Length and
+            # format violations need naming too; plan_repair already learned this.
             for schema_try in range(2):
                 if schema_try:
                     self._record_call("planner_schema_retry")
@@ -4175,6 +4315,14 @@ class NarrativeUnitPipeline:
                     "aftermath_mechanism, threat_identity, topic_promise, "
                     "narrator_age_band, narrator_age_years, safety_obligation, "
                     "safety_omission_reason, continuity_ledger."
+                    "\nIf the validator named a LENGTH or FORMAT violation rather than a "
+                    "missing field, the fields are already all present — re-sending the "
+                    "same wording will fail again. Fix exactly what it named: a "
+                    "continuity_ledger entry over 24 words must be shortened to 24 words "
+                    "or fewer (including its prefix) without dropping the fact it "
+                    "carries; each entry must keep its exact required prefix, stay "
+                    "unique, and keep at least three fact words after the prefix. Cut "
+                    "adjectives, not facts."
                     if schema_error else ""
                 )
                 try:

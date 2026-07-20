@@ -1652,6 +1652,76 @@ async def test_a_schema_retry_that_completes_the_plan_saves_the_concept():
     assert result.content_locked is True
 
 
+def _plan_with_overlong_ledger_entry() -> dict:
+    """Live 2026-07-20: the planner emitted a hook_timeline entry over the 24-word
+    cap. Every field was present, so a retry that only lists required fields tells
+    it nothing it did not already satisfy."""
+    bad = _plan().model_dump(mode="json")
+    bad["stories"][1]["continuity_ledger"][0] = (
+        "hook_timeline: One overnight shift that began a little before eleven at "
+        "night and ran on without any real break at all until the parking lot "
+        "lights finally clicked off well before sunrise."
+    )
+    return bad
+
+
+@pytest.mark.asyncio
+async def test_the_schema_retry_names_a_ledger_length_violation_not_just_fields():
+    """A length violation answered with 'return the SAME plan' makes the planner
+    resend the identical over-long entry and burn both tries."""
+    bad = _plan_with_overlong_ledger_entry()
+
+    pipe = NarrativeUnitPipeline(
+        _FakeStructuredLLM(lambda _p, _s: bad),
+        _FakeStructuredLLM(lambda _p, _s: pytest.fail("writer must not be called")),
+        _FakeStructuredLLM(lambda _p, _s: _passing_score(), auto_plan_audit=False), None,
+    )
+    with pytest.raises(np.PlannerUnavailable) as excinfo:
+        await pipe.run(_brief(), annotate=False)
+
+    schema_rejections = [
+        item for item in excinfo.value.rejections if item.stage == "schema"
+    ]
+    assert schema_rejections, "a ledger-length reject is a schema reject"
+    assert "24 words" in schema_rejections[0].raw_evidence
+
+    retry_prompts = [c for c in pipe.planner_llm.calls if "CONTRACT RETRY" in c]
+    assert retry_prompts, "a length violation still earns its contract retry"
+    retry = retry_prompts[0]
+    # The retry must tell it the fields are already present and what to shorten,
+    # otherwise it resends the same wording verbatim.
+    assert "LENGTH" in retry
+    assert "24 words" in retry
+    assert "already all present" in retry
+
+
+@pytest.mark.asyncio
+async def test_a_shortened_ledger_entry_on_retry_saves_the_concept():
+    state = {"n": 0}
+    bad = _plan_with_overlong_ledger_entry()
+
+    def plan_handler(_prompt, _schema):
+        state["n"] += 1
+        return bad if state["n"] == 1 else _plan()
+
+    def judge(_prompt, schema):
+        if schema is PlanPlausibilityReview:
+            return PlanPlausibilityReview()
+        if schema is FinalCompilationReview:
+            return _approved_final_review()
+        return _passing_score()
+
+    result = await NarrativeUnitPipeline(
+        _FakeStructuredLLM(plan_handler),
+        _FakeStructuredLLM(_story_writer(_clean_stories())),
+        _FakeStructuredLLM(judge, auto_plan_audit=False), None,
+    ).run(_brief(), annotate=False)
+
+    assert result.call_counts["planner"] == 1
+    assert result.call_counts["planner_schema_retry"] == 1
+    assert result.content_locked is True
+
+
 # ---------------------------------------------------------------------------
 # 12. Plan-audit grounding and uncertainty calibration.
 #     The live audit produced four legitimate blockers and one overclaim.

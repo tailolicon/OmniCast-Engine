@@ -35,8 +35,13 @@ def _compilation(narrations: dict[str, str]):
 
 
 def _clean(seed: str, words: int = 720) -> str:
-    """Neutral narration with none of the flagged habits."""
-    body = " ".join(f"{seed}{n:02d} ordinary detail here and there" for n in range(words // 6))
+    """Neutral narration with none of the flagged habits.
+
+    The seed is woven through every filler unit (not just its head) so that no
+    five-word run repeats across two seeds — otherwise the filler itself is a
+    verbatim cross-story phrase and trips the shared-phrase check. Unit length
+    stays at six words so story/total word-count gates are unaffected."""
+    body = " ".join(f"{seed}{n:02d} ordinary {seed} detail here there" for n in range(words // 6))
     return f"I worked the {seed} route that week. {body}. We got through it."
 
 
@@ -475,3 +480,114 @@ def test_stylometric_failures_are_recoverable_by_the_repair_wave():
         assert f.story_ids, "a recoverable failure must name the story to repair"
     recovery_ids = np._story_recovery_ids(plan, report)
     assert "story_1" in recovery_ids
+
+
+# ---------------------------------------------------------------------------
+# Generic verbatim phrase reuse (live 2026-07-20 front desk, 74/100).
+# Checks above name ONE tic each and were all added reactively; the critic kept
+# finding new instances the whitelist could not see. This check matches the
+# SHAPE — any rare five-word run shared by two narrators.
+
+
+def test_verbatim_phrase_shared_across_stories_fails_the_later_one():
+    """'hands loose at his sides' described two unrelated men in one
+    compilation; no named-tic check could see it."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha")
+        + " He stood with his hands loose at his sides, watching the counter.",
+        "story_2": _clean("bravo")
+        + " He stepped back with his hands loose at his sides.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(plan, stories, _horror())
+    shared = [f for f in report.failures if f.code == "stylometric_shared_phrase"]
+    assert shared and shared[0].story_ids == ["story_2"]
+    assert "hands loose at his sides" in shared[0].message
+    assert "story_1" in shared[0].message
+
+
+def test_phrase_used_repeatedly_inside_one_story_is_that_narrators_own_habit():
+    plan, stories = _compilation({
+        "story_1": _clean("alpha")
+        + " His hands hung loose at his sides. Still loose at his sides, both of them.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_shared_function_word_run_is_not_a_shared_phrase():
+    """'and I went back to the' carries no voice — flagging it would deadlock
+    the repair wave on unfixable connective tissue."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " So I went back to the one I had.",
+        "story_2": _clean("bravo") + " So I went back to the one I had.",
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_shared_domain_vocabulary_from_the_locked_plans_is_exempt():
+    """Three narrators on one topic must be free to name the same workplace."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " " + _plan().stories[0].setting,
+        "story_2": _clean("bravo") + " " + _plan().stories[0].setting,
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_shared_phrase_failure_is_repairable_by_the_repair_wave():
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " The cooler seal clicked twice behind me.",
+        "story_2": _clean("bravo") + " The cooler seal clicked twice behind me.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(plan, stories, _horror())
+    shared = [f for f in report.failures if f.code == "stylometric_shared_phrase"]
+    assert shared
+    for f in shared:
+        assert f.code not in np._UNRECOVERABLE_GATE_CODES
+        assert f.code not in np._COMPILATION_LEVEL_GATE_CODES
+    assert "story_2" in np._story_recovery_ids(plan, report)
+
+
+def test_procedural_idiom_two_workers_share_independently_is_not_a_habit():
+    """Precision lever, measured by replaying the check over the channel's
+    66-script corpus: a shared five-word run carrying only two content words is
+    procedural idiom ('and put it in park'), not a voice tic. Flagging it spent
+    repair waves rewriting prose that read fine."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " I pulled in and put it in park.",
+        "story_2": _clean("bravo") + " I rolled up and put it in park.",
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_every_shared_phrase_is_quoted_not_just_the_first():
+    """One quoted phrase per story sent the repair wave back for a second pass
+    on the same story; a story that shares two phrases must list both."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha")
+        + " His hands hung loose at his sides. The porch light came on behind him.",
+        "story_2": _clean("bravo")
+        + " He stood with his hands hung loose at his sides."
+        + " Later the porch light came on for no reason.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(plan, stories, _horror())
+    shared = [f for f in report.failures if f.code == "stylometric_shared_phrase"]
+    assert shared and shared[0].story_ids == ["story_2"]
+    assert "hands hung loose at his sides" in shared[0].message
+    assert "porch light came on" in shared[0].message
+    assert "2 phrase(s)" in shared[0].message
+    assert "EVERY occurrence" in shared[0].message
