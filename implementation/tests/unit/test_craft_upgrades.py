@@ -564,6 +564,59 @@ async def test_hospital_pass_repairs_a_saved_candidate_to_lockable(monkeypatch):
     assert result["score"].total_score == 85
 
 
+@pytest.mark.asyncio
+async def test_originality_tiebreak_runs_only_when_it_alone_blocks_the_lock():
+    """External review 2026-07-20: the 6-vs-7 originality boundary is a
+    release decision measured with the noisiest instrument in the scorecard
+    (live: one topic oscillated 6↔7 across runs; the same text read 84 then
+    81). When originality ALONE blocks the lock, the challenger-tier judge
+    takes one anti-anchored second read that replaces the first — in either
+    direction. The floor never moves."""
+    plan = _plan()
+    stories = [_draft(i) for i in range(1, 4)]
+    strategy = _horror()
+    gate = np.GateReport()
+    calls = {"n": 0}
+
+    class FakeChallenger:
+        async def complete_structured(self, **_kw):
+            calls["n"] += 1
+            return object(), {"originality": 7, "justification": "fresh mechanism"}
+
+    pipe = np.NarrativeUnitPipeline(object(), object(), object(), None,
+                                    release_challenger_llm=FakeChallenger())
+    pipe._record_cost = lambda _r: None
+
+    # Sole blocker = originality 6 → tiebreak runs, verdict replaces the read.
+    blocked_only_by_o = _card(originality=6)
+    out = await pipe._originality_tiebreak(
+        plan, stories, gate, blocked_only_by_o, strategy)
+    assert calls["n"] == 1
+    assert out.originality == 7
+
+    # Originality already at floor → no call.
+    calls["n"] = 0
+    fine = _card()
+    out2 = await pipe._originality_tiebreak(plan, stories, gate, fine, strategy)
+    assert calls["n"] == 0 and out2.originality == fine.originality
+
+    # Another dimension also below floor → not a tiebreak case, no call.
+    double_blocked = _card(originality=6, distinct_authentic_voices=10)
+    out3 = await pipe._originality_tiebreak(
+        plan, stories, gate, double_blocked, strategy)
+    assert calls["n"] == 0 and out3.originality == 6
+
+    # The second read may also CONFIRM the block (verdict below floor stands).
+    class HarshChallenger:
+        async def complete_structured(self, **_kw):
+            return object(), {"originality": 6, "justification": "still stock"}
+
+    pipe.release_challenger_llm = HarshChallenger()
+    out4 = await pipe._originality_tiebreak(
+        plan, stories, gate, blocked_only_by_o, strategy)
+    assert out4.originality == 6
+
+
 def test_finishing_wave_rejects_structured_criticals():
     """External review 2026-07-20 constructed a score-84 card whose critical
     lived as a structured StoryIssue (not the free-text list) and the guard
