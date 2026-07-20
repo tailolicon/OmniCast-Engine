@@ -448,6 +448,46 @@ def _major(story_id: str, kind: str) -> "np.StoryIssue":
     )
 
 
+def test_finishing_wave_only_for_release_range_with_quoted_blockers():
+    """Live 2026-07-20 (courier 1726): 84/84, originality 8, every floor
+    passed, two quoted majors on one story — the two-wave budget ran out and
+    a release-range candidate was discarded with its fix instructions unread.
+    The finishing wave buys exactly that compilation one more shot."""
+    gate = np.GateReport()
+    strategy = _horror()  # approval_score 84
+
+    at_door = _scorecard(0, issues=[_major("story_3", "contradiction"),
+                                    _major("story_3", "style")])
+    assert at_door.total_score == 84
+    assert np._finishing_wave_allowed(at_door, gate, strategy, {"story_3"})
+
+    # Two points under the floor still qualifies; three does not.
+    near = _scorecard(2, issues=[_major("story_3", "contradiction")])
+    assert np._finishing_wave_allowed(near, gate, strategy, {"story_3"})
+    far = _scorecard(4, issues=[_major("story_3", "contradiction")])
+    assert not np._finishing_wave_allowed(far, gate, strategy, {"story_3"})
+
+    # An unquoted blocker gives the patcher nothing to grab.
+    vague = _major("story_3", "contradiction").model_copy(
+        update={"evidence_quote": "", "anchor_quote": ""})
+    assert not np._finishing_wave_allowed(
+        _scorecard(0, issues=[vague]), gate, strategy, {"story_3"})
+
+    # Spread across three stories is a weak draft, not a finishing case.
+    spread = _scorecard(0, issues=[
+        _major("story_1", "style"), _major("story_2", "style"),
+        _major("story_3", "style"),
+    ])
+    assert not np._finishing_wave_allowed(
+        spread, gate, strategy, {"story_1", "story_2", "story_3"})
+
+    # A failing gate or a critical always stops at two waves.
+    bad_gate = np.GateReport(failures=[np._failure("x", "m", "story_1")])
+    assert not np._finishing_wave_allowed(at_door, bad_gate, strategy, {"story_3"})
+    with_critical = at_door.model_copy(update={"critical_issues": ["broken"]})
+    assert not np._finishing_wave_allowed(with_critical, gate, strategy, {"story_3"})
+
+
 @pytest.mark.asyncio
 async def test_salvage_stacks_both_good_patches_when_wave_is_rejected():
     """Live 2026-07-20 (courier 0719, 82 vs floor 84): a rejected wave held

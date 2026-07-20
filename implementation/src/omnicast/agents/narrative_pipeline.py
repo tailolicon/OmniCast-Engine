@@ -1925,6 +1925,39 @@ def _shared_phrase_failures(
     return failures
 
 
+def _finishing_wave_allowed(
+    score: NarrativeScorecard,
+    gate: GateReport,
+    strategy: NamedChannelStrategy,
+    failing_ids: set[str],
+) -> bool:
+    """Whether a compilation has earned the one FINISHING repair wave.
+
+    The wave budget (2) protected against debate loops, but it also discarded
+    candidates standing at the release door: courier 1726 hit 84/84 with every
+    dimension floor passed and exactly two quoted majors on one story, and the
+    run ended needs_edit with the fix instructions sitting unread in the
+    scorecard. A third wave is allowed only when the compilation is already in
+    release range (>= floor - 2), gates pass, nothing is critical, at most two
+    stories still carry blockers, and every remaining blocker is quoted — the
+    locally-repairable kind. Everything else still stops at two waves."""
+    if not gate.passed or score.critical_issues:
+        return False
+    if score.total_score < strategy.approval_score - 2:
+        return False
+    if not failing_ids or len(failing_ids) > 2:
+        return False
+    remaining = [
+        issue for issue in score.story_issues
+        if issue.story_id in failing_ids
+        and issue.severity in {"critical", "major"}
+    ]
+    return bool(remaining) and all(
+        (issue.evidence_quote or issue.anchor_quote).strip()
+        for issue in remaining
+    )
+
+
 def _near_miss_minor_ids(
     score: NarrativeScorecard,
     gate: GateReport,
@@ -4639,7 +4672,7 @@ class NarrativeUnitPipeline:
         repair_waves = 0
         patch_decisions: list[PatchDecision] = []
         expected_ids = {item.story_id for item in plan.stories}
-        while critic_valid and compliance_valid and repair_waves < 2:
+        while critic_valid and compliance_valid and repair_waves < 3:
             failing_ids = {
                 sid for failure in gate.failures for sid in failure.story_ids
                 if sid in expected_ids
@@ -4662,6 +4695,17 @@ class NarrativeUnitPipeline:
                 or score.total_score < strategy.approval_score
                 or score.critical_issues
                 or len(failing_ids) > 3
+            ):
+                break
+            # The third wave is a FINISHING wave, gated harder still: only a
+            # compilation already inside release range whose remaining blockers
+            # are few and quoted may buy it. Live 2026-07-20 (courier 1726):
+            # 84 total, originality 8, every floor passed, TWO quoted majors on
+            # one story — the wave budget ran out and a release-range candidate
+            # was discarded; regenerating from scratch costs roughly six times
+            # what one more bounded wave does.
+            if repair_waves == 2 and not _finishing_wave_allowed(
+                score, gate, strategy, failing_ids
             ):
                 break
             candidate_list, decisions = await self._repair_wave(
