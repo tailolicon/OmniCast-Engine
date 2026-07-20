@@ -2730,6 +2730,15 @@ records check that comes back empty ("nothing on file", "no one matched the name
 searches under three different aftermath labels are one device worn three ways. Vary
 what the aftermath YIELDS: a partial answer that explains nothing, a wrong explanation
 others accept, an object that should not exist, or no check at all.
+AMBIGUOUS-THREAT STOCK LIST — the audit rejects these on sight unless the plan names
+a concrete fresh mechanism in one clause (ten recent plans died here; do not spend an
+attempt discovering it again): doors/exits closing in sequence behind the narrator;
+lights failing or extinguishing just ahead of or behind them; an elevator travelling
+on its own to a sealed floor; knocking/tapping/sound that stops exactly when observed
+or when they disengage; the environment "performing" the narrator's own presence back
+at them (mirrored footsteps, echoed breathing); a stranger faking car trouble as a
+lure. An ambiguous threat is scarier when something concrete is WRONG about a normal
+thing than when the building performs a haunting.
 Vary the recognition point across the three stories — one narrator may read the danger
 early, another late, another only in hindsight. Where a narrator has a trade or role,
 write that story's voice_rules to include 2-3 role-specific ways of seeing; in at least

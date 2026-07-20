@@ -554,6 +554,20 @@ def test_plan_prompt_rations_the_no_record_aftermath():
     assert "one device worn three ways" in prompt
 
 
+def test_plan_prompt_names_the_ambiguous_threat_stock_list():
+    """Ten plan-audit kills across 2026-07-19/20 were the same handful of
+    ambiguous-threat stock beats rediscovered one expensive attempt at a time
+    (doors closing in sequence, lights out ahead, phantom elevator, sound that
+    stops when observed, environment performing the narrator back). The known
+    kill-list is now named in the plan prompt."""
+    prompt = np._plan_prompt(_brief(), 3, 2250, None, "", _horror())
+    assert "AMBIGUOUS-THREAT STOCK LIST" in prompt
+    assert "closing in sequence behind" in prompt
+    assert "sealed floor" in prompt
+    assert "faking car trouble" in prompt
+    assert "concrete fresh mechanism" in prompt
+
+
 def test_escape_and_ending_must_not_share_an_event():
     """Live 2026-07-20 (self-storage 0232, 6th unauditable-beats case): the
     plan put the SAME moment in escape_action ('flags down the deputy as the
