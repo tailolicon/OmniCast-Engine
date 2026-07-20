@@ -580,6 +580,12 @@ def test_ritual_coda_slot_is_assigned_to_the_first_story_only():
     assert "RESERVED for the first story" not in p1
     assert "RESERVED for the first story" in p2
     assert "do NOT close on a ritual or habit change" in p2
+    # Live 2026-07-20 (shuttle 0754): story_2 followed the advice with an
+    # unanswered detail phrased "I still don't know..." — which the coda-family
+    # gate rightly counts as the same closing rhythm. The slot rule must ban
+    # the OPENER, not just the ritual.
+    assert 'do not OPEN your final sentence' in p2
+    assert "I still" in p2
 
 
 def test_escape_clauses_must_be_timestampable_events():

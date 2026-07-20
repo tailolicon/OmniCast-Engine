@@ -3022,9 +3022,12 @@ interpretation, and lessons — never the locked safety response.
 {'''CLOSING MOVE: the changed-ritual coda ("I still ...", "Now I always ...", "Ever
 since, I ...") is RESERVED for the first story in the lineup — you are not writing the
 first story, so do NOT close on a ritual or habit change. Close on a concrete image,
-an unanswered detail, or a flat report instead. Two ritual codas in one compilation
-read as one author and block release; each writer only sees its own story, so the slot
-is assigned here.
+an unanswered detail, or a flat report instead — and do not OPEN your final sentence
+with "I still" in ANY sense: "I still don't know what it was" is an unanswered detail,
+but it shares the first story's closing rhythm and reads as one author (state the
+unknown without that opener: "Nobody ever told me what it was"). Two same-rhythm codas
+in one compilation block release; each writer only sees its own story, so the slot is
+assigned here.
 ''' if not plan.story_id.endswith("_1") else ''}Do not print beat labels, a checklist, self-review, or compliance JSON.
 
 HUMAN-RESPONSE PLAUSIBILITY (a release property, not a style choice): once the narrator
