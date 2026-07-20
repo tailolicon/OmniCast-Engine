@@ -503,8 +503,13 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             _avoid_kp = (_avoid_kp + "\n" if _avoid_kp else "") + (
                 "Recent videos already used these threat/escape archetypes — vary from "
                 f"them, do not repeat the same shape: {', '.join(_aa)}.")
-    except Exception:
-        pass
+    except Exception as _xv_exc:  # noqa: BLE001
+        # Fail-open is deliberate (a broken history file must not block a run)
+        # but SILENT fail-open is not: without this line every video after a
+        # corrupt fingerprint store would quietly lose all cross-video
+        # anti-repetition (external review 2026-07-20 flagged the bare pass).
+        logger.warning("cross-video freshness unavailable; generating without it",
+                       channel=channel_id, error=str(_xv_exc)[:200])
 
     brief = TopicBrief(
         title=topic,

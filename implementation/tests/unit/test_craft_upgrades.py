@@ -448,6 +448,78 @@ def _major(story_id: str, kind: str) -> "np.StoryIssue":
     )
 
 
+def _card(**over):
+    """Scorecard with every dimension above its floor; total 85 unless overridden."""
+    base = dict(
+        continuity_believability=23, distinct_authentic_voices=16,
+        dread_escalation=17, plausible_response=9, structural_variety=8,
+        originality=8, ending_discipline=4,
+    )
+    base.update({k: v for k, v in over.items() if not k.startswith("_")})
+    return np.NarrativeScorecard(
+        **base,
+        critical_issues=list(over.get("_critical", [])),
+        story_issues=list(over.get("_issues", [])),
+    )
+
+
+def test_repair_acceptance_has_a_judge_noise_band():
+    """External review 2026-07-20 (two reviewers converged): a patch that
+    removed a banned phrase AND resolved its major was rolled back because
+    originality read 8 on one judge pass and 7 on the next. A one-point drop
+    that stays above the floor is instrument noise, not a regression."""
+    strategy = _horror()
+    gate_fail = np.GateReport(failures=[np._failure("banned", "msg", "story_1")])
+    gate_ok = np.GateReport()
+    before = _card(_issues=[_major("story_1", "style")])
+
+    # Gate + major cleared; originality dips one point but stays above floor.
+    after = _card(originality=7)
+    assert np.NarrativeUnitPipeline._repair_is_monotonic(
+        before, gate_fail, after, gate_ok, strategy) is True
+
+    # A two-point drop (and a dip below the originality floor) is a regression.
+    after_deep = _card(originality=6)
+    assert np.NarrativeUnitPipeline._repair_is_monotonic(
+        before, gate_fail, after_deep, gate_ok, strategy) is False
+
+    # Judge noise may not buy progress: same blockers, higher total = no wave win.
+    noisy = _card(dread_escalation=19, _issues=[_major("story_1", "style")])
+    assert np.NarrativeUnitPipeline._repair_is_monotonic(
+        before, gate_fail, noisy, gate_fail, strategy) is False
+
+    # New criticals are always a regression — in either representation.
+    crit = _card(_issues=[np.StoryIssue(
+        story_id="story_1", severity="critical", issue_kind="contradiction",
+        problem="x", repair_instruction="y", evidence_quote="q")])
+    assert np.NarrativeUnitPipeline._repair_is_monotonic(
+        before, gate_fail, crit, gate_ok, strategy) is False
+
+    # Near-miss path (nothing blocked): progress is a higher total.
+    clean_before = _card(structural_variety=7)   # 84
+    clean_after = _card()                        # 85
+    assert np.NarrativeUnitPipeline._repair_is_monotonic(
+        clean_before, gate_ok, clean_after, gate_ok, strategy) is True
+    assert np.NarrativeUnitPipeline._repair_is_monotonic(
+        clean_before, gate_ok, clean_before, gate_ok, strategy) is False
+
+
+def test_finishing_wave_rejects_structured_criticals():
+    """External review 2026-07-20 constructed a score-84 card whose critical
+    lived as a structured StoryIssue (not the free-text list) and the guard
+    returned True. Criticals in either shape now refuse the finishing wave."""
+    strategy = _horror()
+    crit_story = _scorecard(0, issues=[
+        np.StoryIssue(
+            story_id="story_3", severity="critical", issue_kind="contradiction",
+            problem="x", repair_instruction="y", evidence_quote="q"),
+        _major("story_3", "style"),
+    ])
+    assert crit_story.total_score == 84
+    assert not np._finishing_wave_allowed(
+        crit_story, np.GateReport(), strategy, {"story_3"})
+
+
 def test_finishing_wave_only_for_release_range_with_quoted_blockers():
     """Live 2026-07-20 (courier 1726): 84/84, originality 8, every floor
     passed, two quoted majors on one story — the two-wave budget ran out and

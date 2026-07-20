@@ -101,8 +101,14 @@ def record(channel_id: str, fp: dict, store: Path = _STORE) -> None:
     try:
         store.parent.mkdir(parents=True, exist_ok=True)
         store.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        # Deliberately fail-open (a full disk must not kill a finished script)
+        # but never silently: an unrecorded fingerprint means every later video
+        # loses anti-repetition against this one (external review 2026-07-20).
+        import logging
+        logging.getLogger(__name__).warning(
+            "cross-video fingerprint NOT recorded for %s: %s", channel_id, exc,
+        )
 
 
 def recent_avoid(channel_id: str, store: Path = _STORE) -> tuple[list[str], list[str]]:

@@ -2,7 +2,9 @@
 
 > Mục đích tài liệu: đưa cho các AI agent / reviewer độc lập đánh giá thiết kế.
 > Tự đứng độc lập — không cần đọc code hay context nào khác.
-> Trạng thái: 2026-07-20, sau ~50 run live + 20+ vòng autopsy. Code: `implementation/src/omnicast/agents/narrative_pipeline.py` (~6.500 dòng) + `pipeline/steps.py` (wiring) + `config/narrative_quality.py` (profile). Test suite: 1425 pass.
+> Trạng thái: 2026-07-20 (rev 2 — sau vòng external review đầu tiên), ~50 run live + 20+ vòng autopsy. Code: `implementation/src/omnicast/agents/narrative_pipeline.py` (~6.500 dòng) + `pipeline/steps.py` (wiring) + `config/narrative_quality.py` (profile). Unit suite: 1427 pass (2 integration suite cần testcontainers, không chạy trong env này).
+>
+> **Changelog rev 2 (phản hồi review):** (1) vá bug `_finishing_wave_allowed` lọt structured critical (reviewer tái tạo được); (2) thay monotonic tuyệt-đối bằng acceptance thứ-tự-ưu-tiên có noise band ±1 + đòi tiến bộ đúng blocker được giao (test pin hành vi cũ đã được lật có chủ đích); (3) cross-video freshness hết fail-open im lặng (vẫn fail-open có chủ đích, nhưng log to); (4) sửa các claim quá đà bên dưới.
 
 ## 0. Bài toán
 
@@ -47,7 +49,7 @@ Lý do typed: diversity check trên prose bị lách ("gã im lặng chặn đư
 - `escape_action`: chuỗi TRÌNH DIỄN 2-3 sự kiện bấm-giờ-được, đúng thứ tự; trạng thái liên tục ("giữ bình tĩnh") bị cấm nằm trong chuỗi; escape và ending KHÔNG được chia sẻ cùng một khoảnh khắc (một span văn không thể phục vụ 2 beat).
 - `continuity_ledger` (5 entry, prefix cố định, ≤24 từ): toạ độ bất biến — địa điểm, thời điểm, thứ tự, TRẠNG THÁI ĐẠO CỤ, AI-ĐI-VỚI-AI. Mọi prop mà escape/ending phụ thuộc PHẢI được trồng ở đây hoặc setup.
 - `voice_seed`: planner viết mẫu 2-3 câu ĐÚNG giọng narrator; writer CONTINUE giọng đó (không phải adopt tính từ). Seed nhiễm (số liệu/banned phrase) bị salvage field-level (blank) thay vì giết cả plan.
-- `distinguishing_turn` (4-25 từ, ba truyện ba turn khác nhau): nêu đích danh điều làm premise này KHÔNG phải bản stock. Writer nhận nó như lời hứa; audit kiểm lời hứa có được xây thật trong các field khoá không. (Gate mới nhất — A/B đo được originality 6→8.)
+- `distinguishing_turn` (4-25 từ, ba truyện ba turn khác nhau): nêu đích danh điều làm premise này KHÔNG phải bản stock. Writer nhận nó như lời hứa; audit kiểm lời hứa có được xây thật trong các field khoá không. (Bằng chứng hiệu quả: **before/after quan sát, n=2** — originality 6.21 trung bình 14 run trước → 8 và 7 ở 2 run sau; CHƯA phải A/B có kiểm soát — planner/premise/lượt chấm đều đổi cùng lúc.)
 - `evidence_allowance` (none/witness/physical...): "none" = KHÔNG GÌ xác nhận sau đó — kể cả lời hứa điều tra ("someone would look into it" = corroboration-by-authority). Mỗi compilation ≥1 truyện evidence-free.
 - `safety_obligation` (authorities/trusted_adult/concrete_reason/not_applicable): human threat lặp qua nhiều đêm cấm not_applicable; đường khai nào trang phải GIAO đường đó, check ở aftermath (3 đoạn cuối); người-có-tư-cách được định nghĩa regex (parent/boss/shift lead/spouse-có-possessive...).
 - Narrator mặc định NGƯỜI LỚN; minor chỉ khi tuổi LÀ premise kèm trọn reporting chain.
@@ -97,7 +99,7 @@ Story prompt khai báo TRƯỚC toàn bộ texture budget (đo được: recover
 ## 7. Kết quả đo được
 
 - Điểm theo thời gian: 74 → 77 → 80 → 83 → 84/85 (hiện dao động 79-85; sàn 84).
-- Released tự động: diner 89/100 (production_ready, lineup-test 3 giọng pass). Pre-campaign: newspapers 93 (sau bị audit tay phát hiện là false-positive của hệ chấm CŨ — chính sự cố này đẻ ra toàn bộ tầng release-integrity).
+- Released tự động: diner 89/100 (production_ready, lineup-test 3 giọng pass) — **lưu ý trung thực: released dưới policy CŨ; replay bằng gate hiện tại fail 3 hard failure (body-before-mind, the-way ×2, one-word beat ×3), tức CHƯA có artifact nào production_ready dưới policy hiện hành** — policy đã siết nhanh hơn tốc độ release. Pre-campaign: newspapers 93 (audit tay phát hiện là false-positive của hệ chấm CŨ — sự cố này đẻ ra toàn bộ tầng release-integrity).
 - Ứng viên trong tầm: mall 84 (content_valid — nghỉ hưu topic ở đỉnh), hotel 85 (chết vì bug contract đã vá), courier 84/originality 8 (2 major writer-drift).
 - Chi phí notional/run: $2.5-4.5 (28-55 call); trước cost-routing $6.78.
 - Mỗi lớp lỗi live → 1 luật vĩnh viễn + test: suite 1363 → 1425 trong 48h; 5 autopsy gần nhất không còn lớp hệ mới.

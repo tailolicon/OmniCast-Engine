@@ -1943,6 +1943,11 @@ def _finishing_wave_allowed(
     locally-repairable kind. Everything else still stops at two waves."""
     if not gate.passed or score.critical_issues:
         return False
+    # "Nothing critical" means STRUCTURED criticals too — external review
+    # 2026-07-20 constructed a score-84 card with a quoted critical story
+    # issue and this guard returned True (spec said it must not).
+    if any(issue.severity == "critical" for issue in score.story_issues):
+        return False
     if score.total_score < strategy.approval_score - 2:
         return False
     if not failing_ids or len(failing_ids) > 2:
@@ -4734,7 +4739,7 @@ class NarrativeUnitPipeline:
                 candidate_score, candidate_reviews
             )
             if not candidate_valid or not self._repair_is_monotonic(
-                score, gate, candidate_score, candidate_gate
+                score, gate, candidate_score, candidate_gate, strategy
             ):
                 # All-or-nothing acceptance let one bad patch drag a correct
                 # one down with it (live: a geography fix the blind selector
@@ -4813,7 +4818,7 @@ class NarrativeUnitPipeline:
                 # wave was commissioned to fix: resolving them is progress even when
                 # the fresh critic returns an identical total score.
                 if candidate_compliance_valid and candidate_valid and self._repair_is_monotonic(
-                    final_score, gate, candidate_score, candidate_gate
+                    final_score, gate, candidate_score, candidate_gate, strategy
                 ):
                     stories, gate, score, critic_valid = (
                         candidate_list, candidate_gate, candidate_score, candidate_valid
@@ -6576,7 +6581,7 @@ class NarrativeUnitPipeline:
             )
             trial_score = self._with_compliance_issues(trial_score, trial_reviews)
             if not score_valid or not self._repair_is_monotonic(
-                accepted_score, accepted_gate, trial_score, trial_gate
+                accepted_score, accepted_gate, trial_score, trial_gate, strategy
             ):
                 continue
             accepted, accepted_gate, accepted_score = trial, trial_gate, trial_score
@@ -6594,28 +6599,65 @@ class NarrativeUnitPipeline:
     def _repair_is_monotonic(
         current: NarrativeScorecard, current_gate: GateReport,
         candidate: NarrativeScorecard, candidate_gate: GateReport,
+        strategy: NamedChannelStrategy,
     ) -> bool:
-        dimensions = (
-            "continuity_believability", "distinct_authentic_voices", "dread_escalation",
-            "plausible_response", "structural_variety", "originality", "ending_discipline",
-        )
-        no_dimension_regression = all(
-            getattr(candidate, field) >= getattr(current, field) for field in dimensions
-        )
-        current_blockers = len(current.critical_issues) + sum(
-            item.severity in {"critical", "major"} for item in current.story_issues
-        )
-        candidate_blockers = len(candidate.critical_issues) + sum(
-            item.severity in {"critical", "major"} for item in candidate.story_issues
-        )
-        no_regression = (
-            no_dimension_regression
-            and candidate_blockers <= current_blockers
-            and len(candidate_gate.failures) <= len(current_gate.failures)
-        )
-        progress = (
-            candidate.total_score > current.total_score
-            or candidate_blockers < current_blockers
-            or len(candidate_gate.failures) < len(current_gate.failures)
-        )
-        return no_regression and progress
+        """Priority-ordered repair acceptance.
+
+        External review 2026-07-20 (two independent reviewers converged):
+        comparing raw per-dimension scores between two independent judge
+        passes is stricter than the instrument's precision — a patch that
+        removed a banned phrase AND resolved its major was rolled back because
+        originality read 8 on one pass and 7 on the next. And counting a
+        higher total as "progress" let judge noise buy repair waves that never
+        touched the blocker the wave was sent to fix. Rules, in order:
+
+        1. Nothing NEW appears: gate failures, criticals, and majors may not
+           increase (criticals counted in BOTH shapes — free-text and
+           structured story issues).
+        2. Real progress on what the wave was sent to fix: gate failures or
+           critical+major blockers strictly decrease. Only when nothing was
+           blocked at all (the near-miss minor wave) does a higher total count
+           as progress instead.
+        3. Dimension floors hold, with a one-point judge-noise band: a
+           dimension at/above its floor may not dip below it, one already
+           below may not sink further, and none may drop more than 1 point.
+        4. The total may drift within the same band (>= current - 1)."""
+        cur_gates = len(current_gate.failures)
+        cand_gates = len(candidate_gate.failures)
+        if cand_gates > cur_gates:
+            return False
+
+        def _criticals(score: NarrativeScorecard) -> int:
+            return len(score.critical_issues) + sum(
+                item.severity == "critical" for item in score.story_issues
+            )
+
+        def _majors(score: NarrativeScorecard) -> int:
+            return sum(item.severity == "major" for item in score.story_issues)
+
+        cur_crit, cand_crit = _criticals(current), _criticals(candidate)
+        cur_major, cand_major = _majors(current), _majors(candidate)
+        if cand_crit > cur_crit or cand_major > cur_major:
+            return False
+
+        if cur_gates + cur_crit + cur_major:
+            progress = (
+                cand_gates < cur_gates
+                or (cand_crit + cand_major) < (cur_crit + cur_major)
+            )
+        else:
+            progress = candidate.total_score > current.total_score
+        if not progress:
+            return False
+
+        for dim_field, min_field in _RELEASE_DIMENSION_FLOORS:
+            cur_value = getattr(current, dim_field)
+            cand_value = getattr(candidate, dim_field)
+            floor = getattr(strategy, min_field)
+            if cand_value < cur_value - 1:
+                return False
+            if cur_value >= floor and cand_value < floor:
+                return False
+            if cur_value < floor and cand_value < cur_value:
+                return False
+        return candidate.total_score >= current.total_score - 1
