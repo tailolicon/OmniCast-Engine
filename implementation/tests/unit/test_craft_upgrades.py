@@ -554,6 +554,60 @@ def test_plan_prompt_rations_the_no_record_aftermath():
     assert "one device worn three ways" in prompt
 
 
+@pytest.mark.asyncio
+async def test_honest_sub_floor_originality_is_not_a_contract_violation():
+    """Live 2026-07-20 (hotel 85, mall 84): the critic held originality at 6
+    through the grounding re-score — with its reasoning written in the
+    editorial summary — and was branded contract-invalid, which switched off
+    the entire repair machinery for three repairable compliance majors.
+    Originality is holistic; it cannot be grounded in a per-story quote.
+    The floor still blocks release; honesty no longer voids the contract."""
+    pipe = np.NarrativeUnitPipeline(object(), object(), object(), None)
+    plan = _plan()
+    stories = [_draft(i) for i in range(1, 4)]
+    gate = np.gate_compilation(plan, stories, _horror())
+
+    sub_floor_originality = np.NarrativeScorecard(
+        continuity_believability=23, distinct_authentic_voices=16,
+        dread_escalation=17, plausible_response=9, structural_variety=9,
+        originality=6, ending_discipline=5,
+        editorial_summary="competent but familiar devices",
+    )
+
+    calls = {"n": 0}
+
+    async def fake_score(plan_, stories_, gate_, strategy_, retry=""):
+        calls["n"] += 1
+        assert retry == "", "sub-floor originality must not trigger a grounding retry"
+        return sub_floor_originality
+
+    pipe._score = fake_score
+    score, valid, errors = await pipe._score_validated(
+        plan, stories, gate, _horror(),
+    )
+    assert valid is True
+    assert errors == []
+    assert calls["n"] == 1  # accepted first pass, no retry call burned
+
+    # A GROUNDABLE dimension below floor with no issues still triggers the
+    # grounding retry (one extra critic call demanding evidence or consistency).
+    sub_floor_continuity = sub_floor_originality.model_copy(update={
+        "continuity_believability": 20, "originality": 8,
+    })
+    retries = {"n": 0, "saw_floor_error": False}
+
+    async def fake_score2(plan_, stories_, gate_, strategy_, retry=""):
+        retries["n"] += 1
+        if "below the release floor" in retry:
+            retries["saw_floor_error"] = True
+        return sub_floor_continuity
+
+    pipe._score = fake_score2
+    await pipe._score_validated(plan, stories, gate, _horror())
+    assert retries["n"] == 2
+    assert retries["saw_floor_error"] is True
+
+
 def test_plan_prompt_names_the_ambiguous_threat_stock_list():
     """Ten plan-audit kills across 2026-07-19/20 were the same handful of
     ambiguous-threat stock beats rediscovered one expensive attempt at a time

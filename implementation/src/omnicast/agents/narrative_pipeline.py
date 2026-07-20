@@ -5930,6 +5930,20 @@ class NarrativeUnitPipeline:
                 )
                 if not has_blockers:
                     for dim_field, min_field in _RELEASE_DIMENSION_FLOORS:
+                        # Originality is a HOLISTIC compilation property — "this
+                        # is competent but familiar" cannot be grounded in a
+                        # per-story issue quote the way a continuity deduction
+                        # can. Demanding one forced the critic to inflate, to
+                        # invent a fake major, or to hold an honest 6 and be
+                        # branded contract-invalid — which switched OFF the
+                        # whole repair machinery for everything else (live
+                        # 2026-07-20: an 85/100 with three repairable
+                        # compliance majors got zero repair calls; mall's 84
+                        # died identically). The originality FLOOR still blocks
+                        # release in content_can_lock; it just is not a
+                        # contract violation to score it honestly.
+                        if dim_field == "originality":
+                            continue
                         value = getattr(score, dim_field)
                         floor = getattr(strategy, min_field)
                         if value < floor:
