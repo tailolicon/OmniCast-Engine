@@ -177,6 +177,32 @@ def test_no_record_aftermath_device_is_rationed_across_stories():
     assert tic[0].story_ids == ["story_2"]
 
 
+def test_heard_before_saw_scaffold_is_rationed_across_stories():
+    """Live 2026-07-20 ×2 (shuttle 1850, courier hospital re-judge): the
+    required ears-before-eyes beat converges all three writers on the literal
+    'heard X before I saw Y' construction. The beat stays required; the
+    wording is rationed to one narrator."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " I heard the cart before I saw him at all.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    hits = [f for f in gate_compilation(*once, _horror()).failures
+            if f.code == "stylometric_rationed_tic" and "scaffold" in f.message]
+    assert not hits
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " I heard the cart before I saw him at all.",
+        "story_2": _clean("bravo") + " I heard the gate chain before I ever saw the truck.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(*twice, _horror())
+    tic = [f for f in report.failures
+           if f.code == "stylometric_rationed_tic" and "scaffold" in f.message]
+    assert tic, "the shared heard-before-saw scaffold must be rationed"
+    assert tic[0].story_ids == ["story_2"]
+
+
 def test_composure_claim_is_rationed_across_stories():
     """Live 2026-07-19 mall attempt 2 (critic minor): two narrators asserted
     composure with the same stock 'I don't spook/scare' device at their most

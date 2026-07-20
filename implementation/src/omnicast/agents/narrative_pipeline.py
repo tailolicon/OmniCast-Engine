@@ -1520,6 +1520,15 @@ _RATIONED_TICS = (
     ("'I don't spook/scare' composure claim", re.compile(
         r"\bI\s+(?:don'?t|do\s+not|never)\s+(?:spook|scare|rattle)\b", re.I,
     )),
+    # The ears-before-eyes SCAFFOLD: the prompt requires every story to let
+    # sound precede sight, and without variation guidance all three writers
+    # converge on the literal "heard X before I saw Y" construction (live
+    # 2026-07-20 ×2: shuttle 1850 critic major, courier hospital re-judge
+    # found it in all three stories). The BEAT stays required; the WORDING is
+    # rationed to one narrator.
+    ("'heard it before I saw it' scaffold", re.compile(
+        r"\bheard\b[^.!?\n]{0,40}\bbefore\s+I\s+(?:ever\s+)?saw\b", re.I,
+    )),
     # The no-record aftermath device: an authority/records check that comes
     # back empty. Live 2026-07-20 (shuttle 0153): ALL THREE stories closed on
     # it under three different aftermath labels — the axis cannot see a shared
@@ -3286,7 +3295,11 @@ rewrite): at most TWO one-word beat sentences ("Quiet." "Nothing."); at most ONE
 reversal; at most TWO physical fear reactions, never stock ("heart pounded", "blood ran
 cold", "stomach dropped", "little did I know" are banned outright — name the feeling
 plainly in this narrator's register instead). A verbal habit must not repeat across the
-compilation's stories.
+compilation's stories. When sound precedes sight (as it should), do NOT render it with
+the literal "I heard it before I saw it" scaffold — that exact construction is rationed
+to one narrator per compilation and yours may not be the one; let the sound arrive
+inside this narrator's own syntax (a wrong noise in a known rhythm, a sound out of
+place for the hour) instead of announcing the ordering.
 
 Forbidden: visual/SFX directions, host intro, CTA, recap, analysis, neat explanation,
 "I told myself" or equivalent self-reassurance, arbitrary exact numbers, stacked proof,
