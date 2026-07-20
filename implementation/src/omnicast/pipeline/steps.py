@@ -177,7 +177,20 @@ def _narrative_role_clients(
 
     planner = claude(planner_model, planner_effort, "planner")
     writer = claude(writer_model, writer_effort, "writer")
-    challenger = claude(challenger_model, challenger_effort, "release_challenger")
+    # FOREIGN-PROVIDER ADVERSARY (external review 2026-07-20, both reviewers):
+    # Opus challenging Sonnet is a manager grading their own company's work —
+    # same base data, same RLHF, shared blind spots. Set
+    # OMNICAST_NARRATIVE_CHALLENGER_PROVIDER=deepseek (with live balance!) to
+    # give the release challenger a genuinely different lineage. With no
+    # balance the challenger is unreachable and releases fail closed — set the
+    # flag only after topping up. Default unchanged: Opus.
+    challenger_provider = _opt(
+        "OMNICAST_NARRATIVE_CHALLENGER_PROVIDER", "anthropic"
+    ).lower()
+    if challenger_provider == "deepseek" and deepseek_pro is not None:
+        challenger = deepseek_pro
+    else:
+        challenger = claude(challenger_model, challenger_effort, "release_challenger")
     # Generator-side cost routing: plan repairs and surgical patches are ALWAYS
     # re-validated by the checkers (preflight + plan audit; trial gate + blind
     # selector + monotonic re-score), so both producers run on the cheap tier.

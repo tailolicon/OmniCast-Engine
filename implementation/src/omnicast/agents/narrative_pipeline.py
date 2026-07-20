@@ -3052,6 +3052,12 @@ Check each story for exactly these categories:
   the stock version of that premise lacks. A turn that restates the threat, promises
   atmosphere ("more unsettling than it sounds"), or names only a setting detail does not
   clear the trope — quote it and raise the issue.
+  ANTI-ANCHORING DISCIPLINE: the distinguishing_turn is the planner's CLAIM, never your
+  evidence. Judge freshness from the LOCKED FIELDS ALONE (threat, escape_action,
+  ending_shape, ledger) as if the turn sentence were deleted: if what remains reads as
+  the stock version, the premise IS stock no matter how novel the claim sounds. A turn
+  whose named mechanism does not appear in any locked field is marketing — quote the
+  turn AND name the missing mechanism.
 
 severity: critical = the premise cannot survive an informed viewer; major = a knowledgeable
 viewer would flinch but the story could limp through; minor = worth noting, not blocking.
@@ -5666,6 +5672,153 @@ class NarrativeUnitPipeline:
         if not valid:
             return stories, gate, compliance_reviews, False
         return candidate, candidate_gate, reviews, True
+
+    async def hospital_pass(
+        self,
+        plan: CompilationPlan,
+        stories: list[StoryDraft],
+        strategy: NamedChannelStrategy | None = None,
+        per_story: int | None = None,
+    ) -> dict:
+        """Offline near-miss rescue: re-judge and repair a SAVED candidate.
+
+        External review 2026-07-20 (both reviewers): candidates rejected at
+        the release door are serialized with every blocker quoted — then never
+        read again; each new run regenerates from zero at roughly 3x the cost
+        of finishing the saved one. This pass reconstructs the judged state
+        from a stored plan + stories and runs the SAME wave machinery as a
+        live run (same guards, same acceptance — the loop body deliberately
+        mirrors run()), then reports whether the repaired compilation clears
+        content_can_lock. It does NOT run the final editor or the release
+        challenger and never flips production_ready: per the same review, no
+        auto-release before a current-policy artifact passes independent
+        audit — hospital output goes to a human."""
+        strategy = strategy or self.quality_strategy
+        per_story = per_story or max(
+            1, plan.target_word_count // max(1, len(plan.stories))
+        )
+        self._run_call_counts = {}
+        self._run_cost_usd = 0.0
+        self._run_notional_cost_usd = 0.0
+        self._last_compliance_errors = {}
+
+        gate = gate_compilation(plan, stories, strategy)
+        compliance_reviews, compliance_valid = await self._audit_stories(
+            plan, stories, strategy
+        )
+        if not compliance_valid:
+            stories, gate, compliance_reviews, compliance_valid = (
+                await self._rescue_unauditable_stories(
+                    plan, stories, gate, compliance_reviews, per_story, strategy
+                )
+            )
+        if compliance_valid:
+            score, critic_valid, _ = await self._score_validated(
+                plan, stories, gate, strategy, compliance_reviews=compliance_reviews
+            )
+            score = self._with_compliance_issues(score, compliance_reviews)
+        else:
+            score = self._zero_score(
+                "hospital: per-story compliance failed its contract twice"
+            )
+            critic_valid = True
+
+        repair_waves = 0
+        decisions: list[PatchDecision] = []
+        expected_ids = {item.story_id for item in plan.stories}
+        while critic_valid and compliance_valid and repair_waves < 3:
+            failing_ids = {
+                sid for failure in gate.failures for sid in failure.story_ids
+                if sid in expected_ids
+            }
+            failing_ids.update(
+                issue.story_id for issue in score.story_issues
+                if issue.story_id in expected_ids
+                and issue.severity in {"critical", "major"}
+            )
+            if not failing_ids:
+                failing_ids = _near_miss_minor_ids(
+                    score, gate, strategy, expected_ids, repair_waves
+                )
+            if not failing_ids:
+                break
+            if repair_waves == 1 and (
+                not gate.passed
+                or score.total_score < strategy.approval_score
+                or score.critical_issues
+                or len(failing_ids) > 3
+            ):
+                break
+            if repair_waves == 2 and not _finishing_wave_allowed(
+                score, gate, strategy, failing_ids
+            ):
+                break
+            candidate_list, wave_decisions = await self._repair_wave(
+                plan, stories, score, gate, failing_ids, per_story, strategy
+            )
+            repair_waves += 1
+            decisions.extend(wave_decisions)
+            if not self._stories_changed(stories, candidate_list):
+                break
+            candidate_gate = gate_compilation(plan, candidate_list, strategy)
+            changed_ids = {
+                before.story_id
+                for before, after in zip(stories, candidate_list, strict=True)
+                if before.narration != after.narration
+            }
+            candidate_reviews, candidate_compliance_valid = await self._audit_stories(
+                plan, candidate_list, strategy,
+                only_ids=changed_ids, prior=compliance_reviews,
+            )
+            if not candidate_compliance_valid:
+                break
+            candidate_score, candidate_valid, _ = await self._score_validated(
+                plan, candidate_list, candidate_gate, strategy,
+                compliance_reviews=candidate_reviews,
+            )
+            candidate_score = self._with_compliance_issues(
+                candidate_score, candidate_reviews
+            )
+            if not candidate_valid or not self._repair_is_monotonic(
+                score, gate, candidate_score, candidate_gate, strategy
+            ):
+                salvage = await self._salvage_single_patch(
+                    plan, stories, candidate_list, changed_ids, score, gate,
+                    strategy, compliance_reviews,
+                )
+                if salvage is None:
+                    break
+                stories, gate, score, compliance_reviews = salvage
+                critic_valid = True
+                compliance_valid = True
+                continue
+            stories, gate, score, critic_valid = (
+                candidate_list, candidate_gate, candidate_score, candidate_valid
+            )
+            compliance_reviews = candidate_reviews
+            compliance_valid = candidate_compliance_valid
+
+        lockable = bool(
+            compliance_valid and critic_valid and content_can_lock(
+                score, gate, strategy,
+                critic_contract_valid=critic_valid,
+                story_compliance_valid=(
+                    compliance_valid
+                    and self._compliance_set_approved(plan, compliance_reviews)
+                ),
+            )
+        )
+        return {
+            "stories": stories,
+            "gate": gate,
+            "score": score,
+            "compliance_reviews": compliance_reviews,
+            "content_lockable": lockable,
+            "repair_waves": repair_waves,
+            "patch_decisions": decisions,
+            "call_counts": dict(self._run_call_counts),
+            "notional_cost_usd": self._run_notional_cost_usd,
+        }
 
     async def _audit_stories(
         self,

@@ -504,6 +504,57 @@ def test_repair_acceptance_has_a_judge_noise_band():
         clean_before, gate_ok, clean_before, gate_ok, strategy) is False
 
 
+@pytest.mark.asyncio
+async def test_hospital_pass_repairs_a_saved_candidate_to_lockable(monkeypatch):
+    """External review 2026-07-20: near-miss candidates were serialized with
+    every blocker quoted and never read again. hospital_pass reconstructs the
+    judged state, runs the same wave machinery, and reports lockability —
+    without ever touching the final editor or challenger."""
+    # Fixture narrations trip the real texture gate; the deterministic layer
+    # is pinned by its own tests — here the judged-repair flow is under test.
+    monkeypatch.setattr(np, "gate_compilation",
+                        lambda _p, _s, _strat=None: np.GateReport())
+    pipe = np.NarrativeUnitPipeline(object(), object(), object(), None)
+    plan = _plan()
+    stories = [_draft(i) for i in range(1, 4)]
+    strategy = _horror()
+
+    blocked = _card(_issues=[_major("story_2", "contradiction")])   # 85, 1 major
+    clean = _card()                                                 # 85, clean
+    score_rounds = iter([blocked, clean])
+
+    async def fake_audit(plan_, cand, strat, *, only_ids=None, prior=None):
+        reviews = dict(prior or {})
+        for s in cand if only_ids is None else [x for x in cand if x.story_id in only_ids]:
+            reviews[s.story_id] = object()
+        return reviews, True
+
+    async def fake_score(plan_, cand, gate_, strat, compliance_reviews=None):
+        return next(score_rounds), True, None
+
+    repaired = [
+        s if s.story_id != "story_2"
+        else s.model_copy(update={"narration": s.narration + " Repaired."})
+        for s in stories
+    ]
+
+    async def fake_wave(plan_, cur, score_, gate_, failing_ids, per_story, strat):
+        assert failing_ids == {"story_2"}
+        return repaired, []
+
+    pipe._audit_stories = fake_audit
+    pipe._score_validated = fake_score
+    pipe._repair_wave = fake_wave
+    pipe._with_compliance_issues = lambda s, r: s
+    pipe._compliance_set_approved = lambda p, r: True
+
+    result = await pipe.hospital_pass(plan, stories, strategy)
+    assert result["repair_waves"] == 1
+    assert "Repaired." in result["stories"][1].narration
+    assert result["content_lockable"] is True
+    assert result["score"].total_score == 85
+
+
 def test_finishing_wave_rejects_structured_criticals():
     """External review 2026-07-20 constructed a score-84 card whose critical
     lived as a structured StoryIssue (not the free-text list) and the guard
