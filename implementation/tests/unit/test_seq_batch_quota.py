@@ -59,6 +59,19 @@ def test_quota_killed_run_is_retried():
     assert seq.should_retry(1, "(log unreadable: boom)", 137 * 60.0, 1) is True
 
 
+def test_zero_score_verdict_with_limit_marker_is_quota_poisoned_and_retried():
+    """Live 2026-07-20 0848: the session limit hit during story compliance,
+    fail-closed zeroed the build, and the run printed a normal-looking
+    release-gate (0/100) line — so the completed-verdict rule skipped a retry
+    the topic deserved. A zero-score verdict plus a limit marker in the log is
+    quota poisoning, not a content answer."""
+    zero = "REJECTED/FAILED after 1192.4s: Script failed release gate (0/100); candidate saved"
+    assert seq.should_retry(1, zero, 56 * 60.0, 1) is True
+    # A real scored verdict still never re-runs.
+    real = "REJECTED/FAILED after 2032.2s: Script failed release gate (84/100); candidate saved"
+    assert seq.should_retry(1, real, 56 * 60.0, 1) is False
+
+
 def test_retry_guards():
     quota_death = "session limit reached"
     assert seq.should_retry(0, quota_death, 60.0, 1) is False   # success

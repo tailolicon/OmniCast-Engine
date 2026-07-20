@@ -58,7 +58,13 @@ def should_retry(returncode: int, terminal: str, wait: float | None, attempt: in
         return False
     if not terminal or terminal.startswith("(log unreadable"):
         return True
-    return "session limit" in terminal.lower()
+    if "session limit" in terminal.lower():
+        return True
+    # A zero-score "verdict" with a limit marker in the log is a quota-poisoned
+    # run — the judges died mid-run and fail-closed zeroed the build (live
+    # 2026-07-20 0848: compliance calls hit the session limit, the run still
+    # printed a release-gate 0/100 line, and the topic lost its retry).
+    return "(0/100)" in terminal
 
 # "You've hit your session limit · resets 5:40am (Asia/Saigon)" — the dot can
 # arrive mojibake'd through Windows console encodings, so anchor on "resets".
