@@ -84,6 +84,9 @@ def _story_plan(index: int) -> NarrativeStoryPlan:
         aftermath_mechanism=aftermaths[index - 1],
         threat_identity=identities[index - 1],
         topic_promise=f"a night storage shift {index} in the facility the topic names",
+        distinguishing_turn=(
+            f"stock prowler would flee; this one already knows the narrator's rota {index}"
+        ),
         narrator_age_band="adult",
         safety_obligation="not_applicable",
         continuity_ledger=[

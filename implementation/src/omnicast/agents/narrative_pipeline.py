@@ -87,6 +87,9 @@ class NamedChannelStrategy(_StrictModel):
     # mechanism axes cannot see. Opt-in so it never touches a channel that has
     # not tuned its denylist.
     stylometric_texture_gate: bool = False
+    # Premise-level freshness: every story must name what makes it unlike its
+    # genre default before prose exists. Opt-in for the same reason.
+    premise_freshness_gate: bool = False
 
     @classmethod
     def from_quality_profile(cls, profile) -> "NamedChannelStrategy":
@@ -145,6 +148,9 @@ class NamedChannelStrategy(_StrictModel):
             promote_impossibility_to_major=profile.promote_impossibility_to_major,
             stylometric_texture_gate=getattr(
                 profile, "stylometric_texture_gate", False
+            ),
+            premise_freshness_gate=getattr(
+                profile, "premise_freshness_gate", False
             ),
         )
 
@@ -255,12 +261,24 @@ class NarrativeStoryPlan(_Model):
     # How this story concretely delivers the compilation topic's subject. Checked
     # against the topic at plan time and against the narration at release time.
     topic_promise: str = ""
+    # One clause naming what makes THIS premise unlike its genre default. The
+    # anti-trope machinery only ever rationed the ambiguous/watcher slot, so
+    # human-threat premises (tailgating truck, demand at the van window, creepy
+    # passenger) reached prose as genre defaults and the critic scored the
+    # compilation originality 6/10 — one point under the release floor — on three
+    # consecutive fresh topics (2026-07-20 batch). Originality is holistic and
+    # therefore unrepairable after the fact, so it has to be contracted here,
+    # before anyone writes a word.
+    distinguishing_turn: str = ""
     narrator_age_band: Literal["minor", "adult"] = "adult"
     narrator_age_years: int | None = Field(default=None, ge=5, le=110)
     safety_obligation: SafetyObligation = "not_applicable"
     safety_omission_reason: str = ""
 
-    @field_validator("topic_promise", "safety_omission_reason", "voice_seed", mode="before")
+    @field_validator(
+        "topic_promise", "safety_omission_reason", "voice_seed",
+        "distinguishing_turn", mode="before",
+    )
     @classmethod
     def normalize_optional_text(cls, value: object) -> object:
         return "" if value is None else value
@@ -440,7 +458,8 @@ def plan_story_text(item: NarrativeStoryPlan) -> str:
     return "\n".join((
         item.title, item.narrator_profile, item.setting, item.setup_requirement,
         item.threat, item.escape_action, item.ending_shape, item.voice_rules,
-        item.topic_promise, item.safety_omission_reason, *item.continuity_ledger,
+        item.topic_promise, item.distinguishing_turn, item.safety_omission_reason,
+        *item.continuity_ledger,
     ))
 
 
@@ -2693,6 +2712,9 @@ def validate_plan_preflight(
                         "compilation may not advertise one subject and plan another"
                     )
 
+    if strategy is not None and strategy.premise_freshness_gate:
+        errors.extend(_premise_freshness_errors(plan))
+
     if strategy is not None and strategy.safety_response_gate:
         for item in plan.stories:
             if item.narrator_age_band != "minor" or item.threat_type != "human":
@@ -2782,7 +2804,8 @@ setup_requirement, threat, threat_type (human or ambiguous), escape_action, endi
 evidence_allowance (MUST be exactly one enum string: none, camera, official, physical,
 witness, or recurrence; put any description in continuity_ledger instead), voice_rules,
 voice_seed, threat_mechanism, progression_mechanism, escape_mechanism,
-aftermath_mechanism, threat_identity, topic_promise, narrator_age_band,
+aftermath_mechanism, threat_identity, topic_promise, distinguishing_turn,
+narrator_age_band,
 narrator_age_years, safety_obligation, safety_omission_reason, continuity_ledger
 (array of exactly 5 unique short strings in this exact order and with these exact
 prefixes: "hook_timeline:", "people_objects:", "locations_exits:",
@@ -2864,6 +2887,23 @@ records check that comes back empty ("nothing on file", "no one matched the name
 searches under three different aftermath labels are one device worn three ways. Vary
 what the aftermath YIELDS: a partial answer that explains nothing, a wrong explanation
 others accept, an object that should not exist, or no check at all.
+distinguishing_turn: 4-25 words, one per story, all three different. Name what the
+STOCK version of this premise would do and what this one does instead. A deterministic
+check reads it, and a clause that only restates your own threat field is rejected. This
+exists because the compilation is scored on originality as a whole and that score
+cannot be repaired once the prose is written — three competently written genre defaults
+lose on this axis no matter how clean the continuity is.
+HUMAN-THREAT STOCK LIST — human threats are the majority of every compilation and are
+where the genre default hides, because they draw no attention from the ambiguous-threat
+rules below. These are stock: a vehicle tailgating or running the narrator off a dark
+road; strangers surrounding the vehicle demanding what is in it; a passenger who grabs
+the wheel or gives a wrong destination; a man who will not leave the counter at closing;
+someone waiting by the narrator's car in an empty lot; a knock from someone claiming a
+plausible errand. You may still use one of these SHAPES, but distinguishing_turn must
+then name the concrete thing the stock version does not have — what the threat wants,
+knows, or does that a random predator would not. "The threat behaves oddly" is not a
+turn; "he asks for the cooler by the patient's name, which is not written on the van"
+is.
 AMBIGUOUS-THREAT STOCK LIST — the audit rejects these on sight unless the plan names
 a concrete fresh mechanism in one clause (ten recent plans died here; do not spend an
 attempt discovering it again): doors/exits closing in sequence behind the narrator;
@@ -2967,7 +3007,13 @@ Check each story for exactly these categories:
   over safety.
 - prop_staging: every object used during threat/escape must exist in the setup or ledger first.
 - trope: the premise is a recognizable AI-horror trope (tall-still figure, smiling stranger
-  at the door, knocking that stops when observed) without a fresh angle.
+  at the door, knocking that stops when observed) without a fresh angle. This applies to
+  HUMAN threats too, and that is where it is most often missed: a tailgating vehicle, a
+  demand at the vehicle window, a wheel-grabbing passenger, a man loitering at a counter
+  at closing. Read each story's distinguishing_turn and ask whether it names something
+  the stock version of that premise lacks. A turn that restates the threat, promises
+  atmosphere ("more unsettling than it sounds"), or names only a setting detail does not
+  clear the trope — quote it and raise the issue.
 
 severity: critical = the premise cannot survive an informed viewer; major = a knowledgeable
 viewer would flinch but the story could limp through; minor = worth noting, not blocking.
@@ -3094,7 +3140,13 @@ The SETTING/GEOGRAPHY and CONTINUITY LEDGER below are private continuity constra
 never contradict them, but do not recite unit numbers, exits, or props that do not
 affect the threat, a choice, the escape, or the ending.
 THREAT: {plan.threat}
-THREAT TYPE: {plan.threat_type}
+THREAT TYPE: {plan.threat_type}{f'''
+WHAT MAKES THIS ONE NOT THE STOCK VERSION: {plan.distinguishing_turn}
+This is the story's reason to exist. It must be legible on the page as something that
+HAPPENS — a thing the threat does, wants, or knows — not as narrator commentary about
+how unusual it was. If a viewer could watch this story and describe it in the same words
+as the stock version of this premise, the story has failed even if every other beat is
+clean.''' if plan.distinguishing_turn.strip() else ''}
 REQUIRED PRACTICAL RESPONSE/ESCAPE: {plan.escape_action}
 ENDING SHAPE: {plan.ending_shape}
 EVIDENCE ALLOWANCE: {plan.evidence_allowance}{'''
@@ -3249,8 +3301,8 @@ EVERY story object needs ALL of these keys: story_id, title, narrator_profile,
 setting, setup_requirement, threat, threat_type, escape_action, ending_shape,
 evidence_allowance, voice_rules, voice_seed, threat_mechanism,
 progression_mechanism, escape_mechanism, aftermath_mechanism, threat_identity,
-topic_promise, narrator_age_band, narrator_age_years, safety_obligation,
-safety_omission_reason, continuity_ledger.
+topic_promise, distinguishing_turn, narrator_age_band, narrator_age_years,
+safety_obligation, safety_omission_reason, continuity_ledger.
 
 HARD CONSTRAINTS the validator enforces before anyone reads your fix:
 - continuity_ledger: exactly 5 entries, in this order and with these exact prefixes:
@@ -3261,6 +3313,8 @@ HARD CONSTRAINTS the validator enforces before anyone reads your fix:
 - every other scalar stays under 35 words (voice_seed is exempt: it is a 2-3 sentence
   voice sample); setup_requirement is 3-35 words.
 - topic_promise must repeat the compilation's exact subject wording AND name the site.
+- distinguishing_turn: 4-25 words, distinct per story, and it must not simply restate
+  that story's own threat field.
 
 Keep each story's typed mechanisms (threat_mechanism, progression_mechanism,
 escape_mechanism, aftermath_mechanism, threat_identity) unless the objection is
@@ -4027,6 +4081,69 @@ def _plan_freshness_errors(
     return []
 
 
+_MIN_DISTINGUISHING_TURN_WORDS = 4
+_MAX_DISTINGUISHING_TURN_WORDS = 25
+# Above this share of its own threat/title tokens, the "turn" is a paraphrase of
+# the premise rather than the thing that bends it away from the genre default.
+_DISTINGUISHING_TURN_ECHO_RATIO = 0.8
+
+
+def _premise_freshness_errors(plan: CompilationPlan) -> list[str]:
+    """Make "what makes this one different" a field, not a hope.
+
+    Every other freshness check in this file compares TYPED mechanisms, which is
+    why three stock human-threat premises with different mechanism labels pass
+    everything and still read as genre defaults to the critic. This one asks each
+    story to say, in its own clause, what the default would have done instead —
+    and refuses a clause that merely restates the threat.
+    """
+    errors: list[str] = []
+    seen: dict[str, str] = {}
+    for item in plan.stories:
+        turn = (item.distinguishing_turn or "").strip()
+        if not turn:
+            errors.append(
+                f"{item.story_id} must declare distinguishing_turn: one clause naming what "
+                "makes this premise unlike the stock version of itself. A premise no one can "
+                "distinguish from its genre default scores originality below the release "
+                "floor, and originality cannot be repaired after the prose exists"
+            )
+            continue
+        words = _words(turn)
+        if len(words) < _MIN_DISTINGUISHING_TURN_WORDS:
+            errors.append(
+                f"{item.story_id} distinguishing_turn {turn!r} is too short to name a "
+                f"mechanism; use at least {_MIN_DISTINGUISHING_TURN_WORDS} words"
+            )
+            continue
+        if len(words) > _MAX_DISTINGUISHING_TURN_WORDS:
+            errors.append(
+                f"{item.story_id} distinguishing_turn must stay at or under "
+                f"{_MAX_DISTINGUISHING_TURN_WORDS} words; it is one clause, not a synopsis"
+            )
+            continue
+        normalized = _normal(turn)
+        if normalized in seen:
+            errors.append(
+                f"{seen[normalized]} and {item.story_id} claim the same distinguishing_turn; "
+                "one departure from the genre default shared by two stories is not a "
+                "departure, it is this compilation's own template"
+            )
+        else:
+            seen[normalized] = item.story_id
+        turn_tokens = set(words)
+        premise_tokens = set(_words(f"{item.threat} {item.title}"))
+        if turn_tokens and premise_tokens:
+            echo = len(turn_tokens & premise_tokens) / len(turn_tokens)
+            if echo >= _DISTINGUISHING_TURN_ECHO_RATIO:
+                errors.append(
+                    f"{item.story_id} distinguishing_turn {turn!r} restates its own threat "
+                    "instead of distinguishing it; name what the stock version of this "
+                    "premise would have done and what this one does instead"
+                )
+    return errors
+
+
 def _plan_repeat_errors(candidate: CompilationPlan, rejected_digests: set[str]) -> list[str]:
     """Catch a planner that resends a rejected plan verbatim.
 
@@ -4313,6 +4430,7 @@ class NarrativeUnitPipeline:
                     "ending_shape, evidence_allowance, voice_rules, voice_seed, "
                     "threat_mechanism, progression_mechanism, escape_mechanism, "
                     "aftermath_mechanism, threat_identity, topic_promise, "
+                    "distinguishing_turn, "
                     "narrator_age_band, narrator_age_years, safety_obligation, "
                     "safety_omission_reason, continuity_ledger."
                     "\nIf the validator named a LENGTH or FORMAT violation rather than a "

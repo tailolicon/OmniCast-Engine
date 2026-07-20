@@ -137,7 +137,9 @@
    "safety_obligation": "not_applicable",
    "safety_omission_reason": "",
    "_safety_obligation_note": "not_applicable is what this plan actually commits to. Its ending_shape promises only an identity inquiry ('narrator learns next day no one matching him lives nearby'); the only adult in the plan is the neighbour in escape_action, who is part of getting inside, not part of an aftermath response. The narration happens to add 'my mom asked around', but the label describes the PLAN, and the plan never commits to telling anyone. Labelling it trusted_adult_or_witness would credit the plan for something it does not contain.",
-   "threat_identity": "lone_stranger"
+   "threat_identity": "lone_stranger",
+   "distinguishing_turn": "stock watcher vanishes when approached; he stays put and refuses to move aside",
+   "_distinguishing_turn_note": "Retro-added with the 2026-07-20 premise_freshness_gate. Describes what this plan actually does, in the same honest-label spirit as the typed mechanisms above: the schema did not have the field in July, the plan still had the property."
   },
   "story_2": {
    "threat_mechanism": "traps_or_confines",
@@ -149,7 +151,9 @@
    "narrator_age_years": null,
    "safety_obligation": "concrete_reason_omitted",
    "safety_omission_reason": "an off-books cash route he would lose by reporting it",
-   "threat_identity": "lone_stranger"
+   "threat_identity": "lone_stranger",
+   "distinguishing_turn": "stock intruder chases; he locked the gate first so leaving was already impossible",
+   "_distinguishing_turn_note": "Retro-added with the 2026-07-20 premise_freshness_gate. Describes what this plan actually does, in the same honest-label spirit as the typed mechanisms above: the schema did not have the field in July, the plan still had the property."
   },
   "story_3": {
    "threat_mechanism": "blocks_path",
@@ -161,7 +165,9 @@
    "narrator_age_years": null,
    "safety_obligation": "concrete_reason_omitted",
    "safety_omission_reason": "a small town where a man standing on a sidewalk is not a report",
-   "threat_identity": "lone_stranger"
+   "threat_identity": "lone_stranger",
+   "distinguishing_turn": "stock figure keeps its distance; he steps out to meet her on the sidewalk",
+   "_distinguishing_turn_note": "Retro-added with the 2026-07-20 premise_freshness_gate. Describes what this plan actually does, in the same honest-label spirit as the typed mechanisms above: the schema did not have the field in July, the plan still had the property."
   }
  }
 }

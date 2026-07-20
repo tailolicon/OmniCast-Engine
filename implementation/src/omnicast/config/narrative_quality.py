@@ -105,6 +105,10 @@ class NarrativeQualityStrategy(BaseModel):
     release_challenger_required: bool = False
     promote_impossibility_to_major: bool = True
     stylometric_texture_gate: bool = False
+    # Requires every story to name, at plan time, what makes its premise unlike
+    # the genre default. Originality is scored holistically and cannot be
+    # repaired downstream, so it is contracted before prose exists.
+    premise_freshness_gate: bool = False
 
     # A pre-return checklist the PLANNER runs on its own draft, inside the same
     # call. Not another paid judge: the auditor already exists and is the reader
@@ -161,6 +165,7 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
     forbidden_ending_gate=True,
     release_challenger_required=True,
     stylometric_texture_gate=True,
+    premise_freshness_gate=True,
     planning_rules=(
         "Give every story a distinct life context, location geometry, threat mechanism, "
         "and ending shape.",

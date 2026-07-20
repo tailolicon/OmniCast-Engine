@@ -790,3 +790,81 @@ def test_final_review_prompt_flags_tts_nonsense_bigrams():
     stories = [_draft(i) for i in range(1, 4)]
     prompt = np._final_review_prompt(_plan(), stories, _horror())
     assert "gate pants" in prompt
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-20 batch autopsy — three consecutive FRESH topics (airport shuttle 79,
+# hotel front desk 74, medical courier 82) all scored originality 6/10 against a
+# floor of 7, with the critic naming the same cause each time: "familiar premise,
+# no distinguishing twist". Originality is holistic and deliberately exempt from
+# the grounded-issue contract, so nothing downstream can repair it — the premise
+# has to be contracted at plan time.
+
+
+def _with_turns(turns: list[str]) -> np.CompilationPlan:
+    plan = _plan()
+    stories = [
+        story.model_copy(update={"distinguishing_turn": turn})
+        for story, turn in zip(plan.stories, turns, strict=True)
+    ]
+    return plan.model_copy(update={"stories": stories})
+
+
+def test_premise_freshness_gate_is_on_for_the_horror_profile():
+    assert resolve_script_profile("true_horror_strict_v1").premise_freshness_gate is True
+
+
+def test_plan_without_a_distinguishing_turn_is_rejected():
+    errors = validate_plan_preflight(_with_turns(["", "", ""]), 3, _horror())
+    assert sum("distinguishing_turn" in error for error in errors) == 3
+
+
+def test_distinguishing_turn_that_only_restates_the_threat_is_rejected():
+    """A turn made of the story's own threat words names nothing the stock
+    version lacks; it is the premise wearing a second label."""
+    story = _story_plan(1)
+    echo = f"{story.threat} {story.title}"
+    errors = validate_plan_preflight(_with_turns([echo, "b " * 5, "c " * 5]), 3, _horror())
+    assert any("restates its own threat" in error for error in errors)
+
+
+def test_two_stories_may_not_share_one_distinguishing_turn():
+    shared = "stock prowler would flee; this one waits for the shift change"
+    errors = validate_plan_preflight(
+        _with_turns([shared, shared, "third story keeps its own separate departure here"]),
+        3, _horror(),
+    )
+    assert any("same distinguishing_turn" in error for error in errors)
+
+
+def test_distinguishing_turn_must_be_a_clause_not_a_synopsis():
+    errors = validate_plan_preflight(_with_turns(["two words", "b " * 5, "c " * 5]), 3, _horror())
+    assert any("too short" in error for error in errors)
+    long_turn = " ".join(f"word{i}" for i in range(40))
+    errors = validate_plan_preflight(_with_turns([long_turn, "b " * 5, "c " * 5]), 3, _horror())
+    assert any("one clause, not a synopsis" in error for error in errors)
+
+
+def test_default_fixture_plan_clears_the_premise_freshness_gate():
+    assert validate_plan_preflight(_plan(), 3, _horror()) == []
+
+
+def test_planner_prompt_names_the_human_threat_stock_list():
+    """The ambiguous-threat stock list already existed; human threats are the
+    MAJORITY of every compilation and had no equivalent, which is where the
+    genre defaults were entering."""
+    prompt = np._plan_prompt(_brief(), 3, 2250, None, "", _horror())
+    assert "HUMAN-THREAT STOCK LIST" in prompt
+    assert "distinguishing_turn" in prompt
+
+
+def test_plan_audit_prompt_applies_the_trope_category_to_human_threats():
+    prompt = np._plan_audit_prompt(_plan(), _horror())
+    assert "HUMAN threats too" in prompt
+    assert "distinguishing_turn" in prompt
+
+
+def test_story_prompt_carries_the_distinguishing_turn_to_the_writer():
+    prompt = np._story_prompt(_story_plan(1), 750, "cold open", _horror())
+    assert "WHAT MAKES THIS ONE NOT THE STOCK VERSION" in prompt
+    assert "already knows the narrator's rota" in prompt
