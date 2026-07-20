@@ -295,12 +295,21 @@ def test_forbidden_ending_regex_spares_third_party_and_mid_story_negation():
 # occupational lens live in the plan prompt.
 
 
-def test_dread_rules_carry_sound_first_low_resolution_and_delayed_recognition():
+def test_dread_rules_offer_a_sensory_menu_not_a_sound_mandate():
+    """Live 2026-07-20 (hospital re-judge + user's own invariant): mandating an
+    ears-before-eyes milestone in EVERY story made all three writers converge
+    on the same 'heard X before I saw Y' scaffold — a sensory template worn
+    three ways. The first-contact channel is now a menu the planner varies;
+    sound-first is one option in at most one story."""
     profile = resolve_script_profile("true_horror_strict_v1")
     joined = " ".join(profile.dread_rules)
-    assert "through the ears before the eyes" in joined
+    assert "through the ears before the eyes" not in joined
+    assert "Sound-first is one option, not a requirement" in joined
     assert "low resolution" in joined
     assert "approved replacement for the banned" in joined
+    planning = " ".join(profile.planning_rules)
+    assert "Vary the FIRST sensory channel" in planning
+    assert "at most one story per compilation" in planning
 
 
 def test_plan_prompt_varies_recognition_point_and_routes_lens_through_voice_rules():

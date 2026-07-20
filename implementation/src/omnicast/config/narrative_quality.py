@@ -169,6 +169,12 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
     planning_rules=(
         "Give every story a distinct life context, location geometry, threat mechanism, "
         "and ending shape.",
+        "Vary the FIRST sensory channel through which danger announces itself across "
+        "the compilation — sound out of place, wrongness in plain sight, a noticed "
+        "absence, changed air or temperature, or a broken pattern in routine data.",
+        "Write each story's first-contact channel into its threat description. "
+        "Sound-first in at most one story per compilation: three stories that all "
+        "open danger through the ears are one sensory template worn three ways.",
         "Lock timeline, people and object counts, exits, props, threat position, "
         "response, and escape.",
         "Use human danger in at least two thirds of stories; keep any anomaly under-confirmed.",
@@ -221,9 +227,11 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
         "The protagonist must notice, choose, act, and adapt under pressure.",
         "Preserve the narrator's strongest concrete response — flight, fight, or a "
         "deliberate choice under pressure; never passive waiting with no decision.",
-        "At least one escalation milestone must arrive through the ears before the "
-        "eyes — a sound out of place, a rhythm change, or a sudden silence — and the "
-        "narrator reacts to it before anything is seen.",
+        "The FIRST escalation milestone arrives through whichever sensory channel the "
+        "plan's threat implies — a sound out of place, a wrongness in plain sight, an "
+        "absence, changed air or temperature, or a broken pattern in routine data.",
+        "React to the first wrong signal before understanding it. Sound-first is one "
+        "option, not a requirement.",
         "Render a human threat only through what the narrator could observe at that "
         "distance and light — no interiority, no motive; leave one question about "
         "them permanently unanswered.",
