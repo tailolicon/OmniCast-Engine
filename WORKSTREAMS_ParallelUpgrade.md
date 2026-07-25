@@ -111,3 +111,12 @@ ngay (không đụng quota), việc cần verify bằng render/gen thật thì x
 Cảnh báo chéo phải giữ: port render (WS4) PHẢI mang theo logic prosody của monolith —
 đường package VoiceRouter hiện nuốt sạch speed/pitch/pause (WS2 §0, WS4-G5).
 Ledger premise-space 5 trục (WS3-P7) chạm điểm ghi trong steps.py → điều phối với WS0.
+
+**Bổ sung 25/07 (kiến nghị GPT, đã duyệt hướng):** NotebookLM = "Competitor Script
+Research Module" — cohort winner+matched-control vào, evidence packet (hypotheses kèm
+winner_frequency/control_frequency/quote) ra, playbook chỉ nhận rule có khác biệt
+winner-control; writer vẫn là Narrative Engine. TIÊN QUYẾT: sửa competitor_intel chọn
+mẫu theo outlier thay raw views (brief §4.1 — bug đã verify). NotebookLM không có API
+công khai → OmniCast build Cohort Packet Exporter + Evidence Packet ingester/validator;
+bước NotebookLM là thao tác tay trên web UI (user có Google AI Pro). Nghiệm thu bằng
+A/B mù 5-vs-5 script trước khi tích hợp chính thức. Xếp P1 sau competitor-intel P0.
