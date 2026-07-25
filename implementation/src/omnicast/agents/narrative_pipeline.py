@@ -3289,6 +3289,12 @@ but it shares the first story's closing rhythm and reads as one author (state th
 unknown without that opener: "Nobody ever told me what it was"). Two same-rhythm codas
 in one compilation block release; each writer only sees its own story, so the slot is
 assigned here.
+OPENING MOVE: the job-context intro ("I work the overnight desk at...", "I have been
+driving this route for six years...") is likewise RESERVED for the first story. Open
+THIS story inside a specific moment instead — mid-task, mid-sensation, or on the one
+detail of that night that was already wrong — and let the job and tenure surface
+within the first paragraph rather than announce themselves in sentence one. Two
+stories opening on the same establish-my-job formula read as one author.
 ''' if not plan.story_id.endswith("_1") else ''}Do not print beat labels, a checklist, self-review, or compliance JSON.
 
 HUMAN-RESPONSE PLAUSIBILITY (a release property, not a style choice): once the narrator

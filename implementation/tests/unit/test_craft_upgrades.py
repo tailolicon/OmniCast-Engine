@@ -880,6 +880,12 @@ def test_ritual_coda_slot_is_assigned_to_the_first_story_only():
     # the OPENER, not just the ritual.
     assert 'do not OPEN your final sentence' in p2
     assert "I still" in p2
+    # Live 2026-07-25 (hotel 0830, 2nd opening-convergence): story_2 and
+    # story_3 both opened on the establish-my-job formula. The opening move is
+    # slotted like the coda: job-context intro reserved for story_1.
+    assert "OPENING MOVE" in p2
+    assert "RESERVED for the first story" in p2
+    assert "OPENING MOVE" not in p1
 
 
 def test_escape_clauses_must_be_timestampable_events():
