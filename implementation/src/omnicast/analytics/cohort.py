@@ -214,14 +214,34 @@ class Cohort:
         }
 
 
-def _parse_ts(value: str) -> datetime | None:
+def _num(value, default: float = 0.0) -> float:
+    """Coerce a raw video field to a float; unparseable reads as `default`.
+
+    Video dicts arrive from the YouTube API, from JSONL round-trips and from
+    hand-built fixtures, so `None`, `""`, `"n/a"`, NaN and integers too large
+    for a float all turn up. Every one of them used to raise out of
+    `select_cohort` and abort the whole cohort build — one bad row costing every
+    other channel's evidence. `analytics.schedule` already survived the same
+    rows; this brings the two into line."""
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if result != result or result in (float("inf"), float("-inf")):
+        return default
+    return result
+
+
+def _parse_ts(value) -> datetime | None:
     if not value:
         return None
     try:
-        text = value.replace("Z", "+00:00")
+        text = str(value).replace("Z", "+00:00")
         parsed = datetime.fromisoformat(text)
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 
@@ -247,7 +267,7 @@ def views_per_day(video: dict, now: datetime) -> float:
     A 2-year-old video with 1M views and a 3-week-old video with 900k are not
     the same evidence; absolute views said they were."""
     age = _age_days(video.get("published_at", ""), now)
-    views = float(video.get("views", 0) or 0)
+    views = _num(video.get("views"))
     # Floor at one day so a video published hours ago cannot produce a spike
     # that dwarfs every established video in the cohort. Selection additionally
     # refuses to consider anything younger than MIN_SETTLED_AGE_DAYS.
@@ -297,18 +317,18 @@ def _row(
     matched_to: str = "",
     format_matched: bool = True,
 ) -> CohortVideo:
-    title = video.get("title", "")
+    title = str(video.get("title") or "")
     return CohortVideo(
         video_id=video["video_id"],
         channel_id=channel_id,
         title=title,
         role=role,
-        views=int(video.get("views", 0) or 0),
+        views=int(_num(video.get("views"))),
         views_per_day=views_per_day(video, now),
         outlier_ratio=ratio,
-        duration_minutes=float(video.get("duration_minutes", 0) or 0),
-        published_at=video.get("published_at", ""),
-        engagement_rate=float(video.get("engagement_rate", 0) or 0),
+        duration_minutes=_num(video.get("duration_minutes")),
+        published_at=str(video.get("published_at") or ""),
+        engagement_rate=_num(video.get("engagement_rate")),
         matched_to=matched_to,
         title_patterns=tuple(classify_title(title)),
         format_matched=format_matched,
@@ -341,7 +361,19 @@ def select_cohort(
     ranked: list[tuple[float, CohortVideo, list[dict], float]] = []
 
     for channel_id, videos in sorted(videos_by_channel.items()):
-        with_ids = [v for v in videos if v.get("video_id")]
+        # `isinstance` and de-duplication before anything else: a None entry
+        # used to raise, and a repeated video_id produced two identical winner
+        # rows that inflated `winner_count`.
+        seen_ids: set[str] = set()
+        with_ids: list[dict] = []
+        for video in videos or []:
+            if not isinstance(video, dict):
+                continue
+            vid = str(video.get("video_id") or "")
+            if not vid or vid in seen_ids:
+                continue
+            seen_ids.add(vid)
+            with_ids.append(video)
         usable, too_new, undated = _settled(with_ids, now, min_settled_age_days)
         if undated:
             cohort.notes.append(
@@ -377,7 +409,11 @@ def select_cohort(
                              ratio=ratio, now=now))
             )
 
-        channel_winners.sort(key=lambda item: item[0], reverse=True)
+        # Ties break on video_id, never on input order. The API returns pages in
+        # whatever order it likes, and without this the truncation below discards
+        # a DIFFERENT winner on each run over identical data — so two runs
+        # produce two playbooks and the module's "pure function" claim is false.
+        channel_winners.sort(key=lambda item: (-item[0], item[1].video_id))
         if len(channel_winners) > max_winners_per_channel:
             cohort.notes.append(
                 f"{channel_id}: {len(channel_winners)} winners found; kept the "
@@ -390,7 +426,8 @@ def select_cohort(
             ranked.append((ratio, winner, usable, median_velocity))
 
     # Strongest breakouts first — velocity outlier ratio, NOT absolute views.
-    ranked.sort(key=lambda item: item[0], reverse=True)
+    # Same deterministic tiebreak as within a channel.
+    ranked.sort(key=lambda item: (-item[0], item[1].video_id))
     if len(ranked) > max_winners:
         cohort.notes.append(
             f"{len(ranked)} winners found; kept the {max_winners} strongest by "
@@ -413,10 +450,10 @@ def select_cohort(
             gap = _days_apart(winner.published_at, sibling.get("published_at", ""))
             if gap > CONTROL_MAX_DAYS_APART:
                 continue
-            sibling_minutes = float(sibling.get("duration_minutes", 0) or 0)
+            sibling_minutes = _num(sibling.get("duration_minutes"))
             if not _duration_matches(winner.duration_minutes, sibling_minutes):
                 continue
-            matched = formats_match(winner.title, sibling.get("title", ""))
+            matched = formats_match(winner.title, str(sibling.get("title") or ""))
             candidates.append((
                 0 if matched else 1,
                 gap,
@@ -427,7 +464,9 @@ def select_cohort(
         # Same title shape first, then closest in publish time: a same-format
         # control removes a confound, and publish proximity shares the most
         # channel context.
-        candidates.sort(key=lambda item: (item[0], item[1]))
+        # (format penalty, publish gap, video_id) — the id keeps two equally
+        # close, equally well-matched siblings from being chosen by page order.
+        candidates.sort(key=lambda item: (item[0], item[1], item[2].video_id))
         picked = candidates[:controls_per_winner]
         if not picked:
             cohort.notes.append(

@@ -536,6 +536,7 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         sub_niche=channel.sub_niche,
         competitor_intel_required=bool(
             getattr(channel, "competitor_intel_required", False)),
+        **TopicBrief.scope_fields_from_channel(channel, title=topic),
         target_audience=aud_in,
         pain_point=pain_in,
         content_angle=angle_in,

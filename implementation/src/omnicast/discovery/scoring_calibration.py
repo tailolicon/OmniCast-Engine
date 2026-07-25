@@ -392,12 +392,24 @@ def summarize(rows: list[dict]) -> CalibrationReport:
         if v1 is None or v2 is None:
             report.dropped_rows += 1
             continue
+        # ABSENT = revision 1: rows harvested before the field existed were all
+        # written by the original v2 composition. PRESENT BUT UNPARSEABLE is a
+        # different thing entirely and must not collapse into the same default —
+        # a truncated `v2_revision` on precisely the revision-2 rows would turn
+        # "re-harvest under one revision, do NOT promote" into a green light.
+        # Every other unparseable field costs the row; so does this one. Checked
+        # BEFORE the row is counted, so the rollback dance is unnecessary here.
+        if "v2_revision" in row:
+            revision = _num(row.get("v2_revision"))
+            if revision is None:
+                report.dropped_rows += 1
+                continue
+            report.v2_revisions.add(int(revision))
+        else:
+            report.v2_revisions.add(1)
+
         report.usable_rows += 1
         deltas.append(v2 - v1)
-        # Absent = revision 1: rows harvested before the field existed were all
-        # written by the original v2 composition.
-        revision = _num(row.get("v2_revision"))
-        report.v2_revisions.add(int(revision) if revision is not None else 1)
 
         from_lane, to_lane = action_of(v1), action_of(v2)
         report.transitions.setdefault(from_lane, {})

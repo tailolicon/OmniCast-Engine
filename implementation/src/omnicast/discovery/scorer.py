@@ -132,7 +132,12 @@ def _num(value) -> float | None:
         return None
     try:
         result = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError is the hole this docstring's promise had: a Python int
+        # too large for a float (`10**400`) is valid JSON and comes straight
+        # out of a scanner, and it raised past the two caught exceptions and
+        # aborted `score_batch` — one malformed field killing the whole run,
+        # which is the exact failure the previous fix existed to prevent.
         return None
     if result != result or result in (float("inf"), float("-inf")):
         return None  # NaN/inf are not measurements
@@ -264,7 +269,7 @@ class TopicScorer:
 
         gap_v2 = self._calc_gap_score(topic)
         stack_fit, notes = self._calc_stack_fit(topic)
-        fit, repeat, risk = self._calc_opportunity(topic)
+        pillar_id, fit, repeat, risk = self._calc_opportunity(topic)
         notes = list(notes) + fit.notes + repeat.notes + risk.notes
 
         weights = V2_WEIGHTS
@@ -310,6 +315,7 @@ class TopicScorer:
             audience_fit=fit.score,
             repeatability=repeat.score,
             risk_penalty=risk.score,
+            pillar_id=pillar_id,
             scoring_v2_revision=SCORING_V2_REVISION,
         )
 
@@ -327,10 +333,15 @@ class TopicScorer:
 
         pillar_id = ""
         if self._pillars:
-            pillar_id = classify_pillar(
-                topic.title, topic.description or "", self._pillars).pillar_id
+            match = classify_pillar(
+                topic.title, topic.description or "", self._pillars)
+            # Only a real pillar travels. UNCONFIGURED/UNCLASSIFIED are states,
+            # not pillars, and letting either become part of a scope key would
+            # invent a bucket nobody declared.
+            pillar_id = match.pillar_id if match.is_classified else ""
 
         return (
+            pillar_id,
             audience_fit(topic, self._audience),
             repeatability(topic, pillar_id=pillar_id,
                           pillars_configured=bool(self._pillars)),

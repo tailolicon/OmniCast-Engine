@@ -1,3 +1,5 @@
+> STATUS: SUPERSEDED (2026-07-26) bởi `IMPLEMENTATION_STATUS.md` §4b — toàn bộ việc trong §5 của file này đã làm xong. Giữ lại làm lịch sử; KHÔNG dùng làm nguồn sự thật.
+
 # Quyết định SSOT + vòng sửa 4 — 2026-07-25
 
 ## Quyết định: TopicScorer NHẬN, ChannelArchitect XẾP HẠNG

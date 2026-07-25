@@ -49,7 +49,20 @@ def test_an_unconfigured_audience_scores_neutral_not_zero():
     every topic marked down."""
     result = audience_fit(_topic("anything"), AudienceProfile())
     assert result.score == 5.0
-    assert any("no audience profile" in n for n in result.notes)
+    assert any("we never asked" in n for n in result.notes)
+
+
+def test_a_topic_with_no_text_is_neutral_not_a_measured_mismatch():
+    """Found by adversarial review: a configured profile plus an EMPTY topic
+    scored 2.0 — bit-identical to a measured "does not fit", and three points
+    below this dimension's own declared neutral. The note even asserted a
+    measurement ("no pain point appears") that never happened."""
+    profile = AudienceProfile.from_channel(type("C", (), {"audience": AUDIENCE})())
+    blank = audience_fit(_topic(""), profile)
+    measured_miss = audience_fit(_topic("The best gaming laptop"), profile)
+    assert blank.score == 5.0
+    assert measured_miss.score < blank.score
+    assert any("no title or description" in n for n in blank.notes)
 
 
 def test_a_topic_hitting_a_configured_pain_point_scores_higher_than_one_that_does_not():
@@ -71,14 +84,17 @@ def test_a_single_common_word_does_not_count_as_a_pain_point_match():
     assert "fear of outliving savings" not in result.evidence
 
 
-def test_runtime_far_from_the_audiences_preference_is_penalised_with_a_reason():
+def test_runtime_belongs_to_stack_fit_and_is_not_scored_twice():
+    """Found by adversarial review: runtime moved BOTH stack_fit and
+    audience_fit, and both bands derive from the same channel number — one
+    duration change was worth 7.2 points of the total through two dimensions.
+    Audience fit answers "whose topic is this"; runtime is stack fit's."""
     profile = AudienceProfile.from_channel(type("C", (), {"audience": AUDIENCE})())
-    good = audience_fit(_topic("Will your savings outlive you?",
-                               duration_minutes=12), profile)
-    bad = audience_fit(_topic("Will your savings outlive you?",
-                              duration_minutes=90), profile)
-    assert bad.score < good.score
-    assert any("prefer" in n for n in bad.notes)
+    short = audience_fit(_topic("Will your savings outlive you?",
+                                duration_minutes=12), profile)
+    long = audience_fit(_topic("Will your savings outlive you?",
+                               duration_minutes=90), profile)
+    assert short.score == long.score
 
 
 # ── repeatability ───────────────────────────────────────────────────────────
@@ -108,12 +124,41 @@ def test_no_pillars_configured_is_half_credit_not_a_penalty():
     assert result.score >= 5.0
 
 
-def test_news_sourced_topics_are_marked_down_for_library_value():
-    news = repeatability(_topic("Pension rules change", source=TopicSource.NEWS_RSS),
+def test_the_scanner_that_found_a_topic_is_not_scored_twice():
+    """Found by adversarial review: `SOURCE_GAP` already ranks news lowest, and
+    repeatability docked NEWS_RSS again — 11 points of the total moving on the
+    single fact "which scanner found it". An evergreen topic is evergreen
+    whichever feed surfaced it; time-bound PHRASING is what disqualifies it."""
+    news = repeatability(_topic("Pension rules explained", source=TopicSource.NEWS_RSS),
                          pillars_configured=False)
-    evergreen = repeatability(_topic("Pension rules change"),
+    evergreen = repeatability(_topic("Pension rules explained"),
                               pillars_configured=False)
-    assert news.score < evergreen.score
+    assert news.score == evergreen.score
+
+    spike = repeatability(_topic("Breaking: pension rules change",
+                                 source=TopicSource.NEWS_RSS),
+                          pillars_configured=False)
+    assert spike.score < news.score
+
+
+def test_a_topic_with_no_title_is_neutral_not_a_proven_evergreen():
+    """Found by adversarial review: both branches awarded their credit for the
+    ABSENCE of a marker, so an empty title scored 7.0 — above this dimension's
+    own neutral and one point off a real evergreen."""
+    blank = repeatability(_topic(""), pillars_configured=False)
+    evergreen = repeatability(_topic("Pension rules explained"),
+                              pillars_configured=False)
+    assert blank.score == 5.0
+    assert evergreen.score > blank.score
+
+
+def test_one_phrase_may_not_move_both_risk_and_repeatability():
+    """`do this today or...` fired the YMYL urgency penalty AND the spike
+    marker; `reacting to` fired a hard stack-fit zero AND the spike marker."""
+    urgent = _topic("Do this today or lose your pension", niche=Niche.FINANCE)
+    assert risk_penalty(urgent).score > 0
+    assert repeatability(urgent, pillars_configured=False).score == \
+        repeatability(_topic("Protect your pension"), pillars_configured=False).score
 
 
 # ── risk ────────────────────────────────────────────────────────────────────

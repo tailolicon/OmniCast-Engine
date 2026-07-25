@@ -88,7 +88,7 @@ def test_gate_uses_the_deciding_generation_not_the_uncalibrated_one():
     scored = asyncio.run(TopicScorer(scoring_mode="shadow").score_batch([topic]))
     # v1 = 79 (approve); v2 = 59.5 (review). The gate must see v1's lane.
     assert scored[0].total_score_v1 == 79.0
-    assert scored[0].total_score_v2 == 59.5
+    assert scored[0].total_score_v2 == 59.65   # v2 revision 2 budget
     assert scored[0].action == "approve"
     assert admit(scored, [topic], policy=ROUTER_SCORER_GATE).rejected_count == 0
 

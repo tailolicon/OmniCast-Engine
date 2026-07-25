@@ -1,3 +1,5 @@
+> STATUS: SUPERSEDED (2026-07-26) bởi `IMPLEMENTATION_STATUS.md` §4b — toàn bộ việc trong §5 của file này đã làm xong. Giữ lại làm lịch sử; KHÔNG dùng làm nguồn sự thật.
+
 # Bàn giao — P0 competitor-intel (5/5 mục), 2026-07-25
 
 Trạng thái: **đã xong cả 5 mục P0**, code nằm trên working tree `ws/visuals-flow`,

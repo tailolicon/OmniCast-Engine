@@ -67,6 +67,11 @@ class ScoredTopic(OmnicastSchema):
     audience_fit: float = Field(ge=0, le=10, default=0.0)
     repeatability: float = Field(ge=0, le=10, default=0.0)
     risk_penalty: float = Field(ge=0, le=40, default=0.0)
+    # Which content pillar this topic belongs to (§4.2). The scorer already
+    # classifies it in order to score repeatability; carrying it here is what
+    # lets the brief, and then the writer's scope key, use the same answer
+    # instead of the pillar dimension silently staying `*` end to end.
+    pillar_id: str = ""
     total_score: float = Field(ge=0, le=100)
     # Human-readable reasons for the stack_fit verdict — a topic rejected for
     # fit should say which constraint it hit.

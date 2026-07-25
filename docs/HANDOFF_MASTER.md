@@ -1,3 +1,5 @@
+> STATUS: SUPERSEDED (2026-07-26) bởi `IMPLEMENTATION_STATUS.md` §4b — toàn bộ việc trong §5 của file này đã làm xong. Giữ lại làm lịch sử; KHÔNG dùng làm nguồn sự thật.
+
 # Bàn giao — OmniCast P0 / P0.1, phiên 2026-07-25
 
 Đọc file này trước. Ba file kia là chi tiết:

@@ -77,9 +77,16 @@ _GENERAL_RISK: dict[str, tuple[re.Pattern[str], ...]] = {
 }
 
 # A topic tied to a moment cannot become a library.
+#
+# Two patterns were removed after an adversarial pass showed them restating
+# other dimensions: bare `today` also fires `_YMYL_CLAIMS["urgency"]`
+# ("do this today or lose your pension") and `reaction to` also fires
+# `production_signals` -> `face_cam` -> a hard zero on stack fit. One phrase
+# moving three dimensions is the same double-count that cost gap_score its
+# rewrite; each fact gets scored once, in the dimension that owns it.
 _SPIKE_MARKERS = _rx(
-    r"\bbreaking\b", r"\btoday\b", r"\bthis (?:week|morning)\b", r"\blive now\b",
-    r"\bjust announced\b", r"\breaction to\b", r"\bwhat happened\b",
+    r"\bbreaking\b", r"\bthis (?:week|morning)\b", r"\blive now\b",
+    r"\bjust announced\b", r"\bwhat happened\b", r"\byesterday\b",
     r"\b(?:20\d\d) (?:election|super bowl|world cup|olympics)\b",
 )
 # ...and one that names a repeatable shape can.
@@ -171,51 +178,43 @@ def audience_fit(topic, profile: AudienceProfile) -> DimensionResult:
     """0-10: is this topic for THIS channel's audience?
 
     A topic can have proven demand from somebody else's audience. RPM and trend
-    momentum both read that demand and neither one asks whose it is."""
-    if not profile.is_configured:
+    momentum both read that demand and neither one asks whose it is.
+
+    RUNTIME IS NOT SCORED HERE. It looks like it belongs — the audience profile
+    even carries `preferred_video_length_min` — but `stack_fit` already scores
+    the topic's runtime against the band we produce, and both bands are derived
+    from the same channel number. An adversarial pass measured one duration
+    change moving 7.2 points of the total through two dimensions. Runtime
+    belongs to stack fit; whose topic it is belongs here.
+    """
+    if not profile.is_configured or not profile.phrases:
         return DimensionResult(
             AUDIENCE_FIT_NEUTRAL,
-            ["audience fit: no audience profile configured (neutral)"])
+            ["audience fit: no audience pain points or triggers configured "
+             "(neutral — we never asked, which is not the same as a bad fit)"])
 
-    text = f"{getattr(topic, 'title', '')} {getattr(topic, 'description', '') or ''}"
-    notes: list[str] = []
-    score = 0.0
+    title = str(getattr(topic, "title", "") or "")
+    description = str(getattr(topic, "description", "") or "")
+    text = f"{title} {description}".strip()
+    if not text:
+        # No topic text = nothing was measured. Scoring this as a mismatch is
+        # the "unknown is not zero" rule broken in the dimension that states it.
+        return DimensionResult(
+            AUDIENCE_FIT_NEUTRAL,
+            ["audience fit: topic has no title or description to match against "
+             "(neutral, not a mismatch)"])
 
     hits = _phrase_hits(text, profile.phrases)
-    if profile.phrases:
-        if hits:
-            # 3 points for the first hit, 1.5 for each further one: the second
-            # pain point corroborates, it does not double the fit.
-            score += min(3.0 + 1.5 * (len(hits) - 1), 6.0)
-        else:
-            notes.append("audience fit: no configured pain point or trigger appears")
-    else:
-        score += 3.0
-        notes.append("audience fit: no pain points configured (half credit)")
+    if not hits:
+        return DimensionResult(
+            2.0,
+            ["audience fit: measured — no configured pain point or trigger "
+             "appears in this topic"])
 
-    metrics = getattr(topic, "raw_metrics", None) or {}
-    duration = metrics.get("duration_minutes")
-    try:
-        duration = float(duration) if duration is not None else 0.0
-    except (TypeError, ValueError):
-        duration = 0.0
-    if profile.preferred_length_min and duration > 0:
-        ratio = duration / profile.preferred_length_min
-        if 0.6 <= ratio <= 1.6:
-            score += 4.0
-        elif 0.4 <= ratio <= 2.5:
-            score += 2.0
-            notes.append(
-                f"audience fit: {duration:.0f}m is outside the "
-                f"{profile.preferred_length_min:.0f}m this audience prefers")
-        else:
-            notes.append(
-                f"audience fit: {duration:.0f}m is far from the "
-                f"{profile.preferred_length_min:.0f}m this audience prefers")
-    else:
-        score += 2.0  # unknown runtime or no preference — neutral half
-
-    return DimensionResult(min(score, AUDIENCE_FIT_MAX), notes, hits)
+    # 6 for the first hit, 2 for each further one: a second pain point
+    # corroborates the fit, it does not double it.
+    score = min(6.0 + 2.0 * (len(hits) - 1), AUDIENCE_FIT_MAX)
+    return DimensionResult(score, [], hits)
 
 
 def repeatability(topic, *, pillar_id: str = "", pillars_configured: bool = False
@@ -227,7 +226,15 @@ def repeatability(topic, *, pillar_id: str = "", pillars_configured: bool = Fals
     nothing in the score could tell them apart."""
     from omnicast.analytics.pillars import UNCLASSIFIED, UNCONFIGURED
 
-    title = getattr(topic, "title", "") or ""
+    title = str(getattr(topic, "title", "") or "")
+    if not title.strip():
+        # Both branches below award their credit for the ABSENCE of a marker, so
+        # an empty title used to score 7.0 — above this dimension's own neutral,
+        # and one point off a proven evergreen. No title, no measurement.
+        return DimensionResult(
+            REPEATABILITY_NEUTRAL,
+            ["repeatability: topic has no title to judge (neutral, not evergreen)"])
+
     notes: list[str] = []
     evidence: list[str] = []
     score = 0.0
@@ -244,14 +251,16 @@ def repeatability(topic, *, pillar_id: str = "", pillars_configured: bool = Fals
         notes.append("repeatability: no content pillars configured (half credit)")
 
     # 2. Is it tied to a moment? (0-4)
+    #
+    # Judged on the TITLE ONLY. `topic.source` was also docked here, but
+    # `SOURCE_GAP` in the scorer already ranks news lowest — an adversarial pass
+    # measured 11 points of the total moving on the single fact "which scanner
+    # found it". A news-sourced topic that is genuinely evergreen ("Pension
+    # rules explained") should not be marked down for its scanner.
     spike = next((p.pattern for p in _SPIKE_MARKERS if p.search(title)), "")
-    source = getattr(topic, "source", None)
     if spike:
         notes.append(f"repeatability: time-bound phrasing ({spike}) — a spike, "
                      "not a library")
-    elif source == TopicSource.NEWS_RSS:
-        score += 1.0
-        notes.append("repeatability: news-sourced topics age out of a library")
     else:
         score += 4.0
 
@@ -273,8 +282,8 @@ def risk_penalty(topic) -> DimensionResult:
     the niche: penalising "finance" would dock every topic on a finance channel
     by the same amount, which shifts the threshold and discriminates nothing.
     """
-    title = getattr(topic, "title", "") or ""
-    description = (getattr(topic, "description", "") or "")[:500]
+    title = str(getattr(topic, "title", "") or "")
+    description = str(getattr(topic, "description", "") or "")[:500]
     text = f"{title}\n{description}"
     niche = getattr(topic, "niche", None)
 

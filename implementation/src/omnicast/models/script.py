@@ -98,6 +98,47 @@ class TopicBrief(OmnicastSchema):
     # getattr(), and OmnicastSchema drops unknown keys, so the flag could never
     # be set and the fail-closed branch was unreachable.
     competitor_intel_required: bool = False
+    # Competitor-intel scope (strategic review §4.2). The learner writes under
+    # archetype|audience|format|market|pillar; the writer has to be able to
+    # build the SAME key or it walks straight past the row learned for this
+    # channel and borrows the niche-wide one — the exact failure §4.2 names.
+    #
+    # These are declared fields for the same reason `competitor_intel_required`
+    # is: `OmnicastSchema` drops unknown keys, so reading them off the brief
+    # with getattr() silently yields "" forever and the mismatch is invisible.
+    intel_archetype: str = ""
+    audience_segment: str = ""
+    content_format: str = ""
+    pillar_id: str = ""
+
+    @classmethod
+    def scope_fields_from_channel(cls, channel, *, title: str = "",
+                                  description: str = "",
+                                  pillar_id: str = "") -> dict:
+        """The scope fields a brief builder must copy off the channel.
+
+        `pillar_id` is the fourth dimension and the one most easily lost: the
+        scorer classifies it, but a builder that does not carry it leaves the
+        pillar as `*` all the way to the writer, so §4.2's finest scope level
+        never actually exists. Pass the scorer's answer when there is one;
+        otherwise pass the topic text and it is classified here from the
+        channel's own declared pillars — the same deterministic function, so
+        the two paths cannot disagree."""
+        resolved = (pillar_id or "").strip()
+        if not resolved and (title or description):
+            from omnicast.analytics.pillars import classify_pillar, load_pillars
+
+            pillars = load_pillars(getattr(channel, "content_pillars", None))
+            if pillars:
+                match = classify_pillar(title, description, pillars)
+                resolved = match.pillar_id if match.is_classified else ""
+
+        return {
+            "intel_archetype": getattr(channel, "intel_archetype", "") or "",
+            "audience_segment": getattr(channel, "audience_segment", "") or "",
+            "content_format": getattr(channel, "content_format", "") or "",
+            "pillar_id": resolved,
+        }
 
 
 class ScriptScene(OmnicastSchema):

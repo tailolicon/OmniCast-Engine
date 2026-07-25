@@ -1,3 +1,5 @@
+> STATUS: SUPERSEDED (2026-07-26) bởi `IMPLEMENTATION_STATUS.md` §4b — toàn bộ việc trong §5 của file này đã làm xong. Giữ lại làm lịch sử; KHÔNG dùng làm nguồn sự thật.
+
 # Bàn giao — P0.1 nhóm 1 (containment), 2026-07-25
 
 Code nằm trên working tree `ws/visuals-flow`, **chưa commit**. Suite: **1756 pass**

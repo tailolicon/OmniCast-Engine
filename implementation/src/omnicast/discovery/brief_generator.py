@@ -66,6 +66,14 @@ class BriefGenerator:
             channel_id=channel_id,
             sub_niche=sub_niche,
             competitor_intel_required=intel_required,
+            # The scorer already classified this topic's pillar; reusing its
+            # answer is what keeps the pillar dimension alive end to end.
+            **(TopicBrief.scope_fields_from_channel(
+                channel,
+                title=scored.raw.title,
+                description=scored.raw.description or "",
+                pillar_id=getattr(scored, "pillar_id", ""),
+            ) if channel else {}),
         )
 
     @staticmethod

@@ -59,12 +59,32 @@ def _parse(value: str) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+def _num(value, default: float = 0.0) -> float:
+    """Unparseable reads as `default`. A single `"n/a"` view count must not
+    abort the schedule analysis of every other video in the set.
+
+    NON-FINITE IS UNPARSEABLE. NaN was rejected and infinity was not, so
+    `views="1e400"` produced `median_views_per_day = inf` — a slot that
+    out-ranks every real slot forever, on one malformed field, in a report whose
+    entire purpose is to recommend when to publish. Any value that is not a
+    finite number is not a measurement."""
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if result != result or result in (float("inf"), float("-inf")):
+        return default
+    return result
+
+
 def _views_per_day(video: dict, now: datetime) -> float | None:
     stamp = _parse(video.get("published_at", ""))
     if stamp is None:
         return None
     age = max((now - stamp).total_seconds() / 86400.0, 1.0)
-    return float(video.get("views", 0) or 0) / age
+    return _num(video.get("views")) / age
 
 
 @dataclass
@@ -133,6 +153,9 @@ def analyse_schedule(
 
     dated: list[tuple[datetime, dict]] = []
     for video in videos or []:
+        if not isinstance(video, dict):
+            profile.videos_skipped += 1
+            continue
         stamp = _parse(video.get("published_at", ""))
         if stamp is None:
             profile.videos_skipped += 1

@@ -153,11 +153,131 @@ RabbitMQ+DLQ · Redis circuit-breaker + rate-limiter · `services/budget`+`llm/c
 
 ---
 
+## 4b. P0/P0.1 competitor-intel + opportunity model — phiên 2026-07-26
+
+> Nối tiếp `docs/HANDOFF_MASTER.md` (phiên 2026-07-25). Toàn bộ §5 của handoff đó
+> đã được làm; brief §15 P0 đã đóng cả 3 nhóm. **Chưa commit** — vẫn nằm trên
+> working tree `ws/visuals-flow`, xem §"Trạng thái git" bên dưới.
+
+### Đã làm
+
+| Hạng mục | Module | Trạng thái |
+|---|---|---|
+| P0.1 nhóm 2 — khoa học cohort | `analytics/cohort.py`, `shared/title_patterns.py` | ✅ winner selection + median **cùng đơn vị views/day** (có rào `MIN_SETTLED_AGE_DAYS=7`, video không parse được `published_at` bị loại); `is_comparable` theo **từng cặp** (`matched_pairs`/`unmatched_winners`/`control_coverage`, 3 trạng thái `full|partial|none`); cap `MAX_WINNERS_PER_CHANNEL=3`; prompt giữ mapping winner–control + channel; control ưu tiên **cùng format title** (proxy qua `classify_title`, mismatch bị ghi note chứ không lọc cứng) |
+| P0.1 nhóm 3 — capability chạy thật | `config/channel.py::to_stack_profile`, `discovery/orchestrator.py`, `shared/topic_coverage.py`, `shared/production_signals.py` | ✅ `StackProfile` sinh từ channel config (không còn neutral 7.5 cố định); scanner **populate** `similar_competitor_videos` (giữ lại khi corpus < 30 video) + `production_requirements`; `for_channel` cũng truyền `channel=` (trước đó rơi mất ⇒ `competitor_intel_required` per-channel và `channel_id` của shadow corpus đều không tới nơi) |
+| P0.1 nhóm 4 — `video_intel` | `analytics/video_intel.py`, `analytics/competitor_intel.py` | ✅ **Đã wire** (không đánh dấu dead): `_measure_production` chạy trên chính transcript winner mà `_learn_scripts` đã tải. Bỏ 3 giá trị bịa còn lại: `video_format` suy từ title shape hoặc `unknown`; `target_duration_minutes` = median duration thật; `crossfade_seconds` giữ house default nhưng **luôn nằm trong `assumed_fields`**. Visual vẫn `unknown` (không fetch frame) — đúng, và được khai báo |
+| Brief §4.2 — content pillar | `analytics/pillars.py` | ✅ Khai báo per-channel (`content_pillars`), match keyword có evidence; **không tự phát hiện** (`suggest_pillars` chỉ đề xuất cho người duyệt); title đè description |
+| Brief §4.4 — phân tích comment | `analytics/comment_intel.py` | ✅ confusion/objection/distrust/sequel_request/praise + câu hỏi chưa ai trả lời + timestamp người xem trích + vocabulary; đếm **cả theo comment và theo like-weight**; fetch lỗi ≠ khán giả im lặng |
+| Brief §4.6 — lịch đăng | `analytics/schedule.py` | ✅ heatmap, cadence, gap dài nhất, cadence **theo pillar**, hiệu suất theo slot bằng views/day; `causal=False` bắt buộc; slot < 3 video **không được xếp hạng**; giờ khai báo rõ là UTC |
+| Brief §4.5 — dossier thống nhất | `analytics/dossier.py` | ✅ mỗi field mang `measured\|inferred\|assumed\|missing\|withheld`; §4.7 (impressions/CTR/retention/AVD/revenue của đối thủ) liệt kê **missing** thay vì ước lượng; recommendation phải khai field mình dựa vào và bị hạ cấp theo trạng thái field đó |
+| Nợ kỹ thuật — scope_key | `analytics/intel_scope.py` | ✅ key = `archetype\|audience\|format\|market\|pillar`, có **fallback chain** tới key `niche` cũ và **báo level nào trả lời** (mượn playbook niche-wide không còn im lặng) |
+| Brief §3.1 — niche opportunity model | `discovery/opportunity.py` | ✅ thêm `audience_fit`, `repeatability`, `risk_penalty`. v2 **revision 2** rescale ngân sách: trend 25 / gap 20 / rpm 15 / novelty 8 / stack 12 / audience 10 / repeatability 10, trừ risk (0–40) |
+| Brief §7/§15 — production mode router | `media/production_router.py` | ✅ 8 mode + `silence_hold`; chỉ route tới mode **đã khai báo năng lực**, fallback có lý do; đánh dấu cần AI-disclosure khi visual tổng hợp mô tả sự kiện thật; đã nối vào `render_real_video.py` trước `enforce_policy` |
+
+### Bốn thiết lập của handoff cũ — KHÔNG đổi
+
+`omnicast_scoring_mode="shadow"` (v1 vẫn quyết định), `omnicast_topic_router="scorer_gate"`,
+row `competitor_intel` cũ vẫn bị từ chối (`legacy`), config Pha 2 DeepSeek chưa ai đụng.
+
+### Việc mới phát sinh cần biết
+
+* **v2 revision 2 làm corpus shadow cũ không dùng được.** Mỗi row nay mang
+  `v2_revision`; `scoring_calibration.summarize` trả `single_revision=False` và
+  **chặn promote** khi corpus lẫn hai revision. Corpus thu trước phiên này phải
+  thu lại, không được trộn.
+* **Ngưỡng 70/50 lệch thêm.** Sau rescale, topic ví dụ trong
+  `test_scoring_shadow_mode` rơi từ 71.5 → 69.25 — dưới vạch approve 0.75 điểm,
+  dù bản thân topic không đổi gì. Đây là bằng chứng cho cảnh báo cũ: ngưỡng được
+  đặt cho thang v1 và chưa bao giờ hiệu chuẩn lại. **Đừng chỉnh trọng số cho số
+  vượt lại 70** — đó là fit scorer vào một fixture test.
+* Đã thêm field mới vào `ChannelProfile` (đều optional, channel cũ chạy nguyên):
+  `production_duration_band_min`, `unsupported_production`, `supported_production`,
+  `proven_title_patterns`, `blocked_topic_keywords`, `intel_archetype`,
+  `audience_segment`, `content_format`, `content_pillars`.
+
+### Test — ĐO Ở ĐÂU (quan trọng)
+
+Đo trong **sandbox Linux của agent**, KHÔNG phải máy Windows của bạn. Sandbox
+không tải được CPython ≥3.12 (proxy chỉ mở PyPI), nên chạy trên 3.10 + shim
+`StrEnum`, và **9 test module không collect được** vì `agents/narrative_pipeline.py`
+dùng f-string chứa backslash (cú pháp 3.12). Con số dưới đây vì thế **thấp hơn**
+1782 của handoff cũ và không so sánh trực tiếp được.
+
+`tests/unit` (3 lô): **1570 pass, 8 fail, 6 skip, 9 collection error**.
+
+8 fail đều **có sẵn trước khi sửa** (đã đối chiếu baseline trước/sau):
+2× `test_claude_cli_effort` (thiếu `.env`), 1× `test_gemini_cli_fallback`,
+2× `test_narrative_claude_only`, 2× `test_storage` GC, 1× `test_superapp_m2_m6`
+(provider manifest báo `local-sd` runtime `remote` vì sandbox không có GPU/torch).
+**Không có regression nào do các thay đổi trên.**
+
+Test mới của phiên này: `test_cohort_science_p01.py`, `test_stack_fit_wiring_p01.py`,
+`test_video_intel_wiring_p01.py`, `test_competitor_dossier_p0.py`,
+`test_intel_scope_key.py`, `test_opportunity_model_p0.py`,
+`test_production_router_p0.py`, `test_adversarial_review_fixes.py`,
+`test_pillar_scope_wiring.py` — **187 test**, mỗi test fail được nếu revert
+riêng phần nó ghim.
+
+**Đã verify độc lập trên Windows/3.12** (reviewer ngoài): toàn bộ `tests/` trừ
+integration = **1.953 pass, 11 skip, 3 fail**. 3 fail là lỗi Gemini có sẵn,
+không nằm trong diff P0. `git diff --check`: pass.
+
+### Vòng phản biện đối kháng — 9 lỗi đã sửa
+
+Sau khi làm xong, một subagent ngữ cảnh độc lập được lệnh **chạy code để phản
+bác** từng tuyên bố. Nó tìm ra 9 lỗi thật; tất cả đã sửa và đều có test ghim
+trong `test_adversarial_review_fixes.py`:
+
+| Lỗi | Hậu quả nếu để nguyên |
+|---|---|
+| `select_cohort` phá hoà bằng **thứ tự input** | 30 lần xáo cùng một bộ video ⇒ 29 cohort khác nhau ⇒ hai lần chạy trên cùng dữ liệu API ra hai playbook khác nhau |
+| Cohort **raise** với `published_at` là int, `views="lots"`, NaN, `10**400`, phần tử `None` | Một dòng hỏng giết cả cohort — trong khi `analytics/schedule.py` sống sót đúng những dòng đó |
+| `video_id` trùng ⇒ hai winner row giống hệt | `winner_count` bị thổi phồng — chính con số người đọc dùng để đánh giá cỡ mẫu |
+| `audience_fit`: topic **không có text** chấm 2.0 | Bằng đúng điểm "đã đo và không hợp", thấp hơn neutral 3 điểm; note còn khẳng định một phép đo chưa từng xảy ra |
+| `repeatability`: title rỗng chấm 7.0 | **Trên** neutral của chính nó, chỉ kém evergreen thật 1 điểm — cả hai nhánh đều cộng điểm cho *sự vắng mặt* của bằng chứng |
+| `duration_minutes` chạy qua **cả** `stack_fit` **và** `audience_fit` | Một phép đo dịch 7.2 điểm total qua hai chiều. Đã bỏ runtime khỏi audience_fit (stack_fit sở hữu nó) |
+| `topic.source` chạy qua **cả** `SOURCE_GAP` **và** `repeatability` | 11 điểm total từ một sự thật "scanner nào tìm ra". Đã bỏ nhánh NEWS_RSS, chỉ còn xét *cách diễn đạt* bị đóng khung thời gian |
+| `analyse_comments` phụ thuộc thứ tự trả về của API | 40 lần xáo ⇒ 40 bảng "top timestamp" khác nhau; hoà là chuyện thường trên mẫu nhỏ |
+| `_num` không bắt `OverflowError` | `10**400` (JSON hợp lệ từ scanner) làm **abort cả `score_batch`** — đúng lỗi mà docstring của `_num` nói nó tồn tại để chặn |
+| `v2_revision` không parse được ⇒ âm thầm thành revision 1 | Một dòng JSONL cụt trên đúng các row revision 2 biến "cấm promote" thành đèn xanh, **không note, không tính là dropped row** |
+| Writer đọc scope từ `TopicBrief` (không có các field đó) | Key learner ghi **không nằm trong chain** ⇒ writer luôn mượn playbook niche-wide — đúng lỗi §4.2 mà scope_key sinh ra để chặn. Đã thêm field scope vào `TopicBrief` + 4 builder |
+| 4 level cụ thể nhất **thiếu `niche`** | `channel_id` rỗng (ChannelArchitect làm đúng vậy) ⇒ finance và health ra cùng key `*|*|*|us|*`, và row mượn được báo là "exact match" |
+
+Không tìm được lỗi ở: pydantic bounds của `ScoredTopic`, vòng lặp/chain của
+`production_router`, và hiệu năng (10.000 video < 0.2s mỗi module).
+
+### Vòng review thứ 2 (reviewer ngoài) — REQUEST_CHANGES, đã sửa
+
+| Lỗi | Chi tiết |
+|---|---|
+| `reply_count="n/a"` trên comment **dạng câu hỏi** ⇒ `ValueError` | Vòng test malformed row trước đó không đi vào nhánh này (không row nào là câu hỏi). `like_count` đã được làm cứng, `reply_count` thì chưa — hai kiểu ép kiểu trong cùng một vòng lặp. Nay dùng chung một helper `_count()` |
+| `schedule._num` loại NaN nhưng **không loại infinity** | `views="1e400"` ⇒ `median_views_per_day=inf` ⇒ một slot vượt mọi slot thật vĩnh viễn, trong đúng báo cáo có nhiệm vụ khuyến nghị giờ đăng |
+| **Pillar không được nối xuyên pipeline** | Scorer phân loại pillar rồi vứt đi: không brief nào mang nó, learner ghi bằng `scope_key(channel)` không pillar ⇒ chiều pillar của mọi scope key thực tế là `*`. Nay pillar đi scorer → `ScoredTopic` → brief → writer; `learn_for_channel(pillar_id=...)` lọc corpus theo pillar **trước** khi chọn cohort (lọc sau sẽ so video annuity với median toàn chủ đề của kênh — câu hỏi khác); API nhận `?pillar=` và từ chối pillar chưa khai báo |
+| (phát sinh khi sửa mục trên) Run toàn kênh ghi `…\|us\|*` nhưng brief có pillar tra `…\|us` | Row toàn kênh **không với tới được** từ brief có pillar. `build_key` nay bỏ hẳn đoạn pillar khi không có pillar — một cách viết duy nhất cho "không pillar" |
+
+Thêm `test_pillar_scope_wiring.py`: đi theo một pillar từ scorer tới key vault
+rồi ngược lại tới writer, và ghim tính chất brief §4.2 yêu cầu — **hai pillar
+trên cùng một kênh không dùng chung playbook**.
+
+Test cũ phải sửa vì đổi hợp đồng (đã ghi lý do tại chỗ): `test_scoring_shadow_mode.py`,
+`test_scorer_gap_and_stack_fit.py`, `test_topic_router_ssot.py`,
+`test_competitor_intel_cohort.py`.
+
+### Trạng thái git
+
+Vẫn **chưa commit**, cùng nhánh `ws/visuals-flow`. Agent chạy trên cloud nên git
+không đi qua bridge được (`.git/objects` không unlink được) — chạy `commit_p01.bat`
+trên Windows. `_to_delete/` ở gốc repo vẫn cần xoá tay.
+
+---
+
 ## 5. Chỉ mục tài liệu (cái nào tin được)
 
 | Doc | Loại | Tin tiến độ? |
 |---|---|---|
 | **IMPLEMENTATION_STATUS.md** (file này) | ✅ Trạng thái thật | **CÓ — SSOT** |
+| docs/OMNICAST_STRATEGIC_REVIEW_BRIEF.md | 📐 Brief review chiến lược (nguồn của P0/P1/P2) | Có (yêu cầu, không phải tiến độ) |
+| docs/HANDOFF_MASTER.md + 3 file HANDOFF_P0*/P01* | 🟠 **SUPERSEDED (2026-07-26)** — mọi việc trong §5 đã làm; xem §4b file này | Không (lịch sử) |
 | ARCHITECTURE_SuperApp_Plan.md | ✅ Kế hoạch (v5, code-grounded) | Có (kế hoạch) |
 | SPEC_M0_NenMong.md | ✅ Đặc tả M0 | Có |
 | CLAUDE.md | ✅ Hướng dẫn agent | Có (rule) |

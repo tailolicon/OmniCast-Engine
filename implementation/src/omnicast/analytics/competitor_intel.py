@@ -260,13 +260,26 @@ async def _fetch_competitor_videos(
 
 
 async def build_competitor_cohort(
-    channel, api_key: str, *, max_winners: int = 12, per_channel: int = VIDEOS_PER_CHANNEL
+    channel, api_key: str, *, max_winners: int = 12,
+    per_channel: int = VIDEOS_PER_CHANNEL, video_filter=None
 ) -> tuple[Cohort, dict[str, dict]]:
     """Winner + matched-control cohort for a channel's competitor set.
 
     Returns the cohort and a video_id → raw video dict lookup (thumbnails,
-    duration, tags) for the stages that need more than the cohort row carries."""
+    duration, tags) for the stages that need more than the cohort row carries.
+
+    `video_filter` narrows the corpus BEFORE selection — used to learn a
+    pillar-specific playbook. It has to happen before, not after: a channel
+    median computed over every video and then filtered would judge annuity
+    videos against the channel's all-topic baseline, which is a different
+    question from "what wins within this pillar"."""
     by_channel = await _fetch_competitor_videos(channel, api_key, per_channel=per_channel)
+    if video_filter is not None:
+        by_channel = {
+            cid: [v for v in videos if video_filter(v)]
+            for cid, videos in by_channel.items()
+        }
+        by_channel = {cid: videos for cid, videos in by_channel.items() if videos}
     cohort = select_cohort(by_channel, max_winners=max_winners)
     by_id = {v["video_id"]: v
              for videos in by_channel.values() for v in videos if v.get("video_id")}
@@ -949,7 +962,8 @@ def _merge_run(previous, produced: dict[str, str], run_provenance: dict,
     return final, merged
 
 
-async def learn_for_channel(channel, niche_key: str = "") -> dict | None:
+async def learn_for_channel(channel, niche_key: str = "", *,
+                            pillar_id: str = "") -> dict | None:
     """Distill + persist competitor intelligence for this channel's SCOPE.
 
     Returns a summary dict, or None if nothing learnable.
@@ -958,7 +972,16 @@ async def learn_for_channel(channel, niche_key: str = "") -> dict | None:
     via `analytics.intel_scope` — channel/audience/format/market/pillar rather
     than the bare niche. Callers that still pass `channel.niche.value` keep
     working and keep writing the old broad key; the writer's fallback chain
-    reads both. Passing nothing is the correct call for new code."""
+    reads both. Passing nothing is the correct call for new code.
+
+    `pillar_id` learns a playbook for ONE declared content pillar: the
+    competitor corpus is filtered to that pillar before the cohort is built, and
+    the row is written under the pillar-scoped key. Without it the run writes at
+    the channel-wide level (pillar `*`), which is a real and useful scope — a
+    channel with no pillars declared has nothing finer to say — but it is NOT
+    the same row, and a writer whose brief carries a pillar will prefer the
+    pillar row and fall back to this one.
+    """
     from omnicast.capabilities.llm_factory import create_llm
     from omnicast.config.settings import get_settings
     from omnicast.vault import db as vault_db
@@ -966,17 +989,32 @@ async def learn_for_channel(channel, niche_key: str = "") -> dict | None:
 
     from omnicast.analytics.intel_scope import scope_key as _scope_key
 
-    niche_key = niche_key or _scope_key(channel)
+    niche_key = niche_key or _scope_key(channel, pillar_id=pillar_id)
 
     s = get_settings()
     api_key = s.youtube_api_key
     if not api_key:
         return None
 
-    cohort, by_id = await build_competitor_cohort(channel, api_key)
+    # A separate classifier instance for filtering: `_pillar_classifier` tallies
+    # every call, and sharing one between the corpus filter and the schedule
+    # summary would count each video twice.
+    filter_of, _discarded_summary = _pillar_classifier(channel)
+    video_filter = None
+    if pillar_id:
+        if filter_of is None:
+            logger.warning("pillar requested but none are declared on the channel",
+                           channel=getattr(channel, "channel_id", ""), pillar=pillar_id)
+            return None
+
+        def video_filter(video: dict) -> bool:  # noqa: F811 — narrow, local
+            return filter_of(video) == pillar_id
+
+    cohort, by_id = await build_competitor_cohort(
+        channel, api_key, video_filter=video_filter)
     if not cohort.winners:
         logger.info("no competitor winners cleared the outlier threshold",
-                    niche=niche_key, notes=cohort.notes[:5])
+                    niche=niche_key, pillar=pillar_id, notes=cohort.notes[:5])
         return None
 
     titles = [w.title for w in cohort.winners if w.title]
@@ -1022,7 +1060,8 @@ async def learn_for_channel(channel, niche_key: str = "") -> dict | None:
     from omnicast.analytics.intel_scope import dimensions_for
 
     dossier = build_dossier(
-        scope={"key": niche_key, **dimensions_for(channel)},
+        scope={"key": niche_key, "pillar_id": pillar_id or "",
+               **dimensions_for(channel, pillar_id=pillar_id)},
         cohort=cohort,
         playbooks={"title_playbook": title_pb, "thumbnail_playbook": thumb_pb,
                    "script_playbook": script_pb},
@@ -1119,6 +1158,7 @@ async def learn_for_channel(channel, niche_key: str = "") -> dict | None:
                 carried_forward=meta.get("carried_forward", []))
     return {
         "niche": niche_key,
+        "pillar_id": pillar_id or "",
         "research_run_id": run_id,
         "samples": len(cohort.winners),
         "winners": len(cohort.winners),

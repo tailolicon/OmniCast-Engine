@@ -36,11 +36,18 @@ SEPARATOR = "|"
 ANY = "*"
 
 # Most specific first. Each entry names the dimensions kept at that level.
+#
+# `niche` is present at EVERY level, not just the last. Without it, two channels
+# that both fall back to `archetype = *` (which happens whenever a brief builder
+# leaves `channel_id` empty — `ChannelArchitectAgent` does exactly that) produce
+# the identical key `*|*|*|us|*` across different niches, and the borrowed row is
+# then reported at the MOST SPECIFIC level. A collision that announces itself as
+# an exact match is worse than the niche-wide sharing this scheme replaced.
 _LEVELS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("exact", ("archetype", "audience", "format", "market", "pillar")),
-    ("no_pillar", ("archetype", "audience", "format", "market")),
-    ("no_format", ("archetype", "audience", "market")),
-    ("archetype_market", ("archetype", "market")),
+    ("exact", ("niche", "archetype", "audience", "format", "market", "pillar")),
+    ("no_pillar", ("niche", "archetype", "audience", "format", "market")),
+    ("no_format", ("niche", "archetype", "audience", "market")),
+    ("archetype_market", ("niche", "archetype", "market")),
     ("niche", ("niche",)),
 )
 
@@ -71,7 +78,14 @@ def dimensions_for(channel, *, pillar_id: str = "") -> dict[str, str]:
                  or getattr(channel, "channel_id", "") or ANY)
     audience = getattr(channel, "audience_segment", "") or ANY
     content_format = getattr(channel, "content_format", "") or ANY
-    pillar = pillar_id if pillar_id not in ("", UNCONFIGURED, UNCLASSIFIED) else ANY
+    # The pillar is read off the object too, not only from the argument. Every
+    # other dimension comes from the object, so a caller that passes a brief and
+    # forgets the keyword gets four scoped dimensions and a silently unscoped
+    # fifth — which is how the pillar went missing in the first place.
+    pillar = pillar_id or getattr(channel, "pillar_id", "") or ""
+    if pillar in (UNCONFIGURED, UNCLASSIFIED):
+        pillar = ANY
+    pillar = pillar or ANY
 
     return {
         "niche": _slug(niche),
@@ -84,9 +98,23 @@ def dimensions_for(channel, *, pillar_id: str = "") -> dict[str, str]:
 
 
 def build_key(dimensions: dict[str, str], level: str = "exact") -> str:
+    """The key for one level.
+
+    THE PILLAR SEGMENT IS OMITTED WHEN THERE IS NO PILLAR. Without this, a
+    channel-wide learning run wrote `…|us|*` while a brief that DOES carry a
+    pillar looked for `…|us|annuities` and then, one level down, `…|us` — so the
+    channel-wide row it should have fallen back to was unreachable, and the run
+    only ever matched briefs that also had no pillar. Two spellings of "no
+    pillar" is one spelling too many; the level that has nothing more specific
+    to say is the same key either way.
+    """
     for name, parts in _LEVELS:
-        if name == level:
-            return SEPARATOR.join(dimensions.get(part, ANY) for part in parts)
+        if name != level:
+            continue
+        values = [dimensions.get(part, ANY) for part in parts]
+        if parts and parts[-1] == "pillar" and values[-1] == ANY:
+            values = values[:-1]
+        return SEPARATOR.join(values)
     raise ValueError(f"unknown scope level {level!r}")
 
 

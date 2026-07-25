@@ -47,6 +47,23 @@ git add ^
  implementation/pyproject.toml
 
 echo.
+echo === Stage source phien 2026-07-26 (P0 con lai cua brief §15) ===
+git add ^
+ implementation/src/omnicast/shared/title_patterns.py ^
+ implementation/src/omnicast/shared/topic_coverage.py ^
+ implementation/src/omnicast/shared/production_signals.py ^
+ implementation/src/omnicast/analytics/pillars.py ^
+ implementation/src/omnicast/analytics/schedule.py ^
+ implementation/src/omnicast/analytics/comment_intel.py ^
+ implementation/src/omnicast/analytics/dossier.py ^
+ implementation/src/omnicast/analytics/intel_scope.py ^
+ implementation/src/omnicast/analytics/models.py ^
+ implementation/src/omnicast/discovery/opportunity.py ^
+ implementation/src/omnicast/media/production_router.py ^
+ implementation/src/omnicast/models/script.py ^
+ implementation/render_real_video.py
+
+echo.
 echo === Stage tests ===
 git add ^
  implementation/tests/unit/test_cohort_selection.py ^
@@ -68,8 +85,21 @@ git add ^
  implementation/tests/unit/test_discovery_orchestrator.py
 
 echo.
+echo === Stage tests phien 2026-07-26 ===
+git add ^
+ implementation/tests/unit/test_cohort_science_p01.py ^
+ implementation/tests/unit/test_stack_fit_wiring_p01.py ^
+ implementation/tests/unit/test_video_intel_wiring_p01.py ^
+ implementation/tests/unit/test_competitor_dossier_p0.py ^
+ implementation/tests/unit/test_intel_scope_key.py ^
+ implementation/tests/unit/test_opportunity_model_p0.py ^
+ implementation/tests/unit/test_production_router_p0.py ^
+ implementation/tests/unit/test_adversarial_review_fixes.py ^
+ implementation/tests/unit/test_pillar_scope_wiring.py
+
+echo.
 echo === Stage docs ===
-git add docs/HANDOFF_P0_competitor_intel.md docs/HANDOFF_P01_containment.md docs/HANDOFF_P01_ssot.md
+git add docs/HANDOFF_MASTER.md docs/HANDOFF_P0_competitor_intel.md docs/HANDOFF_P01_containment.md docs/HANDOFF_P01_ssot.md IMPLEMENTATION_STATUS.md commit_p01.bat
 
 echo.
 echo === Da stage (kiem tra truoc khi commit) ===

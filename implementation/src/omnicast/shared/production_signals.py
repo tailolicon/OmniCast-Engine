@@ -80,7 +80,10 @@ def infer_production_requirements(title: str, description: str = "") -> set[str]
     Empty set = nothing detected. That is NOT "no requirements exist"; it is
     "this cheap text test found none", and the scorer treats it as no evidence.
     """
-    haystack = f"{title or ''}\n{(description or '')[:500]}"
+    # `str()` on both sides: the title was already coerced by the f-string and
+    # the description was not, so a non-string description raised while a
+    # non-string title did not — from the same call site.
+    haystack = f"{str(title or '')}\n{str(description or '')[:500]}"
     if not haystack.strip():
         return set()
     return {tag for tag, patterns in _COMPILED.items()

@@ -71,6 +71,10 @@ class TopicOpportunity:
             source_urls=[self.source_video_url] if self.source_video_url else [],
             competitor_intel_required=bool(
                 getattr(channel, "competitor_intel_required", False)),
+            # §4.2 scope — without these the writer cannot rebuild the key the
+            # learner wrote under, and silently borrows the niche-wide playbook.
+            **TopicBrief.scope_fields_from_channel(
+                channel, title=self.title, description=self.content_angle or ""),
         )
 
 

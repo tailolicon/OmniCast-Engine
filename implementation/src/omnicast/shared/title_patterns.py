@@ -38,7 +38,7 @@ FALLBACK_TAG = "statement"
 
 def classify_title(title: str) -> list[str]:
     """Tag title structure — used to learn what formats win in this niche."""
-    patterns = [tag for tag, rx in _RULES if rx.search(title or "")]
+    patterns = [tag for tag, rx in _RULES if rx.search(str(title or ""))]
     return patterns or [FALLBACK_TAG]
 
 

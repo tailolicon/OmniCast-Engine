@@ -65,8 +65,98 @@ a whole discovery run, a NaN duration bypassing the ASR budget, a cache serving
 absences, and a correlation check that changed its answer when the input rows
 were shuffled.
 
-Suite: 1782 passing (non-integration). Scoring stays in shadow; promoting v2
-needs a calibrated corpus with outcome labels.
+Scoring stays in shadow; promoting v2 needs a calibrated corpus with outcome
+labels. (The "1782 passing" figure from the 2026-07-25 session is superseded —
+see the measurement note at the end of this message.)
+
+--- SESSION 2026-07-26: THE REST OF BRIEF §15 P0 ---
+
+COHORT SCIENCE (P0.1 group 2). Winner selection moved to views/day — on BOTH
+sides of the ratio, because a per-day rate over a lifetime-total median is a
+unit mismatch that looks principled. Velocity's own bias is fenced: videos
+younger than 7 days are excluded from the median and from eligibility, and a
+video whose publish timestamp will not parse is dropped rather than treated as
+published today. `is_comparable` is now per pair — 12 winners sharing 1 control
+reported as fully controlled, so eleven uncontrolled observations reached the
+writer as verified rules. No channel may supply more than 3 winners. Controls
+prefer a matching title format, and a mismatch is recorded rather than filtered
+out, because no control at all is the worse confound. The winner->control
+mapping now survives into every prompt, including the thumbnail pairs.
+
+CAPABILITY (P0.1 group 3). `StackProfile` is derived from channel config, so
+stack fit stopped returning a constant 7.5 on every production run. The scanner
+now writes `similar_competitor_videos` and `production_requirements` — two
+dimensions that were scored, documented, unit-tested and produced by nobody.
+Coverage is withheld below a 30-video corpus instead of reading as zero.
+`for_channel` also passes the channel through, which it had stopped doing:
+per-channel intel policy and the shadow corpus's channel_id were both silently
+lost on that path.
+
+VIDEO_INTEL (P0.1 group 4). Wired, not marked dead: blueprints are measured
+from the winner transcripts the script stage already fetched. The three
+remaining fabrications are gone — `video_format` is derived or `unknown`,
+runtime is the median real duration, and `crossfade_seconds` stays a house
+default that is now always listed in `assumed_fields`.
+
+THE UNSTARTED P0 ITEMS. Content pillars (declared, never auto-discovered, so a
+clustering wobble cannot re-key the playbook store). Comment analysis, reading
+the comments P0 made fetchable and nobody read. Schedule analysis with a
+mandatory `causal: False` and a refusal to rank any slot holding fewer than
+three videos. A unified dossier where every field declares measured / inferred /
+assumed / missing / withheld, competitor analytics the public API does not
+expose are listed as missing rather than estimated, and every recommendation
+names the field it rests on and is downgraded when that field is weak.
+
+SCOPE. Intel is keyed by archetype|audience|format|market|pillar instead of
+niche, so finance channels stop overwriting each other's playbooks. Reads walk
+a fallback chain to the old niche key and report which level answered —
+borrowing a niche-wide playbook is a fine default and a bad secret.
+
+OPPORTUNITY MODEL. Audience fit, repeatability and a production/legal/YMYL risk
+penalty complete the §3.1 formula. The risk penalty attaches to the shape of the
+claim, not to the niche: docking every finance topic equally is a constant
+offset, not a signal. This is v2 REVISION 2 — every shadow row carries its
+revision and calibration refuses a corpus that spans two, because averaging them
+would fit a scorer that never ran.
+
+PRODUCTION MODE ROUTER. Eight modes plus an explicit hold. It routes only to
+modes the operation has declared it can produce, records every substitution with
+its reason, marks synthetic visuals of real events as needing disclosure, and
+says when it defaulted rather than decided.
+
+Measured in the agent's Linux sandbox, NOT on the target Windows machine: the
+sandbox cannot obtain CPython 3.12 (proxy allows PyPI only), so it ran 3.10 with
+a StrEnum shim and 9 modules would not collect. tests/unit: 1514 pass, 8 fail,
+9 collection errors. All 8 failures pre-date this work — no regressions. 187 new
+tests, each of which fails if its rule alone is reverted. Verified independently
+on Windows/3.12 by an external reviewer: 1,953 passing, 11 skipped, 3 failing,
+the three being pre-existing Gemini failures outside this diff.
+
+An adversarial pass over this session's own work — a subagent instructed to
+falsify claims by running code — reproduced nine further defects, all fixed and
+all pinned in test_adversarial_review_fixes.py. The two that mattered most: the
+writer built its scope key off the brief, which carried none of the scope
+fields, so the key the learner writes was unreachable at every level of the
+chain and every channel silently borrowed the niche-wide playbook — §4.2's
+failure restored by a field-name mismatch. And an unparseable `v2_revision`
+collapsed into "revision 1", so one truncated JSONL line on the revision-2 rows
+turned "do not promote" into a green light with no note and no dropped row.
+
+A second, external review round then rejected the commit over three more, all
+fixed: `reply_count="n/a"` on a comment that was also a QUESTION aborted comment
+analysis (the first malformed-row tests never entered that branch, because none
+of their rows was a question); `schedule._num` rejected NaN but accepted
+infinity, so `views="1e400"` produced an infinite median views/day in the report
+whose only job is to recommend a publishing slot; and the content pillar was
+classified by the scorer and then dropped — no brief carried it and the learner
+wrote without it, so the pillar dimension of every scope key was `*` end to end
+and §4.2's finest level existed in the key format and nowhere in the data.
+Pillar now travels scorer -> ScoredTopic -> brief -> writer, the learner can
+filter its corpus to one pillar and write that key, and fixing it surfaced a
+fourth: a channel-wide run wrote `...|us|*` while a pillared brief looked up
+`...|us`, so the row it should have fallen back to was unreachable.
+
+Scoring is still in shadow. v1 still decides. Nothing here promotes v2.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01Kor1BrDDBGAto5wTaWsty1

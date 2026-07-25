@@ -60,7 +60,7 @@ would yet you your yours
 def content_tokens(title: str) -> frozenset[str]:
     """Lowercase content words of a title, stopwords and 1-2 char tokens removed."""
     return frozenset(
-        tok for tok in _TOKEN_RE.findall((title or "").lower())
+        tok for tok in _TOKEN_RE.findall(str(title or "").lower())
         if len(tok) > 2 and tok not in _STOPWORDS
     )
 

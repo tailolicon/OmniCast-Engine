@@ -119,6 +119,25 @@ def _seconds(match: re.Match) -> int:
     return int(match.group(1)) * 60 + int(match.group(2))
 
 
+def _count(value) -> int:
+    """A non-negative integer count from an API field, or 0.
+
+    ONE helper for every count on the row. `like_count` was hardened and
+    `reply_count` was not, so a comment carrying `reply_count="n/a"` raised —
+    but only if it was also a QUESTION, which is why the malformed-row tests
+    walked straight past it. Two coercion styles in one loop is how that gap
+    opens; there is now one."""
+    if value is None or isinstance(value, bool):
+        return 0
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    if number != number or number in (float("inf"), float("-inf")):
+        return 0
+    return max(int(number), 0)
+
+
 def analyse_comments(
     comments,
     *,
@@ -134,7 +153,8 @@ def analyse_comments(
     intel.sample = {
         "comments": len(rows),
         "status": status,
-        "replies_included": sum(1 for c in rows if c.get("is_reply")),
+        "replies_included": sum(1 for c in rows
+                                if isinstance(c, dict) and c.get("is_reply")),
         "ordering": "as returned by the API (relevance), not a random sample",
         "caveat": (
             "Commenters are a small, self-selected slice of viewers. Treat every "
@@ -157,13 +177,17 @@ def analyse_comments(
 
     # Threads whose top-level comment got a reply are treated as answered. This
     # is a floor, not a truth: a reply may be another viewer, or "same question".
-    answered_threads = {c.get("thread_id") for c in rows if c.get("is_reply")}
+    answered_threads = {c.get("thread_id") for c in rows
+                        if isinstance(c, dict) and c.get("is_reply")}
 
     for row in rows:
-        text = (row.get("text") or "").strip()
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("text") or "").strip()
         if not text:
             continue
-        weight = 1 + int(row.get("like_count", 0) or 0)
+        likes = _count(row.get("like_count"))
+        weight = 1 + likes
         vocabulary.update(content_tokens(text))
 
         for name, patterns in _COMPILED.items():
@@ -179,14 +203,22 @@ def analyse_comments(
 
         if _QUESTION.search(text) and not row.get("is_reply"):
             if row.get("thread_id") not in answered_threads and \
-                    not int(row.get("reply_count", 0) or 0):
+                    not _count(row.get("reply_count")):
                 intel.unanswered_questions.append({
                     "text": text[:240],
-                    "like_count": int(row.get("like_count", 0) or 0),
-                    "comment_id": row.get("comment_id", ""),
+                    "like_count": likes,
+                    "comment_id": str(row.get("comment_id") or ""),
                 })
 
-    intel.unanswered_questions.sort(key=lambda q: -q["like_count"])
+    # DETERMINISTIC TIE-BREAKS EVERYWHERE BELOW.
+    #
+    # `Counter.most_common` and a stable sort both fall back to insertion order,
+    # which here is the order the YouTube API happened to return comments in. On
+    # a small sample ties are the normal case, so WHICH terms and timestamps
+    # survive the cut was being decided by paging order rather than by the data:
+    # 40 shuffles of one comment set produced 40 different "top timestamps".
+    # Everything is broken by a stable, meaningful secondary key.
+    intel.unanswered_questions.sort(key=lambda q: (-q["like_count"], q["text"]))
     intel.unanswered_questions = intel.unanswered_questions[:20]
 
     intel.signals = sorted(
@@ -195,11 +227,13 @@ def analyse_comments(
     )
     intel.referenced_timestamps = [
         {"second": second, "mm_ss": f"{second // 60}:{second % 60:02d}", "weight": weight}
-        for second, weight in timestamps.most_common(10)
+        for second, weight in sorted(timestamps.items(),
+                                     key=lambda kv: (-kv[1], kv[0]))[:10]
     ]
     intel.audience_vocabulary = [
         {"term": term, "comments": count}
-        for term, count in vocabulary.most_common(vocabulary_size)
+        for term, count in sorted(vocabulary.items(),
+                                  key=lambda kv: (-kv[1], kv[0]))[:vocabulary_size]
         if count >= min_vocabulary_count
     ]
 

@@ -2847,18 +2847,34 @@ async def list_topics(channel_id: str):
 
 
 @app.post("/api/competitor-intel/{channel_id}")
-async def learn_competitor_intel(channel_id: str):
-    """Scan the channel's competitors and (re)learn title + thumbnail playbooks
-    for its niche. Needs youtube_api_key + competitor_handles in the channel."""
+async def learn_competitor_intel(channel_id: str, pillar: str = ""):
+    """Scan the channel's competitors and (re)learn the playbooks for its scope.
+
+    `?pillar=<id>` learns a playbook for ONE declared content pillar (§4.2): the
+    competitor corpus is filtered to that pillar first, and the row is written
+    under the pillar-scoped key. Without it the run writes at the channel-wide
+    level, which is what a channel with no declared pillars gets.
+
+    Needs youtube_api_key + competitor_handles in the channel."""
     from omnicast.config.channel import ChannelProfileLoader
     from omnicast.analytics import competitor_intel
     if not (CHANNELS_DIR / f"{channel_id}.json").exists():
         raise HTTPException(404, f"Channel '{channel_id}' not found")
     channel = await ChannelProfileLoader(CHANNELS_DIR).load(channel_id)
-    res = await competitor_intel.learn_for_channel(channel)
+    pillar = (pillar or "").strip()
+    if pillar:
+        declared = {str((p or {}).get("id") or "").strip()
+                    for p in (getattr(channel, "content_pillars", None) or [])}
+        if pillar not in declared:
+            raise HTTPException(
+                422, f"Pillar '{pillar}' is not declared on '{channel_id}'. "
+                     f"Declared: {sorted(d for d in declared if d) or 'none'}")
+    res = await competitor_intel.learn_for_channel(channel, pillar_id=pillar)
     if not res:
         raise HTTPException(
-            422, "Nothing learned — check youtube_api_key + competitor_handles in the channel.")
+            422, "Nothing learned — check youtube_api_key + competitor_handles in "
+                 "the channel" + (f", or no competitor video matched pillar "
+                                  f"'{pillar}'." if pillar else "."))
     return res
 
 
@@ -4258,6 +4274,7 @@ async def _run_channel_phase2(channel_id: str, topic: str | None = None,
             sub_niche=channel.sub_niche,
             competitor_intel_required=bool(
                 getattr(channel, "competitor_intel_required", False)),
+            **TopicBrief.scope_fields_from_channel(channel, title=topic),
             key_points=([f"Operator brief: {_ovr_desc}"] if _ovr_desc else []) + [
                 niche_cfg.hook_examples[0][:80] if niche_cfg.hook_examples else "",
                 f"Key insight from {niche_cfg.proof_sources[0]}" if niche_cfg.proof_sources else "",
