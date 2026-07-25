@@ -1,0 +1,72 @@
+P0 + P0.1: competitor intelligence on a winner/control cohort, contained
+
+Replaces the survivorship-bias path that learned playbooks from
+`sort(views)[:N]`, and contains the scoring change that removal implied.
+
+WHAT THE OLD CODE DID WRONG
+
+* Playbooks were learned from the highest-view competitor videos, which favours
+  big channels and old videos and has no control group — so every trait shared
+  by "winners" looked causal when most were the channel's house style.
+* `outlier_ratio` fed BOTH trend_momentum and gap_score, so one measurement
+  could supply 65 of 100 points and auto-approve a topic with nothing else
+  agreeing.
+* Transcripts were cut at 3,500 characters, so every claim about structure,
+  pacing, retention and CTA came from the opening act, silently.
+* `fetch_comments` returned `[]` unconditionally; `video_intel` returned
+  "cinematic", 150wpm and hook="question" as constants, then carried a
+  confidence of up to 0.8.
+* The writer pasted whatever playbook existed into the prompt under "mirror
+  these winning patterns", inside `except Exception: pass`.
+
+WHAT THIS COMMIT DOES
+
+Cohort: `analytics/cohort.py` selects per-channel median outliers (winners) each
+paired with an ordinary sibling from the same channel. Every prompt is a
+contrast prompt; a playbook learned with no control group is stamped
+UNCONTROLLED and refused downstream.
+
+Transcripts: `analytics/transcript.py` fetches the full text with an ASR
+fallback (yt-dlp + faster-whisper) for caption-less channels, keeps cue timings,
+and declares any truncation instead of hiding it.
+
+Comments: real commentThreads paging, replies flattened, and an empty result now
+carries its reason (comments_disabled / quota_exceeded / ...) on the result
+object rather than on shared adapter state.
+
+Scoring: gap_score no longer reads outlier_ratio; it reads saturation signals,
+and the freed budget became stack_fit (can we produce this at all). Because that
+moves the approve/review boundary by up to ~20 points depending on competitor
+channel size, v2 runs in SHADOW by default — recorded on every topic, but v1
+still decides — and `discovery/scoring_calibration.py` gates promotion on
+correlation, a shape-agnostic eta check, routing churn, and the presence of
+actual quality labels.
+
+Provenance: every research run has an id, and an artifact carried forward from a
+previous run keeps that run's id, timestamp and comparability.
+`analytics/intel_gate.py` is a closed-status gate (ok / missing / uncontrolled /
+stale / error / legacy) that the writer must pass before injecting a playbook;
+`competitor_intel_required` on ChannelProfile makes it fail-closed per channel.
+
+SSOT: TopicScorer admits, ChannelArchitect ranks. The orchestrator path already
+honoured the scorer's lanes while the API path handed the LLM every raw topic
+and discarded the scoring — one policy applied on one path and skipped on the
+other. `discovery/topic_router.py` resolves it, with a loud fallback if gating
+would empty the calendar and an `architect_only` escape hatch.
+
+Containment: transcript/ASR/thumbnail work runs on a bounded dedicated pool with
+real deadlines and size caps, OAuth resolution and the vault read moved off the
+event loop, the Whisper model cache is locked, and the learner's read-merge-write
+is a single exclusive transaction.
+
+Found and fixed by four adversarial audit rounds, eleven of the defects
+introduced by earlier rounds of this same work: negative trend momentum aborting
+a whole discovery run, a NaN duration bypassing the ASR budget, a cache serving
+absences, and a correlation check that changed its answer when the input rows
+were shuffled.
+
+Suite: 1782 passing (non-integration). Scoring stays in shadow; promoting v2
+needs a calibrated corpus with outcome labels.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Kor1BrDDBGAto5wTaWsty1

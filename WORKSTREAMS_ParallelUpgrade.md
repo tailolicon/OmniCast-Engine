@@ -7,8 +7,16 @@ Phương pháp đã chứng minh ở script-gen (chạy thật → autopsy → v
 
 ## Luật cách ly (BẮT BUỘC cho mọi agent)
 
-1. **Mỗi luồng một nhánh git** (`ws/<tên-luồng>`); merge vào `main` chỉ khi
-   `python -m pytest tests/unit/ -q` xanh (≥1363 pass) — suite là cổng chung.
+1. **Mỗi luồng một GIT WORKTREE riêng** — `git worktree add ../omnicast-ws-<tên> ws/<tên-luồng>`
+   (thư mục NGOÀI repo gốc), làm việc + commit TRONG worktree đó. **CẤM checkout/switch
+   nhánh trong thư mục gốc `E:\Project\OmniCast Engine`**: checkout đổi code trên đĩa
+   dưới chân batch LIVE + các session khác (sự cố thật 14:31 19/07: session WS1 checkout
+   `ws/visuals-flow` tại gốc giữa lúc batch self-storage đang gen và session WS0 đang
+   commit — 2 commit dính chéo nhánh). Thư mục gốc Ở NGUYÊN `main`, thuộc WS0 + batch
+   runner. Lưu ý worktree không có `.env`/`.venv`/`output` (gitignored) — luồng cần chạy
+   test dùng `E:\Project\OmniCast Engine\implementation\.venv\Scripts\python.exe` với
+   `cd` vào worktree. Merge vào `main` chỉ khi `python -m pytest tests/unit/ -q` xanh
+   (≥1363 pass) — suite là cổng chung.
 2. **Ma trận sở hữu file** (dưới đây) — agent KHÔNG đụng file ngoài phạm vi luồng mình.
 3. **Interface đóng băng** (đổi phải qua điều phối, không tự ý):
    - Schema `script.json` sidecar (prosody: pace/pause_after_ms/emphasis)
@@ -79,5 +87,36 @@ Phương pháp đã chứng minh ở script-gen (chạy thật → autopsy → v
 
 1. Pha NGHIÊN CỨU (read-only, chạy được song song an toàn): mỗi WS một agent đọc sâu
    code + bằng chứng lỗi lịch sử → báo cáo hiện trạng + kế hoạch nâng cấp xếp hạng.
-2. Pha THỰC THI: mỗi WS một nhánh, TDD, suite xanh mới merge; gen-live xếp hàng.
+   **✅ XONG 19/07** — báo cáo tại `docs/research/WS2..WS6_*.md`; WS1 do session riêng
+   thực thi thẳng (commit 874e471, chờ merge review).
+2. Pha THỰC THI: mỗi WS một worktree, TDD, suite xanh mới merge; gen-live xếp hàng.
 3. Mỗi WS lặp autopsy như script-gen đã làm.
+
+## Pha thực thi — thứ tự ưu tiên (tổng hợp 19/07 từ 5 báo cáo)
+
+Xếp theo tác động vào chất lượng VIDEO KẾ TIẾP; việc code-only làm được song song
+ngay (không đụng quota), việc cần verify bằng render/gen thật thì xếp hàng.
+
+| Ưu tiên | Việc | Nguồn | Effort | Vì sao trước |
+|---|---|---|---|---|
+| 1 | **WS2 quick wins audio**: bỏ guard-số `_scene_pitch` cho kênh `pacing_flat_ok`; nới atempo floor; script đo pause thực khớp `pause_after_ms`; spike Chatterbox A/B | WS2 §4 | S×4 | emphasis đang CHẾT IM LẶNG — mọi video creepy tới nay chưa từng có từ nhấn ra audio |
+| 2 | **WS4-P1 QA thành gate cứng mọi đường exit** (`validate_video` exit non-zero; render_routes gọi `inspect_product`) | WS4 §3 | M | video đen/câm hiện có thể ship nếu render ngoài pipeline |
+| 3 | **WS2 per-story narrator voice** (pool Edge + segment ordinal, deterministic) | WS2 §5 | M | 3 giọng-viết distinct thành 3 giọng-nghe distinct — nâng cảm nhận chất lượng rõ nhất |
+| 4 | **WS3 quick wins topic**: `creepy_topic_status.py` (death-log + cờ retire); premise-space estimator prototype; generator format A | WS3 §5 | S×3 | vòng lặp gen đang ăn topic đút tay; đo premise-space TRƯỚC khi đốt quota |
+| 5 | **WS5 anti-sleep** (Windows Scheduled Task / powercfg) + hợp nhất quota logic | WS5 | S-M | batch từng chết vì máy ngủ — loop phải sống qua đêm |
+| 6 | **WS4-P2 characterization tests** bọc monolith render (tiên quyết mọi port; port hiện tại là STUB CHẾT — ffmpeg.py trả kết quả hard-code) | WS4 §1b/§3 | M | không có test thì mọi refactor render đều mù |
+| 7 | **WS3 generator đầy đủ + vault wiring** (`upsert_topic status=queued`) | WS3 §3d | M | tự động hoá nguồn topic |
+| 8 | **WS6 profile forgotten_chronicles** | WS6 | M-L | sau khi creepy ổn định — nhân bản learnings |
+
+Cảnh báo chéo phải giữ: port render (WS4) PHẢI mang theo logic prosody của monolith —
+đường package VoiceRouter hiện nuốt sạch speed/pitch/pause (WS2 §0, WS4-G5).
+Ledger premise-space 5 trục (WS3-P7) chạm điểm ghi trong steps.py → điều phối với WS0.
+
+**Bổ sung 25/07 (kiến nghị GPT, đã duyệt hướng):** NotebookLM = "Competitor Script
+Research Module" — cohort winner+matched-control vào, evidence packet (hypotheses kèm
+winner_frequency/control_frequency/quote) ra, playbook chỉ nhận rule có khác biệt
+winner-control; writer vẫn là Narrative Engine. TIÊN QUYẾT: sửa competitor_intel chọn
+mẫu theo outlier thay raw views (brief §4.1 — bug đã verify). NotebookLM không có API
+công khai → OmniCast build Cohort Packet Exporter + Evidence Packet ingester/validator;
+bước NotebookLM là thao tác tay trên web UI (user có Google AI Pro). Nghiệm thu bằng
+A/B mù 5-vs-5 script trước khi tích hợp chính thức. Xếp P1 sau competitor-intel P0.

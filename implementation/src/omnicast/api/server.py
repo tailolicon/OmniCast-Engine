@@ -2855,7 +2855,7 @@ async def learn_competitor_intel(channel_id: str):
     if not (CHANNELS_DIR / f"{channel_id}.json").exists():
         raise HTTPException(404, f"Channel '{channel_id}' not found")
     channel = await ChannelProfileLoader(CHANNELS_DIR).load(channel_id)
-    res = await competitor_intel.learn_for_channel(channel, channel.niche.value)
+    res = await competitor_intel.learn_for_channel(channel)
     if not res:
         raise HTTPException(
             422, "Nothing learned — check youtube_api_key + competitor_handles in the channel.")
@@ -2881,7 +2881,10 @@ async def harvest_competitor_music(channel_id: str, mood: str = "ambient",
     if not (CHANNELS_DIR / f"{channel_id}.json").exists():
         raise HTTPException(404, f"Channel '{channel_id}' not found")
     channel = await ChannelProfileLoader(CHANNELS_DIR).load(channel_id)
-    vids = await competitor_intel._top_competitor_videos(channel, settings.youtube_api_key, top_n=20)
+    # Mining BGM credits out of descriptions makes no causal claim about why a
+    # video did well, so the flat view-sorted pool is fine here (unlike the
+    # playbook learner, which needs the winner/control cohort).
+    vids = await competitor_intel._all_competitor_videos(channel, settings.youtube_api_key, top_n=20)
     vid_ids = [v.get("video_id") for v in vids if v.get("video_id")]
     credits = music_harvester.harvest(vid_ids, settings.youtube_api_key)
     saved = music_harvester.auto_fetch(credits, mood=mood) if download else []
@@ -2899,9 +2902,26 @@ async def get_competitor_intel(niche: str):
     ci = vault_db.get_competitor_intel(niche.lower(), VAULT_DB)
     if not ci:
         return {"niche": niche, "learned": False}
+    try:
+        cohort_meta = json.loads(ci.cohort_meta) if ci.cohort_meta else {}
+    except Exception:
+        cohort_meta = {}
     return {"niche": ci.niche, "learned": True, "title_playbook": ci.title_playbook,
             "thumbnail_playbook": ci.thumbnail_playbook, "sample_titles": ci.sample_titles,
-            "sample_count": ci.sample_count, "updated_at": ci.updated_at}
+            "sample_count": ci.sample_count,
+            # Surfaced, not buried: a caller must be able to see whether these
+            # playbooks were learned against a control group.
+            "is_comparable": cohort_meta.get("is_comparable"),
+            "comparability": cohort_meta.get("comparability"),
+            "control_coverage": cohort_meta.get("control_coverage"),
+            # §4.5 — the unified dossier is the artifact a human should read:
+            # every field labelled measured/inferred/assumed/missing, and every
+            # recommendation traceable to the field it rests on.
+            "dossier": cohort_meta.get("dossier"),
+            "production_blueprint": cohort_meta.get("production_blueprint"),
+            "schedule": cohort_meta.get("schedule"),
+            "audience_signals": cohort_meta.get("audience_signals"),
+            "cohort": cohort_meta, "updated_at": ci.updated_at}
 
 
 @app.get("/api/dedup/check")
@@ -3886,6 +3906,17 @@ async def _run_channel_phase1(channel_id: str):
             if src.success:
                 all_raw.extend(src.topics)
 
+        # SSOT: TopicScorer admits, ChannelArchitect ranks. This path used to
+        # hand the Architect every raw topic and discard the scoring entirely,
+        # while the orchestrator path honoured the same lanes — one policy,
+        # applied on one path and skipped on the other.
+        from omnicast.discovery import topic_router as _router
+
+        _admission = _router.admit(result.scored_topics, all_raw)
+        all_raw = _admission.admitted
+        for _note in _admission.notes:
+            logger.info("topic router", channel=channel_id, note=_note)
+
         topic = ""
         score = 0
         topic_queue: list[dict] = []
@@ -3900,6 +3931,23 @@ async def _run_channel_phase1(channel_id: str):
             llm = create_llm(default_provider="deepseek", model=settings.deepseek_flash_model)
             architect = ChannelArchitectAgent(llm=llm)
             opps = await architect.analyze(all_raw, channel, niche_cfg, top_n=5)
+            # SSOT note: on THIS path ChannelArchitectAgent — not TopicScorer —
+            # decides which topic gets produced. Recording only the scorer's
+            # lane would calibrate a decision nobody makes, so the shadow corpus
+            # is stamped with what the real router actually picked.
+            try:
+                from omnicast.discovery import shadow_log as _shadow
+
+                if orchestrator.shadow_rows:
+                    _shadow.mark_selected(
+                        orchestrator.shadow_rows,
+                        [o.title for o in opps],
+                        decided_by="channel_architect",
+                    )
+                    _shadow.append_rows(
+                        [{**r, "phase": "post_router"} for r in orchestrator.shadow_rows])
+            except Exception as _sl_exc:  # telemetry must never break a run
+                logger.warning("shadow selection not recorded", error=str(_sl_exc))
             if opps:
                 best = opps[0]
                 topic = best.title
@@ -3967,7 +4015,7 @@ async def _run_channel_phase1(channel_id: str):
         # Learn competitor title + thumbnail playbooks for this niche (best-effort).
         try:
             from omnicast.analytics import competitor_intel
-            await competitor_intel.learn_for_channel(channel, channel.niche.value)
+            await competitor_intel.learn_for_channel(channel)
         except Exception as _cexc:
             logger.warning("competitor intel skipped", error=str(_cexc))
 
@@ -4208,6 +4256,8 @@ async def _run_channel_phase2(channel_id: str, topic: str | None = None,
             brand_voice=channel.brand_voice,
             channel_id=channel.channel_id,
             sub_niche=channel.sub_niche,
+            competitor_intel_required=bool(
+                getattr(channel, "competitor_intel_required", False)),
             key_points=([f"Operator brief: {_ovr_desc}"] if _ovr_desc else []) + [
                 niche_cfg.hook_examples[0][:80] if niche_cfg.hook_examples else "",
                 f"Key insight from {niche_cfg.proof_sources[0]}" if niche_cfg.proof_sources else "",

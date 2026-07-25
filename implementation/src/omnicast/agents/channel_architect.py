@@ -69,6 +69,8 @@ class TopicOpportunity:
             pain_point=self.pain_point,
             content_angle=self.content_angle,
             source_urls=[self.source_video_url] if self.source_video_url else [],
+            competitor_intel_required=bool(
+                getattr(channel, "competitor_intel_required", False)),
         )
 
 

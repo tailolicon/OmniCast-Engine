@@ -163,6 +163,12 @@ class ProductionBlueprint(OmnicastSchema):
     confidence: float  # 0-1, how much data backs this
     sample_size: int
     generated_at: datetime
+    # Fields whose value is a HOUSE DEFAULT, not a measurement. A consumer that
+    # copies a blueprint wholesale needs to know which numbers were observed on
+    # competitor videos and which are ours. Without this, `crossfade_seconds`
+    # reads exactly like `intro_duration` — one was counted, the other never was.
+    assumed_fields: list[str] = []
+    notes: list[str] = []
 
 
 class StrategistDecision(OmnicastSchema):

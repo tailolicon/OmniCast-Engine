@@ -174,7 +174,7 @@ def test_max_quality_keeps_the_writer_and_challenger_on_opus_at_max_effort(monke
         OMNICAST_NARRATIVE_CLAUDE_ONLY="1", OMNICAST_NARRATIVE_MAX_QUALITY="1",
     )
     for name in ("writer", "challenger"):
-        assert roles[name]._model == "claude-opus-4-8", name
+        assert roles[name]._model == "claude-opus-5", name
         assert roles[name]._effort == "max", name
 
 
@@ -192,7 +192,7 @@ def test_max_quality_puts_the_planner_on_opus(monkeypatch):
         _settings(), monkeypatch,
         OMNICAST_NARRATIVE_CLAUDE_ONLY="1", OMNICAST_NARRATIVE_MAX_QUALITY="1",
     )
-    assert roles["planner"]._model == "claude-opus-4-8"
+    assert roles["planner"]._model == "claude-opus-5"
     assert roles["planner"]._effort == "high"
 
 
@@ -271,9 +271,9 @@ def test_model_roles_report_the_actual_model_and_effort(monkeypatch):
         OMNICAST_NARRATIVE_CLAUDE_ONLY="1", OMNICAST_NARRATIVE_MAX_QUALITY="1",
     )
     reported = roles["model_roles"]
-    assert reported["writer"] == "claude-opus-4-8/max"
-    assert reported["release_challenger"] == "claude-opus-4-8/max"
-    assert reported["planner"] == "claude-opus-4-8/high"
+    assert reported["writer"] == "claude-opus-5/max"
+    assert reported["release_challenger"] == "claude-opus-5/max"
+    assert reported["planner"] == "claude-opus-5/high"
     assert reported["critic_score"] == "claude-sonnet-5/medium"
     assert reported["story_compliance"] == "claude-sonnet-5/medium"
     assert reported["annotation"] == "claude-sonnet-5/medium"
@@ -308,7 +308,7 @@ def test_the_switch_unset_keeps_the_sonnet_fallbacks(monkeypatch):
 def test_the_switch_unset_still_writes_and_challenges_on_claude(monkeypatch):
     roles = _resolve(_settings(), monkeypatch, OMNICAST_NARRATIVE_MAX_QUALITY="1")
     assert roles["writer"]._provider == "anthropic"
-    assert roles["challenger"]._model == "claude-opus-4-8"
+    assert roles["challenger"]._model == "claude-opus-5"
 
 
 # ---------------------------------------------------------------------------
@@ -321,11 +321,11 @@ def test_the_pipeline_records_the_mode_without_letting_it_decide_anything(monkey
     from omnicast.agents.narrative_pipeline import NarrativeUnitPipeline
 
     sonnet = _FakeClient("anthropic", "claude-sonnet-5", "medium", "critic_score")
-    opus = _FakeClient("anthropic", "claude-opus-4-8", "max", "release_challenger")
+    opus = _FakeClient("anthropic", "claude-opus-5", "max", "release_challenger")
     pipe = NarrativeUnitPipeline(
         planner_llm=sonnet, writer_llm=opus, critic_llm=sonnet, annotation_llm=sonnet,
         compliance_llm=sonnet, release_challenger_llm=opus,
-        judge_mode="claude_only", model_roles={"writer": "claude-opus-4-8/max"},
+        judge_mode="claude_only", model_roles={"writer": "claude-opus-5/max"},
     )
     assert pipe.judge_mode == "claude_only"
     # A lying label cannot make a same-model challenger independent.

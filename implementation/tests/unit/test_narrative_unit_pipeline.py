@@ -84,6 +84,9 @@ def _story_plan(index: int) -> NarrativeStoryPlan:
         aftermath_mechanism=aftermaths[index - 1],
         threat_identity=identities[index - 1],
         topic_promise=f"a night storage shift {index} in the facility the topic names",
+        distinguishing_turn=(
+            f"stock prowler would flee; this one already knows the narrator's rota {index}"
+        ),
         narrator_age_band="adult",
         safety_obligation="not_applicable",
         continuity_ledger=[
@@ -728,7 +731,10 @@ async def test_repair_that_removes_gate_failure_but_lowers_score_is_rolled_back(
         )]
     })
     lower_without_issue = _passing_score().model_copy(update={"originality": 7})
-    scores = iter([high_with_issue, lower_without_issue])
+    scores = iter([
+        high_with_issue, lower_without_issue, lower_without_issue,
+        lower_without_issue,
+    ])
     writer = _FakeStructuredLLM(write)
     def rollback_judge(prompt, schema):
         if schema is BlindPatchSelection:
@@ -742,9 +748,13 @@ async def test_repair_that_removes_gate_failure_but_lowers_score_is_rolled_back(
 
     result = await pipeline.run(_brief(), annotate=False)
 
-    assert result.repair_waves == 1
-    assert result.stories[0].narration.startswith("I told myself")
-    assert result.content_locked is False
+    # External review 2026-07-20 flipped this pin: the patch removes a hard
+    # gate failure AND its major issue; a one-point originality drop between
+    # two independent judge passes is instrument noise, not a regression. The
+    # old absolute-monotonic rule rolled this repair back and shipped the
+    # banned phrase to needs_edit.
+    assert not result.stories[0].narration.startswith("I told myself")
+    assert result.gate_report.passed is True
 
 
 def test_release_requires_content_score_hard_gates_and_exact_annotation_coverage():

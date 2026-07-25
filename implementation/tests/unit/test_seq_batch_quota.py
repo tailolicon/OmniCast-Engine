@@ -40,3 +40,56 @@ def test_midnight_and_noon_edge_cases():
 def test_no_limit_marker_returns_none():
     assert seq.seconds_until_reset("REJECTED: Script failed release gate (85/100)", _now(12, 0)) is None
     assert seq.seconds_until_reset("", _now(12, 0)) is None
+
+
+def test_completed_verdict_is_not_retried_even_with_stray_limit_marker():
+    """Live 2026-07-19 batch 1456: mall finished a full release-gate rejection
+    (83/100) but a stray session-limit line elsewhere in its log matched the
+    quota regex — the runner slept 190 minutes and re-ran a question the run
+    had already answered."""
+    verdict = "REJECTED/FAILED after 2311.9s: Script failed release gate (83/100); candidate saved"
+    assert seq.should_retry(1, verdict, 190 * 60.0, 1) is False
+
+
+def test_quota_killed_run_is_retried():
+    quota_death = "REJECTED/FAILED after 32.8s: session limit reached at compliance stage"
+    assert seq.should_retry(1, quota_death, 137 * 60.0, 1) is True
+    # A run with no terminal line at all (killed mid-flight) also retries.
+    assert seq.should_retry(1, "", 137 * 60.0, 1) is True
+    assert seq.should_retry(1, "(log unreadable: boom)", 137 * 60.0, 1) is True
+
+
+def test_zero_score_verdict_with_limit_marker_is_quota_poisoned_and_retried():
+    """Live 2026-07-20 0848: the session limit hit during story compliance,
+    fail-closed zeroed the build, and the run printed a normal-looking
+    release-gate (0/100) line — so the completed-verdict rule skipped a retry
+    the topic deserved. A zero-score verdict plus a limit marker in the log is
+    quota poisoning, not a content answer."""
+    zero = "REJECTED/FAILED after 1192.4s: Script failed release gate (0/100); candidate saved"
+    assert seq.should_retry(1, zero, 56 * 60.0, 1) is True
+    # A real scored verdict still never re-runs.
+    real = "REJECTED/FAILED after 2032.2s: Script failed release gate (84/100); candidate saved"
+    assert seq.should_retry(1, real, 56 * 60.0, 1) is False
+
+
+def test_retry_guards():
+    quota_death = "session limit reached"
+    assert seq.should_retry(0, quota_death, 60.0, 1) is False   # success
+    assert seq.should_retry(1, quota_death, None, 1) is False   # no limit marker
+    assert seq.should_retry(1, quota_death, 60.0, 3) is False   # tries exhausted
+
+
+def test_standard_roles_pinned_but_operator_export_wins():
+    """Batch 20260719_1456 silently reverted to Opus roles because the Sonnet
+    standard lived only in the launching shell's environment. The runner now
+    pins the standard itself; explicit exports still win."""
+    env: dict[str, str] = {}
+    seq.apply_standard_roles(env)
+    assert env["OMNICAST_NARRATIVE_PLANNER_MODEL"] == "claude-sonnet-5"
+    assert env["OMNICAST_NARRATIVE_WRITER_MODEL"] == "claude-sonnet-5"
+    assert env["OMNICAST_NARRATIVE_PLANNER_EFFORT"] == "high"
+    assert env["OMNICAST_NARRATIVE_WRITER_EFFORT"] == "high"
+
+    operator = {"OMNICAST_NARRATIVE_WRITER_MODEL": "claude-opus-5"}
+    seq.apply_standard_roles(operator)
+    assert operator["OMNICAST_NARRATIVE_WRITER_MODEL"] == "claude-opus-5"

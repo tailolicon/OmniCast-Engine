@@ -35,8 +35,13 @@ def _compilation(narrations: dict[str, str]):
 
 
 def _clean(seed: str, words: int = 720) -> str:
-    """Neutral narration with none of the flagged habits."""
-    body = " ".join(f"{seed}{n:02d} ordinary detail here and there" for n in range(words // 6))
+    """Neutral narration with none of the flagged habits.
+
+    The seed is woven through every filler unit (not just its head) so that no
+    five-word run repeats across two seeds — otherwise the filler itself is a
+    verbatim cross-story phrase and trips the shared-phrase check. Unit length
+    stays at six words so story/total word-count gates are unaffected."""
+    body = " ".join(f"{seed}{n:02d} ordinary {seed} detail here there" for n in range(words // 6))
     return f"I worked the {seed} route that week. {body}. We got through it."
 
 
@@ -145,6 +150,160 @@ def test_i_like_the_preference_declaration_is_rationed_across_stories():
     report2 = gate_compilation(*negated, _horror())
     assert not [f for f in report2.failures
                 if f.code == "stylometric_rationed_tic" and "preference" in f.message]
+
+
+def test_no_record_aftermath_device_is_rationed_across_stories():
+    """Live 2026-07-20 (shuttle 0153): all three stories closed on an empty
+    records check under three DIFFERENT aftermath labels — the typed axis
+    cannot see a shared surface device. One story may own it."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " Dispatch said there was nothing on file for that stop.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    hits = [f for f in gate_compilation(*once, _horror()).failures
+            if f.code == "stylometric_rationed_tic" and "no-record" in f.message]
+    assert not hits
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " Dispatch said there was nothing on file for that stop.",
+        "story_2": _clean("bravo") + " The pickup sheet never matched a name to him.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(*twice, _horror())
+    tic = [f for f in report.failures
+           if f.code == "stylometric_rationed_tic" and "no-record" in f.message]
+    assert tic, "the shared no-record device must be rationed"
+    assert tic[0].story_ids == ["story_2"]
+
+
+def test_heard_before_saw_scaffold_is_rationed_across_stories():
+    """Live 2026-07-20 ×2 (shuttle 1850, courier hospital re-judge): the
+    required ears-before-eyes beat converges all three writers on the literal
+    'heard X before I saw Y' construction. The beat stays required; the
+    wording is rationed to one narrator."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " I heard the cart before I saw him at all.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    hits = [f for f in gate_compilation(*once, _horror()).failures
+            if f.code == "stylometric_rationed_tic" and "scaffold" in f.message]
+    assert not hits
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " I heard the cart before I saw him at all.",
+        "story_2": _clean("bravo") + " I heard the gate chain before I ever saw the truck.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(*twice, _horror())
+    tic = [f for f in report.failures
+           if f.code == "stylometric_rationed_tic" and "scaffold" in f.message]
+    assert tic, "the shared heard-before-saw scaffold must be rationed"
+    assert tic[0].story_ids == ["story_2"]
+
+
+def _titled(*titles: str):
+    plan = _plan()
+    stories = [
+        _draft(i).model_copy(update={
+            "narration": _clean(f"seed{i}"), "title": titles[i - 1],
+        })
+        for i in range(1, 4)
+    ]
+    return plan, stories
+
+
+def test_shared_title_anomaly_formula_is_caught():
+    """Cross-lineage audit 2026-07-25 (codex, two compilations): every story
+    title was cut from one formula — 'The <thing> That <anomaly>'. Titles are
+    read together on the card beats; three variations of one shape is a
+    production-template tell in the most visible place on the video."""
+    plan, stories = _titled(
+        "The Room That Isn't There", "The Uniform That Changed", "Mile Marker 12"
+    )
+    hits = [f for f in gate_compilation(plan, stories, _horror()).failures
+            if f.code == "stylometric_title_template"]
+    assert hits, "two anomaly-clause titles in one compilation must fail"
+    assert hits[0].story_ids == ["story_2"]  # the later one changes
+
+
+def test_all_titles_opening_on_the_is_caught():
+    plan, stories = _titled(
+        "The Far End of the Corridor", "The Blind Wedge", "The Name on the Cooler"
+    )
+    hits = [f for f in gate_compilation(plan, stories, _horror()).failures
+            if f.code == "stylometric_title_template"]
+    assert hits
+    assert "open with 'The'" in hits[0].message
+
+
+def test_varied_titles_pass():
+    plan, stories = _titled(
+        "The Blind Wedge", "Nobody Signed That Manifest", "Row C, After Hours"
+    )
+    hits = [f for f in gate_compilation(plan, stories, _horror()).failures
+            if f.code == "stylometric_title_template"]
+    assert not hits
+
+
+def test_routine_invariance_and_cold_coffee_are_rationed():
+    """Two more classes the same audit found across compilations: every
+    narrator asserting their routine never varies (the profile ASKS for an
+    ordinary-routine opening, so the assertion converges), and cold coffee —
+    the single most reused prop in the corpus."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " The order of things never changes on that route.",
+        "story_2": _clean("bravo") + " My coffee had gone cold by then.",
+        "story_3": _clean("charlie"),
+    })
+    codes = [f.message for f in gate_compilation(*once, _horror()).failures
+             if f.code == "stylometric_rationed_tic"]
+    assert not [m for m in codes if "routine-invariance" in m or "cold-coffee" in m]
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " The order of things never changes on that route.",
+        "story_2": _clean("bravo") + " It runs the same way every night I work it.",
+        "story_3": _clean("charlie"),
+    })
+    tic = [f for f in gate_compilation(*twice, _horror()).failures
+           if f.code == "stylometric_rationed_tic" and "routine-invariance" in f.message]
+    assert tic and tic[0].story_ids == ["story_2"]
+
+    coffee = _compilation({
+        "story_1": _clean("alpha") + " My coffee had gone cold on the counter.",
+        "story_2": _clean("bravo") + " There was cold coffee still sitting there.",
+        "story_3": _clean("charlie"),
+    })
+    hits = [f for f in gate_compilation(*coffee, _horror()).failures
+            if f.code == "stylometric_rationed_tic" and "cold-coffee" in f.message]
+    assert hits and hits[0].story_ids == ["story_2"]
+
+
+def test_composure_claim_is_rationed_across_stories():
+    """Live 2026-07-19 mall attempt 2 (critic minor): two narrators asserted
+    composure with the same stock 'I don't spook/scare' device at their most
+    exposed beat. Classic wordings are rationed deterministically; paraphrases
+    stay the critic's job."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " I don't spook on the job, never have.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    codes = [f for f in gate_compilation(*once, _horror()).failures
+             if f.code == "stylometric_rationed_tic" and "composure" in f.message]
+    assert not codes
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " I don't spook on the job, never have.",
+        "story_2": _clean("bravo") + " I never scare easy, but that night was different.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(*twice, _horror())
+    tic = [f for f in report.failures
+           if f.code == "stylometric_rationed_tic" and "composure" in f.message]
+    assert tic, "the shared composure claim must be rationed"
+    assert tic[0].story_ids == ["story_2"]
 
 
 def test_soma_cliche_fails_on_first_use():
@@ -424,3 +583,114 @@ def test_stylometric_failures_are_recoverable_by_the_repair_wave():
         assert f.story_ids, "a recoverable failure must name the story to repair"
     recovery_ids = np._story_recovery_ids(plan, report)
     assert "story_1" in recovery_ids
+
+
+# ---------------------------------------------------------------------------
+# Generic verbatim phrase reuse (live 2026-07-20 front desk, 74/100).
+# Checks above name ONE tic each and were all added reactively; the critic kept
+# finding new instances the whitelist could not see. This check matches the
+# SHAPE — any rare five-word run shared by two narrators.
+
+
+def test_verbatim_phrase_shared_across_stories_fails_the_later_one():
+    """'hands loose at his sides' described two unrelated men in one
+    compilation; no named-tic check could see it."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha")
+        + " He stood with his hands loose at his sides, watching the counter.",
+        "story_2": _clean("bravo")
+        + " He stepped back with his hands loose at his sides.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(plan, stories, _horror())
+    shared = [f for f in report.failures if f.code == "stylometric_shared_phrase"]
+    assert shared and shared[0].story_ids == ["story_2"]
+    assert "hands loose at his sides" in shared[0].message
+    assert "story_1" in shared[0].message
+
+
+def test_phrase_used_repeatedly_inside_one_story_is_that_narrators_own_habit():
+    plan, stories = _compilation({
+        "story_1": _clean("alpha")
+        + " His hands hung loose at his sides. Still loose at his sides, both of them.",
+        "story_2": _clean("bravo"),
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_shared_function_word_run_is_not_a_shared_phrase():
+    """'and I went back to the' carries no voice — flagging it would deadlock
+    the repair wave on unfixable connective tissue."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " So I went back to the one I had.",
+        "story_2": _clean("bravo") + " So I went back to the one I had.",
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_shared_domain_vocabulary_from_the_locked_plans_is_exempt():
+    """Three narrators on one topic must be free to name the same workplace."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " " + _plan().stories[0].setting,
+        "story_2": _clean("bravo") + " " + _plan().stories[0].setting,
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_shared_phrase_failure_is_repairable_by_the_repair_wave():
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " The cooler seal clicked twice behind me.",
+        "story_2": _clean("bravo") + " The cooler seal clicked twice behind me.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(plan, stories, _horror())
+    shared = [f for f in report.failures if f.code == "stylometric_shared_phrase"]
+    assert shared
+    for f in shared:
+        assert f.code not in np._UNRECOVERABLE_GATE_CODES
+        assert f.code not in np._COMPILATION_LEVEL_GATE_CODES
+    assert "story_2" in np._story_recovery_ids(plan, report)
+
+
+def test_procedural_idiom_two_workers_share_independently_is_not_a_habit():
+    """Precision lever, measured by replaying the check over the channel's
+    66-script corpus: a shared five-word run carrying only two content words is
+    procedural idiom ('and put it in park'), not a voice tic. Flagging it spent
+    repair waves rewriting prose that read fine."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha") + " I pulled in and put it in park.",
+        "story_2": _clean("bravo") + " I rolled up and put it in park.",
+        "story_3": _clean("charlie"),
+    })
+    assert "stylometric_shared_phrase" not in _codes(
+        gate_compilation(plan, stories, _horror())
+    )
+
+
+def test_every_shared_phrase_is_quoted_not_just_the_first():
+    """One quoted phrase per story sent the repair wave back for a second pass
+    on the same story; a story that shares two phrases must list both."""
+    plan, stories = _compilation({
+        "story_1": _clean("alpha")
+        + " His hands hung loose at his sides. The porch light came on behind him.",
+        "story_2": _clean("bravo")
+        + " He stood with his hands hung loose at his sides."
+        + " Later the porch light came on for no reason.",
+        "story_3": _clean("charlie"),
+    })
+    report = gate_compilation(plan, stories, _horror())
+    shared = [f for f in report.failures if f.code == "stylometric_shared_phrase"]
+    assert shared and shared[0].story_ids == ["story_2"]
+    assert "hands hung loose at his sides" in shared[0].message
+    assert "porch light came on" in shared[0].message
+    assert "2 phrase(s)" in shared[0].message
+    assert "EVERY occurrence" in shared[0].message

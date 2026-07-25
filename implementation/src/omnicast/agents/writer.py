@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import threading
+
 import structlog
 
 from omnicast.agents.base import BaseAgent
@@ -82,6 +85,112 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
 
 # Backward compatibility alias
 WRITER_SYSTEM = WRITER_SYSTEM_FINANCE
+
+
+# `_build_generation_prompt` is synchronous but is called from the async
+# generate loop once per variant — three sqlite reads per script, each pulling a
+# row that can carry hundreds of KB of playbook text, all on the event loop.
+# Making the prompt builder async is a wider change than this pass; a short TTL
+# collapses the repeats, which is where the cost actually was.
+_INTEL_CACHE_TTL_SECONDS = 60.0
+_INTEL_CACHE: dict[str, tuple[float, object]] = {}
+_INTEL_CACHE_LOCK = threading.Lock()
+
+
+def invalidate_competitor_intel_cache(scope: str | None = None) -> None:
+    """Drop cached rows after a learning run rewrites them.
+
+    Without this, discovery calling `learn_for_channel` immediately before
+    production — which `server.py` does — leaves the writer serving the PREVIOUS
+    playbook (or, worse, the cached absence of one) for the rest of the TTL."""
+    with _INTEL_CACHE_LOCK:
+        if scope is None:
+            _INTEL_CACHE.clear()
+        else:
+            _INTEL_CACHE.pop(scope, None)
+
+
+def _load_competitor_intel(scope: str, *, ttl: float = _INTEL_CACHE_TTL_SECONDS):
+    """Blocking vault read, isolated so callers can see it is blocking."""
+    import time as _time
+
+    now = _time.monotonic()
+    with _INTEL_CACHE_LOCK:
+        cached = _INTEL_CACHE.get(scope)
+        if cached and now - cached[0] < ttl:
+            return cached[1]
+
+    from pathlib import Path as _P
+
+    from omnicast.vault import db as _vdb
+    _VDB = _P(__file__).resolve().parents[3] / "output" / "vault.db"
+    _vdb.init_db(_VDB)
+    row = _vdb.get_competitor_intel(scope, _VDB)
+    if row is None:
+        # NEVER cache an absence. A run that learns intel seconds later would
+        # otherwise keep seeing "nothing learned yet" — and on a channel with
+        # competitor_intel_required=True that is a hard generation failure on a
+        # niche whose intel was just written.
+        return None
+    with _INTEL_CACHE_LOCK:
+        _INTEL_CACHE[scope] = (_time.monotonic(), row)
+    return row
+
+
+def resolve_competitor_playbook(brief, artifact: str = "script_playbook"):
+    """Gate + policy for one brief, as a testable unit.
+
+    Lives at module level on purpose. While this logic was inline in
+    `_build_generation_prompt`, an audit reverted BOTH halves of it — the
+    policy read and the load-failure branch — and the entire test suite stayed
+    green, because nothing exercised the prompt builder's gate. A rule nothing
+    can fail is not a rule."""
+    from omnicast.analytics.intel_gate import (
+        STATUS_ERROR,
+        CompetitorIntelRequired,
+        IntelDecision,
+        resolve_for_writer,
+    )
+
+    # §4.2: intel is written under a channel/audience/format/market/pillar key.
+    # Reading only the niche key would find nothing on every scoped row; reading
+    # ONLY the specific key would find nothing on a channel's first run while a
+    # usable niche-level playbook sat one row away. So walk the chain, and
+    # record which level answered — a borrowed niche-wide playbook is a
+    # reasonable default and a terrible thing to apply silently.
+    from omnicast.analytics.intel_scope import describe_level, fallback_chain
+
+    channel = getattr(brief, "channel", None) or brief
+    chain = fallback_chain(channel, pillar_id=getattr(brief, "pillar_id", ""))
+    scope = chain[0][1]
+    required = bool(brief.competitor_intel_required)
+    try:
+        intel = None
+        matched_level = ""
+        for level, key in chain:
+            intel = _load_competitor_intel(key)
+            if intel is not None:
+                scope, matched_level = key, level
+                break
+        if intel is not None and matched_level != "exact":
+            logger.info("competitor intel borrowed from a broader scope",
+                        scope=scope, level=matched_level,
+                        detail=describe_level(matched_level))
+    except Exception as exc:
+        # Load failure is its own outcome. Passing None to the gate would report
+        # it as STATUS_MISSING ("nothing learned yet"), a different fact that
+        # would then be counted as one in metrics.
+        decision = IntelDecision(STATUS_ERROR, reason=f"vault read failed: {exc}")
+        logger.warning("competitor intel rejected", scope=scope,
+                       artifact=artifact, **decision.as_dict())
+        if required:
+            raise CompetitorIntelRequired(
+                f"{scope} requires competitor intel but the vault could not be "
+                f"read: {exc}") from exc
+        return decision
+
+    return resolve_for_writer(intel, artifact=artifact, required=required,
+                              scope=scope)
 
 
 class WriterAgent(BaseAgent):
@@ -389,6 +498,11 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
 
         for i, angle in enumerate(ANGLES[:num_variants]):
             variant_id = chr(ord("A") + i)
+            # Warm the intel cache OFF the loop before the (synchronous) prompt
+            # builder reads it. Otherwise `_build_generation_prompt` opens
+            # sqlite on the event loop once per variant. The TTL cache alone
+            # only reduced how often that happened; this moves it.
+            await asyncio.to_thread(_load_competitor_intel, brief.niche.value.lower())
             prompt = self._build_generation_prompt(brief, angle, patterns, niche_cfg)
 
             try:
@@ -1115,19 +1229,18 @@ SCENES:
         if patterns:
             prompt += f"\nLEARNED PATTERNS FROM HIGH-PERFORMING VIDEOS:\n{chr(10).join(f'- {p.finding}' for p in patterns)}\n"
 
-        # Competitor SCRIPT playbook (hook/structure/pacing reverse-engineered from
-        # winning competitor transcripts) — mirror these proven patterns.
-        try:
-            from pathlib import Path as _P
-            from omnicast.vault import db as _vdb
-            _VDB = _P(__file__).resolve().parents[3] / "output" / "vault.db"
-            _vdb.init_db(_VDB)
-            _ci = _vdb.get_competitor_intel(brief.niche.value.lower(), _VDB)
-            if _ci and getattr(_ci, "script_playbook", ""):
-                prompt += ("\nCOMPETITOR SCRIPT PLAYBOOK (mirror these winning hook/"
-                           f"structure/pacing patterns):\n{_ci.script_playbook}\n")
-        except Exception:
-            pass
+        # Competitor SCRIPT playbook — injected ONLY when it passed the gate in
+        # analytics.intel_gate. An uncontrolled playbook (learned with no matched
+        # control group) describes what winning channels always do, not what made
+        # a video win; telling the model to "mirror" that is how survivorship
+        # bias gets written into every script. The old code pasted it in
+        # regardless and swallowed every error with `except: pass`, so a corrupt
+        # or stale row looked exactly like a healthy one.
+        _decision = resolve_competitor_playbook(brief)
+        if _decision.usable:
+            prompt += ("\nCOMPETITOR SCRIPT PLAYBOOK (validated against a matched "
+                       "control group — mirror these winning hook/structure/pacing "
+                       f"patterns):\n{_decision.playbook}\n")
 
         if brief.lessons:
             prompt += f"\nCHANNEL LESSONS:\n{chr(10).join(f'- {l}' for l in brief.lessons)}\n"

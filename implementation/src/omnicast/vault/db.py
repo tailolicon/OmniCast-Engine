@@ -7,10 +7,25 @@ import sqlite3
 from pathlib import Path
 
 from omnicast.vault.models import (
-    BudgetRecord, ChannelStats, CompetitorIntel, ConversionRecord, CredentialRecord,
-    ClickRecord, HealthLog, NicheRecord, NicheStatus, OfferRecord, PlacementRecord,
-    ModelRecord, PostMetricRecord, ProviderRecord, PublishedVideo, ScriptRecord, ScriptStatus,
-    TopicRecord, TopicStatus,
+    BudgetRecord,
+    ChannelStats,
+    ClickRecord,
+    CompetitorIntel,
+    ConversionRecord,
+    CredentialRecord,
+    HealthLog,
+    ModelRecord,
+    NicheRecord,
+    NicheStatus,
+    OfferRecord,
+    PlacementRecord,
+    PostMetricRecord,
+    ProviderRecord,
+    PublishedVideo,
+    ScriptRecord,
+    ScriptStatus,
+    TopicRecord,
+    TopicStatus,
     UsageRecord,
 )
 
@@ -176,6 +191,7 @@ def init_db(path: Path | None = None) -> None:
             script_playbook    TEXT NOT NULL DEFAULT '',
             sample_titles      TEXT NOT NULL DEFAULT '[]',
             sample_count       INTEGER NOT NULL DEFAULT 0,
+            cohort_meta        TEXT NOT NULL DEFAULT '',
             updated_at         TEXT NOT NULL DEFAULT ''
         );
 
@@ -344,11 +360,13 @@ def init_db(path: Path | None = None) -> None:
             updated_by  TEXT NOT NULL DEFAULT ''
         );
         """)
-        # Migrate: add script_playbook to pre-existing tables.
+        # Migrate: add script_playbook / cohort_meta to pre-existing tables.
         try:
             cols = [r[1] for r in conn.execute("PRAGMA table_info(competitor_intel)")]
             if "script_playbook" not in cols:
                 conn.execute("ALTER TABLE competitor_intel ADD COLUMN script_playbook TEXT NOT NULL DEFAULT ''")
+            if "cohort_meta" not in cols:
+                conn.execute("ALTER TABLE competitor_intel ADD COLUMN cohort_meta TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
 
@@ -915,7 +933,8 @@ def upsert_channel_metrics_daily(channel_id: str, rows: list[dict],
     """Upsert daily metric rows (dicts with keys matching the table columns).
     Returns number of rows written. `date` must be YYYY-MM-DD."""
     import json as _json
-    from datetime import datetime as _dt, timezone as _tz
+    from datetime import datetime as _dt
+    from datetime import timezone as _tz
     now = _dt.now(_tz.utc).isoformat()
     written = 0
     with _connect(path) as conn:
@@ -1006,22 +1025,93 @@ def list_published(channel_id: str | None = None, path: Path | None = None) -> l
 
 # ── Competitor Intel (learned title + thumbnail playbooks) ────────────────────
 
+def replace_competitor_intel(
+    niche: str, build_row, path: Path | None = None
+) -> CompetitorIntel:
+    """Read-merge-write for one niche inside a SINGLE exclusive transaction.
+
+    `build_row(previous) -> CompetitorIntel` runs with the row locked. The
+    learner previously read the old row on one connection and wrote the merged
+    result on another, so two runs for the same niche could interleave and the
+    later write would silently drop the earlier run's carried-forward artifacts
+    and provenance."""
+    conn = _connect(path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM competitor_intel WHERE niche=?", (niche,)).fetchone()
+        previous = _row_to_competitor_intel(row) if row else None
+        record = build_row(previous)
+        _write_competitor_intel(conn, record)
+        conn.commit()
+        return record
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _write_competitor_intel(conn, c: CompetitorIntel) -> None:
+    conn.execute("""
+    INSERT INTO competitor_intel
+        (niche, title_playbook, thumbnail_playbook, script_playbook, sample_titles, sample_count, cohort_meta, updated_at)
+    VALUES (?,?,?,?,?,?,?,?)
+    ON CONFLICT(niche) DO UPDATE SET
+        title_playbook=excluded.title_playbook,
+        thumbnail_playbook=excluded.thumbnail_playbook,
+        script_playbook=excluded.script_playbook,
+        sample_titles=excluded.sample_titles,
+        sample_count=excluded.sample_count,
+        cohort_meta=excluded.cohort_meta,
+        updated_at=excluded.updated_at
+    """, (c.niche, c.title_playbook, c.thumbnail_playbook,
+          getattr(c, "script_playbook", ""),
+          json.dumps(c.sample_titles, ensure_ascii=False), c.sample_count,
+          getattr(c, "cohort_meta", ""), c.updated_at))
+
+
+def _row_to_competitor_intel(r) -> CompetitorIntel:
+    try:
+        titles = json.loads(r["sample_titles"])
+    except Exception:
+        titles = []
+    keys = r.keys()
+    return CompetitorIntel(
+        niche=r["niche"], title_playbook=r["title_playbook"],
+        thumbnail_playbook=r["thumbnail_playbook"],
+        script_playbook=(r["script_playbook"] if "script_playbook" in keys else ""),
+        sample_titles=titles,
+        sample_count=r["sample_count"],
+        cohort_meta=(r["cohort_meta"] if "cohort_meta" in keys else ""),
+        updated_at=r["updated_at"],
+    )
+
+
 def upsert_competitor_intel(c: CompetitorIntel, path: Path | None = None) -> None:
     with _connect(path) as conn:
         conn.execute("""
         INSERT INTO competitor_intel
-            (niche, title_playbook, thumbnail_playbook, script_playbook, sample_titles, sample_count, updated_at)
-        VALUES (?,?,?,?,?,?,?)
+            (niche, title_playbook, thumbnail_playbook, script_playbook, sample_titles, sample_count, cohort_meta, updated_at)
+        VALUES (?,?,?,?,?,?,?,?)
         ON CONFLICT(niche) DO UPDATE SET
             title_playbook=excluded.title_playbook,
             thumbnail_playbook=excluded.thumbnail_playbook,
-            script_playbook=CASE WHEN excluded.script_playbook<>'' THEN excluded.script_playbook ELSE competitor_intel.script_playbook END,
+            -- Was: CASE WHEN excluded.script_playbook<>'' THEN excluded ELSE
+            -- existing END. That silently kept the OLD playbook while replacing
+            -- cohort_meta with the NEW run's provenance, so a stale artifact
+            -- ended up wearing fresh credentials. Carry-forward now happens in
+            -- competitor_intel._merge_run, which moves the artifact AND its own
+            -- provenance together. The SQL just stores what it is given.
+            script_playbook=excluded.script_playbook,
             sample_titles=excluded.sample_titles,
             sample_count=excluded.sample_count,
+            cohort_meta=excluded.cohort_meta,
             updated_at=excluded.updated_at
         """, (c.niche, c.title_playbook, c.thumbnail_playbook,
               getattr(c, "script_playbook", ""),
-              json.dumps(c.sample_titles, ensure_ascii=False), c.sample_count, c.updated_at))
+              json.dumps(c.sample_titles, ensure_ascii=False), c.sample_count,
+              getattr(c, "cohort_meta", ""), c.updated_at))
 
 
 def get_competitor_intel(niche: str, path: Path | None = None) -> CompetitorIntel | None:
@@ -1039,7 +1129,9 @@ def get_competitor_intel(niche: str, path: Path | None = None) -> CompetitorInte
         thumbnail_playbook=r["thumbnail_playbook"],
         script_playbook=(r["script_playbook"] if "script_playbook" in keys else ""),
         sample_titles=titles,
-        sample_count=r["sample_count"], updated_at=r["updated_at"],
+        sample_count=r["sample_count"],
+        cohort_meta=(r["cohort_meta"] if "cohort_meta" in keys else ""),
+        updated_at=r["updated_at"],
     )
 
 

@@ -49,8 +49,8 @@ class TestDiscoveryResult:
         ]
         scored = [
             ScoredTopic(
-                raw=_raw_topic(), trend_momentum=20, gap_score=30,
-                rpm_potential=15, novelty_score=8, total_score=73,
+                raw=_raw_topic(), trend_momentum=20, gap_score=20,
+                rpm_potential=15, novelty_score=8, stack_fit=10, total_score=73,
                 auto_approved=True,
             ),
         ]

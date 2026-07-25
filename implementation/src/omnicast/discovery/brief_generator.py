@@ -51,6 +51,7 @@ class BriefGenerator:
         channel_id = channel.channel_id if channel else ""
         sub_niche = channel.sub_niche if channel else ""
         target_duration = channel.target_duration_min if channel else 10
+        intel_required = bool(getattr(channel, "competitor_intel_required", False))
 
         return TopicBrief(
             title=scored.raw.title,
@@ -64,6 +65,7 @@ class BriefGenerator:
             brand_voice=brand_voice,
             channel_id=channel_id,
             sub_niche=sub_niche,
+            competitor_intel_required=intel_required,
         )
 
     @staticmethod

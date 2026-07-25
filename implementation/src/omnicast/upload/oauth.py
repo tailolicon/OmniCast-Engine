@@ -94,16 +94,35 @@ class OAuth2Manager:
         return raw.split() if isinstance(raw, str) else list(raw)
 
     async def get_credentials(self, channel_id: str, scopes: list[str] | None = None):
+        """Async facade over `get_credentials_sync` — ON A WORKER THREAD.
+
+        The body is, and always was, fully synchronous: a token file read plus
+        `creds.refresh()`, a blocking HTTPS POST with google-auth's 120s
+        default. Awaiting it froze the caller's event loop for as long as
+        Google took to answer, on every upload, health check and analytics
+        crawl.
+
+        The first attempt at this fix only extracted the sync entry point and
+        called it directly from here, which changed nothing about the blocking
+        and merely made it look deliberate. `to_thread` is the actual fix."""
+        import asyncio
+
+        return await asyncio.to_thread(self.get_credentials_sync, channel_id, scopes)
+
+    def get_credentials_sync(self, channel_id: str, scopes: list[str] | None = None):
         """Load credentials for a channel and refresh if expired. Returns a
         google.oauth2.credentials.Credentials. Raises UploadPipelineError if no
         token is stored or the refresh fails (revoked/expired refresh token).
+
+        BLOCKING: reads a token file and may perform an HTTPS refresh. Callers
+        inside an event loop must go through a worker thread.
 
         `scopes` narrows/overrides the requested scopes (default: upload-only
         SCOPES). Requesting a scope the stored refresh token was never granted
         fails at refresh time — callers should check `stored_scopes()` first.
         """
-        from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
 
         info = self._read_token(channel_id)
         if not info:

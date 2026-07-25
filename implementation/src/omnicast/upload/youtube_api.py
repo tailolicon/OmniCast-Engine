@@ -19,6 +19,7 @@ YOUTUBE_API_QUOTA_COST = {
     "thumbnails.set": 50,
     "videos.update": 50,
     "videos.list": 1,
+    "commentThreads.list": 1,
 }
 
 
@@ -88,6 +89,15 @@ class YouTubeUploader:
             "privacyStatus": m.privacy_status,
             "selfDeclaredMadeForKids": bool(m.made_for_kids),
         }
+        # The altered/synthetic-content disclosure. ai_disclosure existed on the
+        # model since day one but was silently dropped here — the exact
+        # "feature on the diagram, no real capability" failure the 2026-07-23
+        # strategic review warns about. Realistic AI imagery (found-photo
+        # stills, historical reconstruction) REQUIRES this label under the 2026
+        # policy; omitting it risks demotion + strikes. Only asserted when
+        # True — never explicitly claim a video is synthetic-free.
+        if m.ai_disclosure:
+            status["containsSyntheticMedia"] = True
         # Scheduled publish requires privacyStatus=private + RFC3339 publishAt.
         if m.publish_at is not None:
             status["privacyStatus"] = "private"

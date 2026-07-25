@@ -10,9 +10,8 @@ from enum import Enum
 
 from pydantic import Field, model_validator
 
+from omnicast.models.enums import Market, Niche, TopicSource
 from omnicast.models.schemas import OmnicastSchema
-from omnicast.models.enums import Niche, Market, TopicSource
-
 
 # ── Spoken-length calibration (shared: Writer floor, Critic length flag, media gate) ──
 # Video length is DRIVEN BY the topic/target (8-12+ min), never a hard-coded word
@@ -91,6 +90,14 @@ class TopicBrief(OmnicastSchema):
     # Channel content memory — prevents duplicate topics, enables accurate "Next:" teasers
     topics_done: list[str] = Field(default_factory=list)   # titles already published/scripted
     next_topic: str = ""                                    # next queued topic (for outro teaser)
+    # Fail-closed policy for competitor intelligence. False (default): if the
+    # learned playbook is uncontrolled, stale or unreadable, the writer skips it
+    # and logs why. True: the channel would rather stop than write from patterns
+    # that were never verified against a control group.
+    # This has to be a declared field — the writer previously read it with
+    # getattr(), and OmnicastSchema drops unknown keys, so the flag could never
+    # be set and the fail-closed branch was unreachable.
+    competitor_intel_required: bool = False
 
 
 class ScriptScene(OmnicastSchema):

@@ -139,15 +139,15 @@ def _narrative_role_clients(
     # making. Under max-quality the planner is Opus.
     planner_model = _opt(
         "OMNICAST_NARRATIVE_PLANNER_MODEL",
-        "claude-opus-4-8" if max_quality else "claude-sonnet-5",
+        "claude-opus-5" if max_quality else "claude-sonnet-5",
     )
     writer_model = _opt(
         "OMNICAST_NARRATIVE_WRITER_MODEL",
-        "claude-opus-4-8" if max_quality
+        "claude-opus-5" if max_quality
         else (getattr(settings, "claude_model", "") or "claude-sonnet-5"),
     )
     judge_model = _opt("OMNICAST_NARRATIVE_JUDGE_FALLBACK_MODEL", "claude-sonnet-5")
-    challenger_model = _opt("OMNICAST_NARRATIVE_CHALLENGER_MODEL", "claude-opus-4-8")
+    challenger_model = _opt("OMNICAST_NARRATIVE_CHALLENGER_MODEL", "claude-opus-5")
     annotation_model = _opt("OMNICAST_NARRATIVE_ANNOTATION_MODEL", "claude-sonnet-5")
     # EFFORT IS A PROPERTY OF THE ROLE, NOT THE MODEL. Live 2026-07-17 14:32: a
     # Sonnet *planner* call ran 7 minutes and 11,924 output tokens and a Sonnet
@@ -177,7 +177,20 @@ def _narrative_role_clients(
 
     planner = claude(planner_model, planner_effort, "planner")
     writer = claude(writer_model, writer_effort, "writer")
-    challenger = claude(challenger_model, challenger_effort, "release_challenger")
+    # FOREIGN-PROVIDER ADVERSARY (external review 2026-07-20, both reviewers):
+    # Opus challenging Sonnet is a manager grading their own company's work —
+    # same base data, same RLHF, shared blind spots. Set
+    # OMNICAST_NARRATIVE_CHALLENGER_PROVIDER=deepseek (with live balance!) to
+    # give the release challenger a genuinely different lineage. With no
+    # balance the challenger is unreachable and releases fail closed — set the
+    # flag only after topping up. Default unchanged: Opus.
+    challenger_provider = _opt(
+        "OMNICAST_NARRATIVE_CHALLENGER_PROVIDER", "anthropic"
+    ).lower()
+    if challenger_provider == "deepseek" and deepseek_pro is not None:
+        challenger = deepseek_pro
+    else:
+        challenger = claude(challenger_model, challenger_effort, "release_challenger")
     # Generator-side cost routing: plan repairs and surgical patches are ALWAYS
     # re-validated by the checkers (preflight + plan audit; trial gate + blind
     # selector + monotonic re-score), so both producers run on the cheap tier.
@@ -503,8 +516,13 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             _avoid_kp = (_avoid_kp + "\n" if _avoid_kp else "") + (
                 "Recent videos already used these threat/escape archetypes — vary from "
                 f"them, do not repeat the same shape: {', '.join(_aa)}.")
-    except Exception:
-        pass
+    except Exception as _xv_exc:  # noqa: BLE001
+        # Fail-open is deliberate (a broken history file must not block a run)
+        # but SILENT fail-open is not: without this line every video after a
+        # corrupt fingerprint store would quietly lose all cross-video
+        # anti-repetition (external review 2026-07-20 flagged the bare pass).
+        logger.warning("cross-video freshness unavailable; generating without it",
+                       channel=channel_id, error=str(_xv_exc)[:200])
 
     brief = TopicBrief(
         title=topic,
@@ -516,6 +534,8 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         brand_voice=channel.brand_voice,
         channel_id=channel.channel_id,
         sub_niche=channel.sub_niche,
+        competitor_intel_required=bool(
+            getattr(channel, "competitor_intel_required", False)),
         target_audience=aud_in,
         pain_point=pain_in,
         content_angle=angle_in,

@@ -87,6 +87,9 @@ class NamedChannelStrategy(_StrictModel):
     # mechanism axes cannot see. Opt-in so it never touches a channel that has
     # not tuned its denylist.
     stylometric_texture_gate: bool = False
+    # Premise-level freshness: every story must name what makes it unlike its
+    # genre default before prose exists. Opt-in for the same reason.
+    premise_freshness_gate: bool = False
 
     @classmethod
     def from_quality_profile(cls, profile) -> "NamedChannelStrategy":
@@ -145,6 +148,9 @@ class NamedChannelStrategy(_StrictModel):
             promote_impossibility_to_major=profile.promote_impossibility_to_major,
             stylometric_texture_gate=getattr(
                 profile, "stylometric_texture_gate", False
+            ),
+            premise_freshness_gate=getattr(
+                profile, "premise_freshness_gate", False
             ),
         )
 
@@ -255,12 +261,24 @@ class NarrativeStoryPlan(_Model):
     # How this story concretely delivers the compilation topic's subject. Checked
     # against the topic at plan time and against the narration at release time.
     topic_promise: str = ""
+    # One clause naming what makes THIS premise unlike its genre default. The
+    # anti-trope machinery only ever rationed the ambiguous/watcher slot, so
+    # human-threat premises (tailgating truck, demand at the van window, creepy
+    # passenger) reached prose as genre defaults and the critic scored the
+    # compilation originality 6/10 — one point under the release floor — on three
+    # consecutive fresh topics (2026-07-20 batch). Originality is holistic and
+    # therefore unrepairable after the fact, so it has to be contracted here,
+    # before anyone writes a word.
+    distinguishing_turn: str = ""
     narrator_age_band: Literal["minor", "adult"] = "adult"
     narrator_age_years: int | None = Field(default=None, ge=5, le=110)
     safety_obligation: SafetyObligation = "not_applicable"
     safety_omission_reason: str = ""
 
-    @field_validator("topic_promise", "safety_omission_reason", "voice_seed", mode="before")
+    @field_validator(
+        "topic_promise", "safety_omission_reason", "voice_seed",
+        "distinguishing_turn", mode="before",
+    )
     @classmethod
     def normalize_optional_text(cls, value: object) -> object:
         return "" if value is None else value
@@ -440,7 +458,8 @@ def plan_story_text(item: NarrativeStoryPlan) -> str:
     return "\n".join((
         item.title, item.narrator_profile, item.setting, item.setup_requirement,
         item.threat, item.escape_action, item.ending_shape, item.voice_rules,
-        item.topic_promise, item.safety_omission_reason, *item.continuity_ledger,
+        item.topic_promise, item.distinguishing_turn, item.safety_omission_reason,
+        *item.continuity_ledger,
     ))
 
 
@@ -963,6 +982,16 @@ class StoryIssue(_Model):
         "evidence_quote", "anchor_quote", "viewer_impact", "issue_id", "promoted_from",
         mode="before",
     )
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> object:
+        return "" if value is None else value
+
+
+class OriginalityVerdict(_StrictModel):
+    originality: int = Field(ge=0, le=10)
+    justification: str = ""
+
+    @field_validator("justification", mode="before")
     @classmethod
     def normalize_optional_text(cls, value: object) -> object:
         return "" if value is None else value
@@ -1493,6 +1522,52 @@ _RATIONED_TICS = (
     ("'I like the ...' preference declaration", re.compile(
         r"\bI\s+(?:like|love)d?\s+the\b", re.I,
     )),
+    # "I don't spook on the job" / "I don't scare easy" — the stock composure
+    # claim before admitting unease. Two narrators used it at their most
+    # exposed beat in one compilation (live 2026-07-19 mall attempt 2, critic
+    # minor); the semantic paraphrases stay the critic's job, the classic
+    # wordings are rationed here.
+    ("'I don't spook/scare' composure claim", re.compile(
+        r"\bI\s+(?:don'?t|do\s+not|never)\s+(?:spook|scare|rattle)\b", re.I,
+    )),
+    # The routine-invariance declaration: "the order of things never changes",
+    # "runs the same way every night", "I have never once skipped a step". The
+    # profile ASKS for an ordinary-routine opening, and without variation
+    # guidance every narrator asserts their routine's sameness in the same
+    # breath (cross-lineage audit 2026-07-25 found it in three of four
+    # compilations). One narrator may own the claim.
+    ("routine-invariance declaration", re.compile(
+        r"\b(?:never changes|the same (?:way )?every (?:night|shift|run|time)|"
+        r"never once (?:skipped|missed|failed|varied))\b", re.I,
+    )),
+    # Cold coffee on the night-shift counter — the single most reused prop in
+    # the corpus (audit 2026-07-25: two separate compilations, three stories).
+    ("cold-coffee prop", re.compile(
+        r"\bcoffee\b[^.!?\n]{0,40}\b(?:gone|going|went)\s+cold\b"
+        r"|\bcold\s+coffee\b",
+        re.I,
+    )),
+    # The ears-before-eyes SCAFFOLD: the prompt requires every story to let
+    # sound precede sight, and without variation guidance all three writers
+    # converge on the literal "heard X before I saw Y" construction (live
+    # 2026-07-20 ×2: shuttle 1850 critic major, courier hospital re-judge
+    # found it in all three stories). The BEAT stays required; the WORDING is
+    # rationed to one narrator.
+    ("'heard it before I saw it' scaffold", re.compile(
+        r"\bheard\b[^.!?\n]{0,40}\bbefore\s+I\s+(?:ever\s+)?saw\b", re.I,
+    )),
+    # The no-record aftermath device: an authority/records check that comes
+    # back empty. Live 2026-07-20 (shuttle 0153): ALL THREE stories closed on
+    # it under three different aftermath labels — the axis cannot see a shared
+    # surface device. Classic wordings rationed to one story; paraphrases stay
+    # with the critic/challenger.
+    ("'nothing on file' no-record device", re.compile(
+        r"\bnothing (?:on file|in the (?:system|logs?))\b"
+        r"|\bno (?:record|match|report) (?:of|for|in|came back)\b"
+        r"|\bnever matched (?:a|the) name\b"
+        r"|\b(?:log|file|system|records?) (?:showed|turned up|had) nothing\b",
+        re.I,
+    )),
 )
 
 _THE_WAY_COMPARISON_RE = re.compile(
@@ -1749,7 +1824,262 @@ def _stylometric_texture_findings(
                 break
             coda_seen = (story.story_id, hit.strip())
 
+    # 6. Verbatim phrase reuse across stories — the GENERIC form of 1-5.
+    # Checks 1-5 each name ONE tic, every one added reactively after a live
+    # catch; the critic kept surfacing new instances the whitelist could not
+    # see (live 2026-07-20 front desk, 74/100: "hands loose at his sides"
+    # verbatim across two unrelated men, plus a shared decisive-pivot
+    # scaffold). Any rare five-word run shared by two narrators reads as one
+    # author whichever tic it happens to instantiate, so match the SHAPE
+    # instead of enumerating the instances. Domain nouns from the locked plans
+    # are exempt — three shuttle drivers must be allowed to say "the overnight
+    # shuttle van" — and two content words are required so shared function-word
+    # runs ("and I went back to") never fire.
+    failures.extend(_shared_phrase_failures(stories, plan_by_id))
+    # Titles are read together on the card beats — an unchecked surface until
+    # the 2026-07-25 cross-lineage audit found all three cut from one formula.
+    failures.extend(_title_template_failures(stories))
+
     return failures, flags
+
+
+_PHRASE_NGRAM = 5
+
+# Content words the window must carry to count. Replayed over the channel's
+# 66-script corpus, a two-word floor flagged procedural idiom any two workers
+# would land on independently ("and put it in park", "the stairs two at a
+# time"); a three-word floor keeps only the DESCRIPTIVE phrases ("hands loose
+# at his sides") that two narrators cannot invent word-for-word, and fires on
+# none of the scripts that were actually released.
+_PHRASE_MIN_CONTENT = 3
+
+# Function words plus the handful of bare narrative verbs that carry no voice.
+_PHRASE_STOPWORDS = frozenset({
+    "a", "an", "the", "and", "or", "but", "so", "if", "than", "then", "that",
+    "this", "these", "those", "of", "to", "in", "on", "at", "by", "for", "with",
+    "from", "into", "out", "up", "down", "over", "back", "off", "about",
+    "i", "me", "my", "mine", "myself", "he", "him", "his", "she", "her", "hers",
+    "it", "its", "they", "them", "their", "we", "us", "our", "you", "your",
+    "is", "was", "were", "are", "be", "been", "am", "do", "did", "does", "done",
+    "have", "has", "had", "will", "would", "could", "can", "should", "not",
+    "no", "there", "here", "when", "what", "who", "which", "all", "one", "two",
+    "just", "like", "as", "got", "get", "went", "go", "said", "say", "know",
+    "s", "t", "re", "ve", "ll", "d", "m",
+})
+
+
+def _phrase_tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z']+", (text or "").lower())
+
+
+def _plan_domain_words(
+    plan_by_id: dict[str, NarrativeStoryPlan] | None,
+) -> frozenset[str]:
+    """Vocabulary the premises legitimately share — the topic, the workplace,
+    the narrator's trade. Two stories using it verbatim is the assignment, not
+    a shared habit."""
+    if not plan_by_id:
+        return frozenset()
+    words: set[str] = set()
+    for plan in plan_by_id.values():
+        for field in ("topic_promise", "setting", "narrator_profile"):
+            words.update(_phrase_tokens(getattr(plan, field, "") or ""))
+    return frozenset(words)
+
+
+def _maximal_shared_run(
+    tokens: list[str], start: int, owner_tokens: list[str],
+) -> tuple[int, list[str]]:
+    """Grow the matching window outward in both texts while the tokens agree.
+
+    Returns (start index of the run in `tokens`, the run)."""
+    n = _PHRASE_NGRAM
+    gram = tokens[start:start + n]
+    origin = next(
+        (o for o in range(len(owner_tokens) - n + 1)
+         if owner_tokens[o:o + n] == gram),
+        None,
+    )
+    if origin is None:  # pragma: no cover - owner always holds the gram
+        return start, gram
+    lo, hi = start, start + n
+    olo, ohi = origin, origin + n
+    while lo > 0 and olo > 0 and tokens[lo - 1] == owner_tokens[olo - 1]:
+        lo -= 1
+        olo -= 1
+    while hi < len(tokens) and ohi < len(owner_tokens) and tokens[hi] == owner_tokens[ohi]:
+        hi += 1
+        ohi += 1
+    return lo, tokens[lo:hi]
+
+
+def _shared_phrase_failures(
+    stories: list[StoryDraft],
+    plan_by_id: dict[str, NarrativeStoryPlan] | None = None,
+) -> list[GateFailure]:
+    """One failure per story that repeats an earlier story's rare phrase."""
+    domain = _plan_domain_words(plan_by_id)
+    failures: list[GateFailure] = []
+    seen: dict[tuple[str, ...], str] = {}  # ngram -> story that owns it first
+    story_tokens: dict[str, list[str]] = {}
+
+    for story in stories:
+        tokens = _phrase_tokens(story.narration)
+        story_tokens[story.story_id] = tokens
+        own: set[tuple[str, ...]] = set()
+        hits: list[tuple[str, str]] = []  # (quoted run, owner)
+        consumed = 0  # end of the last reported run, so one habit reports once
+        for start in range(len(tokens) - _PHRASE_NGRAM + 1):
+            gram = tuple(tokens[start:start + _PHRASE_NGRAM])
+            own.add(gram)
+            owner = seen.get(gram)
+            if owner is None or owner == story.story_id or start < consumed:
+                continue
+            content = {
+                tok for tok in gram
+                if tok not in _PHRASE_STOPWORDS and tok not in domain
+            }
+            if len(content) < _PHRASE_MIN_CONTENT:
+                continue
+            # Quote the WHOLE shared run, not the window that found it — a
+            # half-quoted phrase sent earlier repair waves at the wrong half of
+            # the sentence.
+            lo, run = _maximal_shared_run(tokens, start, story_tokens[owner])
+            consumed = lo + len(run)
+            hits.append((" ".join(run), owner))
+        if hits:
+            quoted = "; ".join(f"{run!r} (also in {owner})" for run, owner in hits)
+            failures.append(_failure(
+                "stylometric_shared_phrase",
+                f"{story.story_id} reuses {len(hits)} phrase(s) word-for-word "
+                f"from an earlier story: {quoted}. Two narrators sharing an "
+                "exact turn of phrase read as one author — rewrite EVERY "
+                "occurrence listed here in wording specific to THIS narrator's "
+                "vantage and trade, keeping each beat unchanged",
+                story.story_id,
+            ))
+        for gram in own:
+            seen.setdefault(gram, story.story_id)
+
+    return failures
+
+
+def _finishing_wave_allowed(
+    score: NarrativeScorecard,
+    gate: GateReport,
+    strategy: NamedChannelStrategy,
+    failing_ids: set[str],
+) -> bool:
+    """Whether a compilation has earned the one FINISHING repair wave.
+
+    The wave budget (2) protected against debate loops, but it also discarded
+    candidates standing at the release door: courier 1726 hit 84/84 with every
+    dimension floor passed and exactly two quoted majors on one story, and the
+    run ended needs_edit with the fix instructions sitting unread in the
+    scorecard. A third wave is allowed only when the compilation is already in
+    release range (>= floor - 2), gates pass, nothing is critical, at most two
+    stories still carry blockers, and every remaining blocker is quoted — the
+    locally-repairable kind. Everything else still stops at two waves."""
+    if not gate.passed or score.critical_issues:
+        return False
+    # "Nothing critical" means STRUCTURED criticals too — external review
+    # 2026-07-20 constructed a score-84 card with a quoted critical story
+    # issue and this guard returned True (spec said it must not).
+    if any(issue.severity == "critical" for issue in score.story_issues):
+        return False
+    if score.total_score < strategy.approval_score - 2:
+        return False
+    if not failing_ids or len(failing_ids) > 2:
+        return False
+    remaining = [
+        issue for issue in score.story_issues
+        if issue.story_id in failing_ids
+        and issue.severity in {"critical", "major"}
+    ]
+    return bool(remaining) and all(
+        (issue.evidence_quote or issue.anchor_quote).strip()
+        for issue in remaining
+    )
+
+
+_TITLE_LEADING_ARTICLE_RE = re.compile(r"^\s*the\b", re.I)
+# "The Room That Isn't There", "The Uniform That Changed", "The Waypoint That
+# Wasn't There" — noun phrase plus a restrictive clause announcing the anomaly.
+_TITLE_ANOMALY_CLAUSE_RE = re.compile(
+    r"^\s*the\s+\w+[\w\s'-]*\s+(?:that|which|nobody|no one|who)\b", re.I,
+)
+
+
+def _title_template_failures(stories: list[StoryDraft]) -> list[GateFailure]:
+    """Story TITLES are a surface no gate has ever read.
+
+    Cross-lineage audit 2026-07-25 (codex, two separate compilations): all
+    three story titles in a compilation shared one template — "The <noun
+    phrase>" and, worse, "The <noun> That <anomaly>". A viewer sees the three
+    titles together on the card beats; three variations of one formula is a
+    production-template tell in the exact place the channel looks most
+    manufactured. Two may rhyme; three is the formula."""
+    titles = [(s.story_id, (s.title or "").strip()) for s in stories]
+    named = [(sid, t) for sid, t in titles if t]
+    if len(named) < 3:
+        return []
+    failures: list[GateFailure] = []
+
+    anomaly = [(sid, t) for sid, t in named if _TITLE_ANOMALY_CLAUSE_RE.match(t)]
+    if len(anomaly) >= 2:
+        failures.append(_failure(
+            "stylometric_title_template",
+            f"{anomaly[-1][0]} titles its story {anomaly[-1][1]!r} on the same "
+            f"'The <thing> that <anomaly>' formula already used by "
+            f"{anomaly[0][0]} ({anomaly[0][1]!r}); the three titles are read "
+            "together on the card beats — give this one a different shape "
+            "(a plain place or object, a spoken fragment, a time)",
+            anomaly[-1][0],
+        ))
+        return failures
+
+    leading = [(sid, t) for sid, t in named if _TITLE_LEADING_ARTICLE_RE.match(t)]
+    if len(leading) == len(named):
+        failures.append(_failure(
+            "stylometric_title_template",
+            f"all {len(named)} story titles open with 'The' "
+            f"({', '.join(repr(t) for _sid, t in named)}); vary at least one — "
+            "three titles cut from one pattern read as a template",
+            named[-1][0],
+        ))
+    return failures
+
+
+def _near_miss_minor_ids(
+    score: NarrativeScorecard,
+    gate: GateReport,
+    strategy: NamedChannelStrategy,
+    expected_ids: set[str],
+    repair_waves: int,
+) -> set[str]:
+    """Stories eligible for the one bounded minor-repair wave.
+
+    A compilation with clean gates, zero critical/major issues, and a score
+    just under the floor used to die needs_edit with ZERO repair calls (live
+    2026-07-19 mall: 83 vs floor 84, three quoted repairable minors,
+    repair_writer=0) — repair only ever chased gate failures and majors.
+    Quoted minors are exactly the locally-patchable kind; one wave may close
+    the gap. Guards keep this from rescuing weak drafts: gates must pass, no
+    critical/major anywhere, the gap must be small, and only the first wave
+    qualifies."""
+    if repair_waves != 0 or not gate.passed or score.critical_issues:
+        return set()
+    if any(i.severity in {"critical", "major"} for i in score.story_issues):
+        return set()
+    gap = strategy.approval_score - score.total_score
+    if gap <= 0 or gap > 3:
+        return set()
+    return {
+        issue.story_id for issue in score.story_issues
+        if issue.story_id in expected_ids
+        and issue.severity == "minor"
+        and issue.evidence_quote.strip()
+    }
 
 
 def _ending_region(narration: str) -> str:
@@ -2507,6 +2837,9 @@ def validate_plan_preflight(
                         "compilation may not advertise one subject and plan another"
                     )
 
+    if strategy is not None and strategy.premise_freshness_gate:
+        errors.extend(_premise_freshness_errors(plan))
+
     if strategy is not None and strategy.safety_response_gate:
         for item in plan.stories:
             if item.narrator_age_band != "minor" or item.threat_type != "human":
@@ -2596,7 +2929,8 @@ setup_requirement, threat, threat_type (human or ambiguous), escape_action, endi
 evidence_allowance (MUST be exactly one enum string: none, camera, official, physical,
 witness, or recurrence; put any description in continuity_ledger instead), voice_rules,
 voice_seed, threat_mechanism, progression_mechanism, escape_mechanism,
-aftermath_mechanism, threat_identity, topic_promise, narrator_age_band,
+aftermath_mechanism, threat_identity, topic_promise, distinguishing_turn,
+narrator_age_band,
 narrator_age_years, safety_obligation, safety_omission_reason, continuity_ledger
 (array of exactly 5 unique short strings in this exact order and with these exact
 prefixes: "hook_timeline:", "people_objects:", "locations_exits:",
@@ -2622,6 +2956,11 @@ page before danger (who they are, where, doing what). setting and continuity_led
 private continuity constraints the story must never contradict, but they are NOT
 exposition obligations — do not put an exact unit, floor, exit, or prop into
 setup_requirement unless it affects the threat, a choice, the escape, or the ending.
+The inverse is a hard rule: EVERY object, opening, or mechanism the escape_action or
+ending_shape DEPENDS on (a propped fire door, a manual release lever, a service gap
+in a fence) MUST already be planted in setup_requirement or a continuity_ledger entry
+as an established fact for THAT night — an escape through a door the plan never
+propped is a staging contradiction the audit rejects.
 IDs must be
 story_1..story_{story_count}. Give each
 story a physically coherent continuity ledger, different narrator life context and
@@ -2631,7 +2970,20 @@ own — and a different ending shape. If escape_mechanism is threat_withdraws_un
 escape_action MUST be two ordered clauses: first the narrator's deliberate decision
 under pressure, then the threat's withdrawal (e.g. "stays flat behind the counter with
 911 dialed AND the man steps back off the porch before anyone arrives"); with a human
-threat this mechanism forbids safety_obligation=not_applicable. At most one story may use one restrained evidence
+threat this mechanism forbids safety_obligation=not_applicable.
+escape_action clauses are a PERFORMANCE SEQUENCE: the story must deliver them in
+clause order and the compliance auditor must quote each clause as a separate span in
+that order. So every clause must be a discrete, timestampable EVENT. A continuous
+state ("keeps to the main route", "stays calm") is not an event — it cannot be
+ordered against one, and a chain that mixes them becomes unauditable and kills the
+story after it is written. Standing states belong in the continuity_ledger; keep the
+escape chain to 2-3 actions a viewer could put on a clock.
+escape_action and ending_shape must not SHARE an event: the escape chain ends
+BEFORE the ending begins. If the same moment appears in both fields ("...flags down
+the deputy as the man slips through the fence gap" / "deputies arrive as the man
+slips through the fence gap"), the auditor must quote one span for two beats and the
+story is unauditable no matter how it is written. Give the ending its own subsequent
+moment. At most one story may use one restrained evidence
 beat; at least one must use none. cold_open is one short first-person line whose promised
 moment will occur in a story. No monsters, omniscient knowledge, CTAs, analysis, police-
 report framing, camera static, disappearing footprints, or proof-stacking. For three
@@ -2648,6 +3000,45 @@ not a workaround. The labels must describe the threat/escape/ending you actually
 threat_identity is an axis like the others — no two stories may share a value. At most
 one story per compilation may feature a silent, motionless lone stranger; a threat that
 speaks normally but says something subtly wrong is often scarier than stillness.
+That one slot must EARN itself with a concrete distinguishing mechanism the audit can
+name. Stock renderings are rejected as the tall-still-figure trope REGARDLESS of
+setting: a figure glimpsed at a distance (or in glass) that is gone when approached,
+tapping or knocking that stops when observed, a motionless shape that leaves one
+inexplicable trace. Relocating the trope is not a fresh angle. If you cannot state in
+one clause what makes this watcher unlike the stock one, plan a threat that ACTS.
+The same one-slot rationing applies to the NO-RECORD aftermath: an authority or
+records check that comes back empty ("nothing on file", "no one matched the name",
+"the log showed nothing") may close AT MOST ONE story per compilation — three empty
+searches under three different aftermath labels are one device worn three ways. Vary
+what the aftermath YIELDS: a partial answer that explains nothing, a wrong explanation
+others accept, an object that should not exist, or no check at all.
+distinguishing_turn: 4-25 words, one per story, all three different. Name what the
+STOCK version of this premise would do and what this one does instead. A deterministic
+check reads it, and a clause that only restates your own threat field is rejected. This
+exists because the compilation is scored on originality as a whole and that score
+cannot be repaired once the prose is written — three competently written genre defaults
+lose on this axis no matter how clean the continuity is.
+HUMAN-THREAT STOCK LIST — human threats are the majority of every compilation and are
+where the genre default hides, because they draw no attention from the ambiguous-threat
+rules below. These are stock: a vehicle tailgating or running the narrator off a dark
+road; strangers surrounding the vehicle demanding what is in it; a passenger who grabs
+the wheel or gives a wrong destination; a man who will not leave the counter at closing;
+someone waiting by the narrator's car in an empty lot; a knock from someone claiming a
+plausible errand. You may still use one of these SHAPES, but distinguishing_turn must
+then name the concrete thing the stock version does not have — what the threat wants,
+knows, or does that a random predator would not. "The threat behaves oddly" is not a
+turn; "he asks for the cooler by the patient's name, which is not written on the van"
+is.
+AMBIGUOUS-THREAT STOCK LIST — the audit rejects these on sight unless the plan names
+a concrete fresh mechanism in one clause (ten recent plans died here; do not spend an
+attempt discovering it again): doors/exits closing in sequence behind the narrator;
+lights failing or extinguishing just ahead of or behind them; an elevator travelling
+on its own to a sealed floor; knocking/tapping/sound that stops exactly when observed
+or when they disengage; the environment "performing" the narrator's own presence back
+at them (mirrored footsteps, echoed breathing); a stranger faking car trouble as a
+lure; a disconnected or dead phone line that rings anyway. An ambiguous threat is
+scarier when something concrete is WRONG about a normal thing than when the building
+performs a haunting.
 Vary the recognition point across the three stories — one narrator may read the danger
 early, another late, another only in hindsight. Where a narrator has a trade or role,
 write that story's voice_rules to include 2-3 role-specific ways of seeing; in at least
@@ -2741,7 +3132,19 @@ Check each story for exactly these categories:
   over safety.
 - prop_staging: every object used during threat/escape must exist in the setup or ledger first.
 - trope: the premise is a recognizable AI-horror trope (tall-still figure, smiling stranger
-  at the door, knocking that stops when observed) without a fresh angle.
+  at the door, knocking that stops when observed) without a fresh angle. This applies to
+  HUMAN threats too, and that is where it is most often missed: a tailgating vehicle, a
+  demand at the vehicle window, a wheel-grabbing passenger, a man loitering at a counter
+  at closing. Read each story's distinguishing_turn and ask whether it names something
+  the stock version of that premise lacks. A turn that restates the threat, promises
+  atmosphere ("more unsettling than it sounds"), or names only a setting detail does not
+  clear the trope — quote it and raise the issue.
+  ANTI-ANCHORING DISCIPLINE: the distinguishing_turn is the planner's CLAIM, never your
+  evidence. Judge freshness from the LOCKED FIELDS ALONE (threat, escape_action,
+  ending_shape, ledger) as if the turn sentence were deleted: if what remains reads as
+  the stock version, the premise IS stock no matter how novel the claim sounds. A turn
+  whose named mechanism does not appear in any locked field is marketing — quote the
+  turn AND name the missing mechanism.
 
 severity: critical = the premise cannot survive an informed viewer; major = a knowledgeable
 viewer would flinch but the story could limp through; minor = worth noting, not blocking.
@@ -2868,15 +3271,23 @@ The SETTING/GEOGRAPHY and CONTINUITY LEDGER below are private continuity constra
 never contradict them, but do not recite unit numbers, exits, or props that do not
 affect the threat, a choice, the escape, or the ending.
 THREAT: {plan.threat}
-THREAT TYPE: {plan.threat_type}
+THREAT TYPE: {plan.threat_type}{f'''
+WHAT MAKES THIS ONE NOT THE STOCK VERSION: {plan.distinguishing_turn}
+This is the story's reason to exist. It must be legible on the page as something that
+HAPPENS — a thing the threat does, wants, or knows — not as narrator commentary about
+how unusual it was. If a viewer could watch this story and describe it in the same words
+as the stock version of this premise, the story has failed even if every other beat is
+clean.''' if plan.distinguishing_turn.strip() else ''}
 REQUIRED PRACTICAL RESPONSE/ESCAPE: {plan.escape_action}
 ENDING SHAPE: {plan.ending_shape}
 EVIDENCE ALLOWANCE: {plan.evidence_allowance}{'''
 "none" means NOTHING confirms the encounter afterwards: no second witness account, no
 relief-shift corroboration, no official report or record, no recovered trace, no camera.
-The narrator's word stands alone — that unconfirmed loneliness IS the dread. Adding even
-one validating detail in the aftermath is a release-blocking defect (third occurrence of
-this exact miss).''' if plan.evidence_allowance == "none" else ''}
+A PROMISE of follow-up is also confirmation ("they said someone would look into it",
+"dispatch flagged it for review") — corroboration-by-authority, same defect (5th
+occurrence of this class, this variant live 2026-07-20). The narrator's word stands
+alone — that unconfirmed loneliness IS the dread. Adding even one validating detail in
+the aftermath is a release-blocking defect.''' if plan.evidence_allowance == "none" else ''}
 VOICE RULES: {plan.voice_rules}
 CONTINUITY LEDGER: {json.dumps(plan.continuity_ledger, ensure_ascii=False)}
 COLD-OPEN PROMISE TO PAY OFF: {cold_open}
@@ -2937,7 +3348,22 @@ kitchen.") does NOT count as trailing explanation and may stand inside the final
 beats; it must name the declared recipient in plain words (police/911, or the parent,
 boss, named neighbour, or witness the plan declared). The STOP rule bans reflection,
 interpretation, and lessons — never the locked safety response.
-Do not print beat labels, a checklist, self-review, or compliance JSON.
+{'''CLOSING MOVE: the changed-ritual coda ("I still ...", "Now I always ...", "Ever
+since, I ...") is RESERVED for the first story in the lineup — you are not writing the
+first story, so do NOT close on a ritual or habit change. Close on a concrete image,
+an unanswered detail, or a flat report instead — and do not OPEN your final sentence
+with "I still" in ANY sense: "I still don't know what it was" is an unanswered detail,
+but it shares the first story's closing rhythm and reads as one author (state the
+unknown without that opener: "Nobody ever told me what it was"). Two same-rhythm codas
+in one compilation block release; each writer only sees its own story, so the slot is
+assigned here.
+OPENING MOVE: the job-context intro ("I work the overnight desk at...", "I have been
+driving this route for six years...") is likewise RESERVED for the first story. Open
+THIS story inside a specific moment instead — mid-task, mid-sensation, or on the one
+detail of that night that was already wrong — and let the job and tenure surface
+within the first paragraph rather than announce themselves in sentence one. Two
+stories opening on the same establish-my-job formula read as one author.
+''' if not plan.story_id.endswith("_1") else ''}Do not print beat labels, a checklist, self-review, or compliance JSON.
 
 HUMAN-RESPONSE PLAUSIBILITY (a release property, not a style choice): once the narrator
 reaches safety from an active human threat, they use readily available help (police,
@@ -2953,7 +3379,11 @@ rewrite): at most TWO one-word beat sentences ("Quiet." "Nothing."); at most ONE
 reversal; at most TWO physical fear reactions, never stock ("heart pounded", "blood ran
 cold", "stomach dropped", "little did I know" are banned outright — name the feeling
 plainly in this narrator's register instead). A verbal habit must not repeat across the
-compilation's stories.
+compilation's stories. When sound precedes sight (as it should), do NOT render it with
+the literal "I heard it before I saw it" scaffold — that exact construction is rationed
+to one narrator per compilation and yours may not be the one; let the sound arrive
+inside this narrator's own syntax (a wrong noise in a known rhythm, a sound out of
+place for the hour) instead of announcing the ordering.
 
 Forbidden: visual/SFX directions, host intro, CTA, recap, analysis, neat explanation,
 "I told myself" or equivalent self-reassurance, arbitrary exact numbers, stacked proof,
@@ -3014,8 +3444,8 @@ EVERY story object needs ALL of these keys: story_id, title, narrator_profile,
 setting, setup_requirement, threat, threat_type, escape_action, ending_shape,
 evidence_allowance, voice_rules, voice_seed, threat_mechanism,
 progression_mechanism, escape_mechanism, aftermath_mechanism, threat_identity,
-topic_promise, narrator_age_band, narrator_age_years, safety_obligation,
-safety_omission_reason, continuity_ledger.
+topic_promise, distinguishing_turn, narrator_age_band, narrator_age_years,
+safety_obligation, safety_omission_reason, continuity_ledger.
 
 HARD CONSTRAINTS the validator enforces before anyone reads your fix:
 - continuity_ledger: exactly 5 entries, in this order and with these exact prefixes:
@@ -3026,6 +3456,8 @@ HARD CONSTRAINTS the validator enforces before anyone reads your fix:
 - every other scalar stays under 35 words (voice_seed is exempt: it is a 2-3 sentence
   voice sample); setup_requirement is 3-35 words.
 - topic_promise must repeat the compilation's exact subject wording AND name the site.
+- distinguishing_turn: 4-25 words, distinct per story, and it must not simply restate
+  that story's own threat field.
 
 Keep each story's typed mechanisms (threat_mechanism, progression_mechanism,
 escape_mechanism, aftermath_mechanism, threat_identity) unless the objection is
@@ -3792,6 +4224,69 @@ def _plan_freshness_errors(
     return []
 
 
+_MIN_DISTINGUISHING_TURN_WORDS = 4
+_MAX_DISTINGUISHING_TURN_WORDS = 25
+# Above this share of its own threat/title tokens, the "turn" is a paraphrase of
+# the premise rather than the thing that bends it away from the genre default.
+_DISTINGUISHING_TURN_ECHO_RATIO = 0.8
+
+
+def _premise_freshness_errors(plan: CompilationPlan) -> list[str]:
+    """Make "what makes this one different" a field, not a hope.
+
+    Every other freshness check in this file compares TYPED mechanisms, which is
+    why three stock human-threat premises with different mechanism labels pass
+    everything and still read as genre defaults to the critic. This one asks each
+    story to say, in its own clause, what the default would have done instead —
+    and refuses a clause that merely restates the threat.
+    """
+    errors: list[str] = []
+    seen: dict[str, str] = {}
+    for item in plan.stories:
+        turn = (item.distinguishing_turn or "").strip()
+        if not turn:
+            errors.append(
+                f"{item.story_id} must declare distinguishing_turn: one clause naming what "
+                "makes this premise unlike the stock version of itself. A premise no one can "
+                "distinguish from its genre default scores originality below the release "
+                "floor, and originality cannot be repaired after the prose exists"
+            )
+            continue
+        words = _words(turn)
+        if len(words) < _MIN_DISTINGUISHING_TURN_WORDS:
+            errors.append(
+                f"{item.story_id} distinguishing_turn {turn!r} is too short to name a "
+                f"mechanism; use at least {_MIN_DISTINGUISHING_TURN_WORDS} words"
+            )
+            continue
+        if len(words) > _MAX_DISTINGUISHING_TURN_WORDS:
+            errors.append(
+                f"{item.story_id} distinguishing_turn must stay at or under "
+                f"{_MAX_DISTINGUISHING_TURN_WORDS} words; it is one clause, not a synopsis"
+            )
+            continue
+        normalized = _normal(turn)
+        if normalized in seen:
+            errors.append(
+                f"{seen[normalized]} and {item.story_id} claim the same distinguishing_turn; "
+                "one departure from the genre default shared by two stories is not a "
+                "departure, it is this compilation's own template"
+            )
+        else:
+            seen[normalized] = item.story_id
+        turn_tokens = set(words)
+        premise_tokens = set(_words(f"{item.threat} {item.title}"))
+        if turn_tokens and premise_tokens:
+            echo = len(turn_tokens & premise_tokens) / len(turn_tokens)
+            if echo >= _DISTINGUISHING_TURN_ECHO_RATIO:
+                errors.append(
+                    f"{item.story_id} distinguishing_turn {turn!r} restates its own threat "
+                    "instead of distinguishing it; name what the stock version of this "
+                    "premise would have done and what this one does instead"
+                )
+    return errors
+
+
 def _plan_repeat_errors(candidate: CompilationPlan, rejected_digests: set[str]) -> list[str]:
     """Catch a planner that resends a rejected plan verbatim.
 
@@ -4056,6 +4551,12 @@ class NarrativeUnitPipeline:
             # story's voice_rules and burned a whole concept for it; one
             # contract-only retry naming the exact missing field is cheaper than a
             # replan and does not invent creative content to paper over it.
+            # Live 2026-07-20 06:38 (and 2026-07-19 21:19, 2026-07-20 03:50): the
+            # retry only listed REQUIRED FIELDS, so a continuity_ledger entry over
+            # 24 words was answered with "return the SAME plan" — the planner
+            # resent the identical over-long entry and burned both tries
+            # (planner=4/planner_schema_retry=4, zero writer calls). Length and
+            # format violations need naming too; plan_repair already learned this.
             for schema_try in range(2):
                 if schema_try:
                     self._record_call("planner_schema_retry")
@@ -4072,8 +4573,17 @@ class NarrativeUnitPipeline:
                     "ending_shape, evidence_allowance, voice_rules, voice_seed, "
                     "threat_mechanism, progression_mechanism, escape_mechanism, "
                     "aftermath_mechanism, threat_identity, topic_promise, "
+                    "distinguishing_turn, "
                     "narrator_age_band, narrator_age_years, safety_obligation, "
                     "safety_omission_reason, continuity_ledger."
+                    "\nIf the validator named a LENGTH or FORMAT violation rather than a "
+                    "missing field, the fields are already all present — re-sending the "
+                    "same wording will fail again. Fix exactly what it named: a "
+                    "continuity_ledger entry over 24 words must be shortened to 24 words "
+                    "or fewer (including its prefix) without dropping the fact it "
+                    "carries; each entry must keep its exact required prefix, stay "
+                    "unique, and keep at least three fact words after the prefix. Cut "
+                    "adjectives, not facts."
                     if schema_error else ""
                 )
                 try:
@@ -4250,6 +4760,12 @@ class NarrativeUnitPipeline:
         compliance_reviews, compliance_valid = await self._audit_stories(
             plan, stories, strategy
         )
+        if not compliance_valid:
+            stories, gate, compliance_reviews, compliance_valid = (
+                await self._rescue_unauditable_stories(
+                    plan, stories, gate, compliance_reviews, per_story, strategy
+                )
+            )
         if compliance_valid:
             score, critic_valid, _ = await self._score_validated(
                 plan, stories, gate, strategy, compliance_reviews=compliance_reviews
@@ -4264,7 +4780,7 @@ class NarrativeUnitPipeline:
         repair_waves = 0
         patch_decisions: list[PatchDecision] = []
         expected_ids = {item.story_id for item in plan.stories}
-        while critic_valid and compliance_valid and repair_waves < 2:
+        while critic_valid and compliance_valid and repair_waves < 3:
             failing_ids = {
                 sid for failure in gate.failures for sid in failure.story_ids
                 if sid in expected_ids
@@ -4275,6 +4791,10 @@ class NarrativeUnitPipeline:
                 and issue.severity in {"critical", "major"}
             )
             if not failing_ids:
+                failing_ids = _near_miss_minor_ids(
+                    score, gate, strategy, expected_ids, repair_waves
+                )
+            if not failing_ids:
                 break
             # The second wave is a cheap salvage for an already strong, objectively
             # clean compilation. It cannot rescue a weak draft or start a debate loop.
@@ -4283,6 +4803,17 @@ class NarrativeUnitPipeline:
                 or score.total_score < strategy.approval_score
                 or score.critical_issues
                 or len(failing_ids) > 3
+            ):
+                break
+            # The third wave is a FINISHING wave, gated harder still: only a
+            # compilation already inside release range whose remaining blockers
+            # are few and quoted may buy it. Live 2026-07-20 (courier 1726):
+            # 84 total, originality 8, every floor passed, TWO quoted majors on
+            # one story — the wave budget ran out and a release-range candidate
+            # was discarded; regenerating from scratch costs roughly six times
+            # what one more bounded wave does.
+            if repair_waves == 2 and not _finishing_wave_allowed(
+                score, gate, strategy, failing_ids
             ):
                 break
             candidate_list, decisions = await self._repair_wave(
@@ -4311,7 +4842,7 @@ class NarrativeUnitPipeline:
                 candidate_score, candidate_reviews
             )
             if not candidate_valid or not self._repair_is_monotonic(
-                score, gate, candidate_score, candidate_gate
+                score, gate, candidate_score, candidate_gate, strategy
             ):
                 # All-or-nothing acceptance let one bad patch drag a correct
                 # one down with it (live: a geography fix the blind selector
@@ -4336,6 +4867,7 @@ class NarrativeUnitPipeline:
 
         final_review: FinalCompilationReview | None = None
         final_approved = False
+        score = await self._originality_tiebreak(plan, stories, gate, score, strategy)
         preliminary = content_can_lock(
             score, gate, strategy,
             critic_contract_valid=critic_valid,
@@ -4390,7 +4922,7 @@ class NarrativeUnitPipeline:
                 # wave was commissioned to fix: resolving them is progress even when
                 # the fresh critic returns an identical total score.
                 if candidate_compliance_valid and candidate_valid and self._repair_is_monotonic(
-                    final_score, gate, candidate_score, candidate_gate
+                    final_score, gate, candidate_score, candidate_gate, strategy
                 ):
                     stories, gate, score, critic_valid = (
                         candidate_list, candidate_gate, candidate_score, candidate_valid
@@ -5180,6 +5712,279 @@ class NarrativeUnitPipeline:
             challenger_is_independent=independent,
         ), False, []
 
+    # The unauditable-structure marker: beat evidence that cannot be quoted as
+    # separate spans, i.e. the prose merged plan beats into one sentence.
+    _UNAUDITABLE_MARKER = "ordered and non-overlapping"
+
+    async def _rescue_unauditable_stories(
+        self,
+        plan: CompilationPlan,
+        stories: list[StoryDraft],
+        gate: GateReport,
+        compliance_reviews: dict[str, StoryComplianceReview],
+        per_story: int,
+        strategy: NamedChannelStrategy,
+    ) -> tuple[list[StoryDraft], GateReport, dict[str, StoryComplianceReview], bool]:
+        """One bounded rewrite for stories whose compliance audit failed its
+        contract because beat evidence could not be quoted separately.
+
+        Live 2026-07-19 (self-storage 2119, 4th occurrence of the class):
+        story_2 merged plan beats, the auditor failed 'strictly ordered and
+        non-overlapping' twice, and a compilation with three written stories
+        and near-clean gates died at 0/100 with no repair attempted. Merged
+        beats ARE a prose defect (unauditable = unreleasable) — but a
+        REWRITABLE one, the same routing length defects already get. Any
+        other contract-failure class still fails closed unchanged."""
+        failing = {
+            sid: errs for sid, errs in self._last_compliance_errors.items()
+            if errs and all(self._UNAUDITABLE_MARKER in e for e in errs)
+        }
+        if not failing or set(failing) != set(self._last_compliance_errors):
+            return stories, gate, compliance_reviews, False
+        plans_by_id = {item.story_id: item for item in plan.stories}
+        originals = {item.story_id: item for item in stories}
+        rewritten: dict[str, StoryDraft] = {}
+        for story_id, errs in failing.items():
+            if story_id not in plans_by_id or story_id not in originals:
+                return stories, gate, compliance_reviews, False
+            replacement = await self._rewrite_fallback(
+                plan, plans_by_id[story_id], stories, gate, originals[story_id],
+                [], [
+                    "The compliance auditor could not ground this story twice: "
+                    + "; ".join(errs)
+                    + ". Give every plan beat its OWN sentence, in plan order — "
+                    "especially the escape decision and the completed escape — so "
+                    "each beat can be quoted as a separate, non-overlapping span.",
+                ], per_story, strategy,
+                "beat evidence could not be quoted separately (unauditable)",
+            )
+            if replacement is None:
+                return stories, gate, compliance_reviews, False
+            rewritten[story_id] = replacement
+        candidate = [rewritten.get(item.story_id, item) for item in stories]
+        candidate_gate = gate_compilation(plan, candidate, strategy)
+        reviews, valid = await self._audit_stories(
+            plan, candidate, strategy,
+            only_ids=set(rewritten), prior=compliance_reviews,
+        )
+        if not valid:
+            return stories, gate, compliance_reviews, False
+        return candidate, candidate_gate, reviews, True
+
+    async def _originality_tiebreak(
+        self,
+        plan: CompilationPlan,
+        stories: list[StoryDraft],
+        gate: GateReport,
+        score: NarrativeScorecard,
+        strategy: NamedChannelStrategy,
+    ) -> NarrativeScorecard:
+        """One calibrated second read when originality ALONE blocks the lock.
+
+        External review 2026-07-20: a single holistic integer from one judge
+        is the noisiest instrument in the scorecard, and the 6-vs-7 boundary
+        is a release decision (measured drift: the same text read 84 then 81;
+        originality oscillated 6↔7 across runs of one topic). When every
+        other lock condition passes and the SOLE miss is the originality
+        floor, the strongest available judge — the challenger-tier client,
+        cross-provider when one is configured — takes one anti-anchored
+        second read whose verdict REPLACES the first, in either direction.
+        The floor itself never moves; this adds a judge, not a discount."""
+        if self.release_challenger_llm is None:
+            return score
+        floor = strategy.originality_min
+        if score.originality >= floor:
+            return score
+        would_lock = score.model_copy(
+            update={"originality": int(math.ceil(floor))}
+        )
+        if not content_can_lock(would_lock, gate, strategy):
+            return score
+        self._record_call("originality_tiebreak")
+        body = "\n\n".join(
+            f"[{s.story_id}] {s.title}\n{s.narration}" for s in stories
+        )
+        try:
+            response, obj = await self.release_challenger_llm.complete_structured(
+                system=(
+                    "You are a calibration judge scoring ONLY originality. "
+                    "Return valid JSON only."
+                ),
+                messages=[{"role": "user", "content": (
+                    "Score originality 0-10 for this three-story first-person "
+                    "horror compilation.\nCALIBRATION: 6 = competently executed "
+                    "but a viewer who watches nightly horror compilations has "
+                    "seen every mechanism here this month (a stock premise worn "
+                    "well); 7 = at least ONE story turns on a concrete mechanism "
+                    "such a viewer has NOT seen recently; 9 = two or more such "
+                    "stories. Judge ONLY what happens on the page — any claim of "
+                    "freshness is a claim, not evidence. justification: one "
+                    "sentence naming the mechanism that earned or failed the "
+                    "seventh point.\n\n" + body
+                )}],
+                output_schema=OriginalityVerdict,
+                max_tokens=400,
+                temperature=0.0,
+            )
+            self._record_cost(response)
+            verdict = OriginalityVerdict.model_validate(obj)
+        except Exception:
+            return score  # tiebreak is best-effort; the first read stands
+        return score.model_copy(update={
+            "originality": max(0, min(10, verdict.originality)),
+        })
+
+    async def hospital_pass(
+        self,
+        plan: CompilationPlan,
+        stories: list[StoryDraft],
+        strategy: NamedChannelStrategy | None = None,
+        per_story: int | None = None,
+    ) -> dict:
+        """Offline near-miss rescue: re-judge and repair a SAVED candidate.
+
+        External review 2026-07-20 (both reviewers): candidates rejected at
+        the release door are serialized with every blocker quoted — then never
+        read again; each new run regenerates from zero at roughly 3x the cost
+        of finishing the saved one. This pass reconstructs the judged state
+        from a stored plan + stories and runs the SAME wave machinery as a
+        live run (same guards, same acceptance — the loop body deliberately
+        mirrors run()), then reports whether the repaired compilation clears
+        content_can_lock. It does NOT run the final editor or the release
+        challenger and never flips production_ready: per the same review, no
+        auto-release before a current-policy artifact passes independent
+        audit — hospital output goes to a human."""
+        strategy = strategy or self.quality_strategy
+        per_story = per_story or max(
+            1, plan.target_word_count // max(1, len(plan.stories))
+        )
+        self._run_call_counts = {}
+        self._run_cost_usd = 0.0
+        self._run_notional_cost_usd = 0.0
+        self._last_compliance_errors = {}
+
+        gate = gate_compilation(plan, stories, strategy)
+        compliance_reviews, compliance_valid = await self._audit_stories(
+            plan, stories, strategy
+        )
+        if not compliance_valid:
+            stories, gate, compliance_reviews, compliance_valid = (
+                await self._rescue_unauditable_stories(
+                    plan, stories, gate, compliance_reviews, per_story, strategy
+                )
+            )
+        if compliance_valid:
+            score, critic_valid, _ = await self._score_validated(
+                plan, stories, gate, strategy, compliance_reviews=compliance_reviews
+            )
+            score = self._with_compliance_issues(score, compliance_reviews)
+        else:
+            score = self._zero_score(
+                "hospital: per-story compliance failed its contract twice"
+            )
+            critic_valid = True
+
+        repair_waves = 0
+        decisions: list[PatchDecision] = []
+        expected_ids = {item.story_id for item in plan.stories}
+        while critic_valid and compliance_valid and repair_waves < 3:
+            failing_ids = {
+                sid for failure in gate.failures for sid in failure.story_ids
+                if sid in expected_ids
+            }
+            failing_ids.update(
+                issue.story_id for issue in score.story_issues
+                if issue.story_id in expected_ids
+                and issue.severity in {"critical", "major"}
+            )
+            if not failing_ids:
+                failing_ids = _near_miss_minor_ids(
+                    score, gate, strategy, expected_ids, repair_waves
+                )
+            if not failing_ids:
+                break
+            if repair_waves == 1 and (
+                not gate.passed
+                or score.total_score < strategy.approval_score
+                or score.critical_issues
+                or len(failing_ids) > 3
+            ):
+                break
+            if repair_waves == 2 and not _finishing_wave_allowed(
+                score, gate, strategy, failing_ids
+            ):
+                break
+            candidate_list, wave_decisions = await self._repair_wave(
+                plan, stories, score, gate, failing_ids, per_story, strategy
+            )
+            repair_waves += 1
+            decisions.extend(wave_decisions)
+            if not self._stories_changed(stories, candidate_list):
+                break
+            candidate_gate = gate_compilation(plan, candidate_list, strategy)
+            changed_ids = {
+                before.story_id
+                for before, after in zip(stories, candidate_list, strict=True)
+                if before.narration != after.narration
+            }
+            candidate_reviews, candidate_compliance_valid = await self._audit_stories(
+                plan, candidate_list, strategy,
+                only_ids=changed_ids, prior=compliance_reviews,
+            )
+            if not candidate_compliance_valid:
+                break
+            candidate_score, candidate_valid, _ = await self._score_validated(
+                plan, candidate_list, candidate_gate, strategy,
+                compliance_reviews=candidate_reviews,
+            )
+            candidate_score = self._with_compliance_issues(
+                candidate_score, candidate_reviews
+            )
+            if not candidate_valid or not self._repair_is_monotonic(
+                score, gate, candidate_score, candidate_gate, strategy
+            ):
+                salvage = await self._salvage_single_patch(
+                    plan, stories, candidate_list, changed_ids, score, gate,
+                    strategy, compliance_reviews,
+                )
+                if salvage is None:
+                    break
+                stories, gate, score, compliance_reviews = salvage
+                critic_valid = True
+                compliance_valid = True
+                continue
+            stories, gate, score, critic_valid = (
+                candidate_list, candidate_gate, candidate_score, candidate_valid
+            )
+            compliance_reviews = candidate_reviews
+            compliance_valid = candidate_compliance_valid
+
+        if compliance_valid and critic_valid:
+            score = await self._originality_tiebreak(
+                plan, stories, gate, score, strategy
+            )
+        lockable = bool(
+            compliance_valid and critic_valid and content_can_lock(
+                score, gate, strategy,
+                critic_contract_valid=critic_valid,
+                story_compliance_valid=(
+                    compliance_valid
+                    and self._compliance_set_approved(plan, compliance_reviews)
+                ),
+            )
+        )
+        return {
+            "stories": stories,
+            "gate": gate,
+            "score": score,
+            "compliance_reviews": compliance_reviews,
+            "content_lockable": lockable,
+            "repair_waves": repair_waves,
+            "patch_decisions": decisions,
+            "call_counts": dict(self._run_call_counts),
+            "notional_cost_usd": self._run_notional_cost_usd,
+        }
+
     async def _audit_stories(
         self,
         plan: CompilationPlan,
@@ -5761,6 +6566,20 @@ class NarrativeUnitPipeline:
                 )
                 if not has_blockers:
                     for dim_field, min_field in _RELEASE_DIMENSION_FLOORS:
+                        # Originality is a HOLISTIC compilation property — "this
+                        # is competent but familiar" cannot be grounded in a
+                        # per-story issue quote the way a continuity deduction
+                        # can. Demanding one forced the critic to inflate, to
+                        # invent a fake major, or to hold an honest 6 and be
+                        # branded contract-invalid — which switched OFF the
+                        # whole repair machinery for everything else (live
+                        # 2026-07-20: an 85/100 with three repairable
+                        # compliance majors got zero repair calls; mall's 84
+                        # died identically). The originality FLOOR still blocks
+                        # release in content_can_lock; it just is not a
+                        # contract violation to score it honestly.
+                        if dim_field == "originality":
+                            continue
                         value = getattr(score, dim_field)
                         floor = getattr(strategy, min_field)
                         if value < floor:
@@ -6028,13 +6847,18 @@ class NarrativeUnitPipeline:
         strategy: NamedChannelStrategy,
         compliance_reviews: dict[str, StoryComplianceReview],
     ):
-        """One bounded rescue when a multi-story repair wave is rejected whole.
+        """Bounded rescue when a multi-story repair wave is rejected whole.
 
-        Keeps only the patch for the story carrying the heaviest blocker
-        (critical > continuity major > style major > gate failures), re-audits
-        that one story and re-scores once. Returns (stories, gate, score,
-        reviews) on a monotonic win, else None. Never runs for single-story
-        waves — there is nothing to disentangle."""
+        Stacks patches back one story at a time, heaviest blocker first
+        (critical > continuity major > style major > gate failures), each round
+        re-auditing that one story and re-scoring once against the last
+        ACCEPTED state. Two rounds max: the original single-slot rescue saved
+        one good patch and threw the other away (live 2026-07-20 courier 0719:
+        a rejected wave held TWO clean patches; the discarded one's banned
+        phrase stood and the build died at 82/84). A rejected round is skipped,
+        not fatal — the next round tries on the previous accepted base.
+        Returns (stories, gate, score, reviews) after ≥1 monotonic win, else
+        None. Never runs for single-story waves — nothing to disentangle."""
         if len(changed_ids) < 2:
             return None
         self._record_call("repair_salvage")
@@ -6051,29 +6875,39 @@ class NarrativeUnitPipeline:
             weight += sum(10 for f in gate.failures if sid in f.story_ids)
             return weight
 
-        target = max(sorted(changed_ids), key=_weight)
+        ranked = sorted(changed_ids, key=lambda sid: (-_weight(sid), sid))[:2]
         patched = {item.story_id: item for item in candidate_list}
-        solo = [
-            patched[item.story_id] if item.story_id == target else item
-            for item in stories
-        ]
-        if not self._stories_changed(stories, solo):
+        accepted = list(stories)
+        accepted_gate, accepted_score = gate, score
+        accepted_reviews = compliance_reviews
+        won = False
+        for target in ranked:
+            trial = [
+                patched[item.story_id] if item.story_id == target else item
+                for item in accepted
+            ]
+            if not self._stories_changed(accepted, trial):
+                continue
+            trial_gate = gate_compilation(plan, trial, strategy)
+            trial_reviews, trial_valid = await self._audit_stories(
+                plan, trial, strategy, only_ids={target}, prior=accepted_reviews,
+            )
+            if not trial_valid:
+                continue
+            trial_score, score_valid, _ = await self._score_validated(
+                plan, trial, trial_gate, strategy, compliance_reviews=trial_reviews,
+            )
+            trial_score = self._with_compliance_issues(trial_score, trial_reviews)
+            if not score_valid or not self._repair_is_monotonic(
+                accepted_score, accepted_gate, trial_score, trial_gate, strategy
+            ):
+                continue
+            accepted, accepted_gate, accepted_score = trial, trial_gate, trial_score
+            accepted_reviews = trial_reviews
+            won = True
+        if not won:
             return None
-        solo_gate = gate_compilation(plan, solo, strategy)
-        solo_reviews, solo_valid = await self._audit_stories(
-            plan, solo, strategy, only_ids={target}, prior=compliance_reviews,
-        )
-        if not solo_valid:
-            return None
-        solo_score, score_valid, _ = await self._score_validated(
-            plan, solo, solo_gate, strategy, compliance_reviews=solo_reviews,
-        )
-        solo_score = self._with_compliance_issues(solo_score, solo_reviews)
-        if not score_valid or not self._repair_is_monotonic(
-            score, gate, solo_score, solo_gate
-        ):
-            return None
-        return solo, solo_gate, solo_score, solo_reviews
+        return accepted, accepted_gate, accepted_score, accepted_reviews
 
     @staticmethod
     def _stories_changed(before: list[StoryDraft], after: list[StoryDraft]) -> bool:
@@ -6083,28 +6917,65 @@ class NarrativeUnitPipeline:
     def _repair_is_monotonic(
         current: NarrativeScorecard, current_gate: GateReport,
         candidate: NarrativeScorecard, candidate_gate: GateReport,
+        strategy: NamedChannelStrategy,
     ) -> bool:
-        dimensions = (
-            "continuity_believability", "distinct_authentic_voices", "dread_escalation",
-            "plausible_response", "structural_variety", "originality", "ending_discipline",
-        )
-        no_dimension_regression = all(
-            getattr(candidate, field) >= getattr(current, field) for field in dimensions
-        )
-        current_blockers = len(current.critical_issues) + sum(
-            item.severity in {"critical", "major"} for item in current.story_issues
-        )
-        candidate_blockers = len(candidate.critical_issues) + sum(
-            item.severity in {"critical", "major"} for item in candidate.story_issues
-        )
-        no_regression = (
-            no_dimension_regression
-            and candidate_blockers <= current_blockers
-            and len(candidate_gate.failures) <= len(current_gate.failures)
-        )
-        progress = (
-            candidate.total_score > current.total_score
-            or candidate_blockers < current_blockers
-            or len(candidate_gate.failures) < len(current_gate.failures)
-        )
-        return no_regression and progress
+        """Priority-ordered repair acceptance.
+
+        External review 2026-07-20 (two independent reviewers converged):
+        comparing raw per-dimension scores between two independent judge
+        passes is stricter than the instrument's precision — a patch that
+        removed a banned phrase AND resolved its major was rolled back because
+        originality read 8 on one pass and 7 on the next. And counting a
+        higher total as "progress" let judge noise buy repair waves that never
+        touched the blocker the wave was sent to fix. Rules, in order:
+
+        1. Nothing NEW appears: gate failures, criticals, and majors may not
+           increase (criticals counted in BOTH shapes — free-text and
+           structured story issues).
+        2. Real progress on what the wave was sent to fix: gate failures or
+           critical+major blockers strictly decrease. Only when nothing was
+           blocked at all (the near-miss minor wave) does a higher total count
+           as progress instead.
+        3. Dimension floors hold, with a one-point judge-noise band: a
+           dimension at/above its floor may not dip below it, one already
+           below may not sink further, and none may drop more than 1 point.
+        4. The total may drift within the same band (>= current - 1)."""
+        cur_gates = len(current_gate.failures)
+        cand_gates = len(candidate_gate.failures)
+        if cand_gates > cur_gates:
+            return False
+
+        def _criticals(score: NarrativeScorecard) -> int:
+            return len(score.critical_issues) + sum(
+                item.severity == "critical" for item in score.story_issues
+            )
+
+        def _majors(score: NarrativeScorecard) -> int:
+            return sum(item.severity == "major" for item in score.story_issues)
+
+        cur_crit, cand_crit = _criticals(current), _criticals(candidate)
+        cur_major, cand_major = _majors(current), _majors(candidate)
+        if cand_crit > cur_crit or cand_major > cur_major:
+            return False
+
+        if cur_gates + cur_crit + cur_major:
+            progress = (
+                cand_gates < cur_gates
+                or (cand_crit + cand_major) < (cur_crit + cur_major)
+            )
+        else:
+            progress = candidate.total_score > current.total_score
+        if not progress:
+            return False
+
+        for dim_field, min_field in _RELEASE_DIMENSION_FLOORS:
+            cur_value = getattr(current, dim_field)
+            cand_value = getattr(candidate, dim_field)
+            floor = getattr(strategy, min_field)
+            if cand_value < cur_value - 1:
+                return False
+            if cur_value >= floor and cand_value < floor:
+                return False
+            if cur_value < floor and cand_value < cur_value:
+                return False
+        return candidate.total_score >= current.total_score - 1

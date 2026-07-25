@@ -7,23 +7,24 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 
 import structlog
 
+from omnicast.discovery import shadow_log
+from omnicast.discovery.base import BaseScanner
+from omnicast.discovery.brief_generator import BriefGenerator
 from omnicast.discovery.models import (
-    DiscoveryConfig,
     ScoredTopic,
     SourceResult,
     TopicRawData,
 )
-from omnicast.discovery.base import BaseScanner
-from omnicast.discovery.scorer import TopicScorer
-from omnicast.discovery.brief_generator import BriefGenerator
-from omnicast.models.script import TopicBrief
 from omnicast.discovery.news_scanner import NewsScanner
+from omnicast.discovery.reddit_scanner import RedditScanner
+from omnicast.discovery.scorer import TopicScorer
 from omnicast.discovery.trends_scanner import TrendsScanner
 from omnicast.discovery.youtube_scanner import YouTubeScanner
-from omnicast.discovery.reddit_scanner import RedditScanner
+from omnicast.models.script import TopicBrief
 
 logger = structlog.get_logger()
 
@@ -86,6 +87,10 @@ class DiscoveryOrchestrator:
         self.scanners = scanners
         self.scorer = scorer
         self.brand_voice = brand_voice
+        # Set per run; carried on the instance so the API layer can mark which
+        # topics the real router selected (see shadow_log.mark_selected).
+        self.run_id = ""
+        self.shadow_rows: list[dict] = []
         self.channel = channel
 
     @classmethod
@@ -110,12 +115,32 @@ class DiscoveryOrchestrator:
             logger.warning("YouTube competitors configured but YOUTUBE_API_KEY missing — skipping")
         if config.subreddits:
             scanners.append(RedditScanner(config=config))
-        scorer = TopicScorer()
-        return cls(scanners=scanners, scorer=scorer, brand_voice=channel.brand_voice)
+        # P0.1 group 3: `TopicScorer()` with no profile made stack fit return a
+        # constant 7.5 on every production run — a dimension worth 15 points
+        # that could not move. The profile is derived from config that already
+        # exists, so this changes behaviour on channels nobody has to re-edit.
+        from omnicast.analytics.pillars import load_pillars
+        from omnicast.discovery.opportunity import AudienceProfile
+
+        scorer = TopicScorer(
+            stack_profile=channel.to_stack_profile(),
+            # §3.1: audience fit and repeatability read configuration that has
+            # existed on ChannelProfile for months and that nothing scored.
+            audience_profile=AudienceProfile.from_channel(channel),
+            pillars=load_pillars(getattr(channel, "content_pillars", None)),
+        )
+        # `channel` was also dropped here, which silently disabled every
+        # per-channel policy downstream: BriefGenerator received None, so
+        # `competitor_intel_required` (put on ChannelProfile precisely to make
+        # the fail-closed branch reachable) was never read on this path, and
+        # every shadow-corpus row was written with an empty channel_id.
+        return cls(scanners=scanners, scorer=scorer,
+                   brand_voice=channel.brand_voice, channel=channel)
 
     async def run(self) -> DiscoveryResult:
         """Execute full discovery pipeline."""
         start = time.time()
+        self.run_id = uuid.uuid4().hex[:12]
 
         # 1. Run all scanners in parallel
         source_results: list[SourceResult] = await asyncio.gather(
@@ -130,6 +155,16 @@ class DiscoveryOrchestrator:
 
         # 3. Score
         scored = await self.scorer.score_batch(all_raw)
+
+        # 3b. Persist the shadow corpus. Without this, v2's score exists only on
+        # an in-memory object for the length of one request, and the calibration
+        # that gates promoting v2 has nothing to run on.
+        self.shadow_rows = shadow_log.rows_for_run(
+            scored,
+            channel_id=getattr(self.channel, "channel_id", "") if self.channel else "",
+            run_id=self.run_id,
+        )
+        await asyncio.to_thread(shadow_log.append_rows, self.shadow_rows)
 
         # 4. Generate briefs for approved
         briefs = BriefGenerator.generate_batch(scored, self.brand_voice, self.channel)

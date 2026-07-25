@@ -2314,6 +2314,59 @@ def main() -> None:
                 print("      [warn] no storyboard — deriving stock queries from scene headings")
                 board = [{} for _ in scenes]
 
+        # Production mode router (strategic review §7): decide WHAT KIND of
+        # visual each beat needs — chart, real evidence, reconstruction, screen
+        # capture, hold — before the style policy decides where the picture
+        # comes from. The two answer different questions and the order matters:
+        # coercing a source first would hide the fact that a scene wanted a
+        # chart at all.
+        #
+        # It only annotates and only overrides when it is confident, so a good
+        # LLM storyboard is left alone; the value is the recorded decision and
+        # the substitution log, not another coercion pass.
+        if board:
+            try:
+                from omnicast.media.production_router import (
+                    capabilities_from_channel,
+                    route_storyboard,
+                    summarise,
+                )
+
+                _scenes_for_router = [
+                    {"narration": getattr(sc, "narration", "") or getattr(sc, "text", ""),
+                     "visual": (board[i] or {}).get("image_prompt", ""),
+                     "stock_query": (board[i] or {}).get("stock_query", "")}
+                    for i, sc in enumerate(scenes) if i < len(board)
+                ]
+                _caps = capabilities_from_channel(
+                    type("_C", (), {"supported_production":
+                                    channel_meta.get("supported_production", [])})())
+                _routes = route_storyboard(_scenes_for_router, capabilities=_caps)
+                for _route in _routes:
+                    _cell = board[_route.scene_index]
+                    if not isinstance(_cell, dict):
+                        continue
+                    _cell["production_mode"] = _route.mode
+                    _cell["production_mode_confidence"] = _route.confidence
+                    if _route.requires_disclosure:
+                        _cell["requires_ai_disclosure"] = True
+                    # Only a confident classification overrides the board. A
+                    # defaulted route (0.4) carries no information, and letting
+                    # it rewrite a considered LLM choice would be a downgrade
+                    # dressed as a decision.
+                    if _route.confidence >= 0.75 and _route.visual_type != "hold":
+                        _cell["visual_type"] = _route.visual_type
+                _summary = summarise(_routes)
+                status.log(
+                    f"production modes: {_summary['modes']} "
+                    f"(substituted {_summary['substituted_count']}, "
+                    f"defaulted {_summary['defaulted_count']})")
+                for _sub in _summary["substituted"][:5]:
+                    print(f"      [mode] scene {_sub['scene_index']}: "
+                          f"{_sub['fallback_reason']}")
+            except Exception as e:
+                print(f"[warn] production mode router skipped: {e}")
+
         # Channel-style policy: hard-coerce visual types the channel's style bans
         # (e.g. horror_real never shows AI art) BEFORE acquisition. The storyboard
         # directive already biased the LLM; this is the guarantee.

@@ -17,6 +17,7 @@ python processes before starting a new one — two batches ARE a parallel run.
 from __future__ import annotations
 
 import datetime
+import os
 import pathlib
 import re
 import subprocess
@@ -26,6 +27,53 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 RUNNER = ROOT / "scripts" / "run_phase2_unit_first.py"
+
+# The A/B-proven standard role config (2026-07-19): Sonnet planner + writer
+# (-36% cost, best campaign score). These overrides once lived only in the
+# launching shell's environment — one relaunch without them silently reverted
+# an entire batch to Opus roles (batch 20260719_1456) and nobody noticed until
+# the audit log was read. The runner owns operational policy, so it pins the
+# standard itself.
+_STANDARD_ROLE_ENV = {
+    "OMNICAST_NARRATIVE_PLANNER_MODEL": "claude-sonnet-5",
+    "OMNICAST_NARRATIVE_PLANNER_EFFORT": "high",
+    "OMNICAST_NARRATIVE_WRITER_MODEL": "claude-sonnet-5",
+    "OMNICAST_NARRATIVE_WRITER_EFFORT": "high",
+    # 2026-07-25 Phase 2 (operator-funded): judging moved BACK to
+    # DeepSeek-first (claude_only=0 in .env restores the original dual-provider
+    # routing: critic/plan-audit on v4-pro, compliance/annotation on flash,
+    # Sonnet as cross-provider fallback). The challenger therefore returns to
+    # Opus — with DeepSeek judges, an Anthropic challenger IS the cross-provider
+    # adversary. Do NOT pin CHALLENGER_PROVIDER=deepseek in this mode: a
+    # DeepSeek challenger over DeepSeek judges is not_independent by identity
+    # and can never approve a release. Net effect: ~40-50% of per-run
+    # Anthropic calls move to the funded DeepSeek balance.
+}
+
+
+def apply_standard_roles(environ) -> None:
+    """Pin the standard role config; an explicit operator export still wins."""
+    for key, value in _STANDARD_ROLE_ENV.items():
+        environ.setdefault(key, value)
+
+
+def should_retry(returncode: int, terminal: str, wait: float | None, attempt: int) -> bool:
+    """A run killed BY the quota window deserves a retry; a completed content
+    verdict does not, even when a limit marker appears elsewhere in its log
+    (2026-07-19: a finished 83/100 release-gate rejection was re-run because a
+    stray session-limit line in its log matched — the retry burned a fresh
+    quota window on a question the run had already answered)."""
+    if returncode == 0 or wait is None or attempt >= 3:
+        return False
+    if not terminal or terminal.startswith("(log unreadable"):
+        return True
+    if "session limit" in terminal.lower():
+        return True
+    # A zero-score "verdict" with a limit marker in the log is a quota-poisoned
+    # run — the judges died mid-run and fail-closed zeroed the build (live
+    # 2026-07-20 0848: compliance calls hit the session limit, the run still
+    # printed a release-gate 0/100 line, and the topic lost its retry).
+    return "(0/100)" in terminal
 
 # "You've hit your session limit · resets 5:40am (Asia/Saigon)" — the dot can
 # arrive mojibake'd through Windows console encodings, so anchor on "resets".
@@ -53,6 +101,7 @@ def seconds_until_reset(log_text: str, now: datetime.datetime) -> float | None:
 
 
 def main(topics: list[str]) -> int:
+    apply_standard_roles(os.environ)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
     out_dir = ROOT / "output" / "_seq_batch" / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -87,7 +136,7 @@ def main(topics: list[str]) -> int:
                 terminal = f"(log unreadable: {exc})"
             note(f"[{index}] DONE rc={proc.returncode} try {attempt} {terminal[:160]}")
             wait = seconds_until_reset(text, datetime.datetime.now())
-            if proc.returncode == 0 or wait is None or attempt == 3:
+            if not should_retry(proc.returncode, terminal, wait, attempt):
                 break
             note(f"[{index}] quota window hit; sleeping {wait/60:.0f} min until reset")
             time.sleep(wait)

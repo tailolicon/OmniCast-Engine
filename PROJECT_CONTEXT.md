@@ -1,7 +1,9 @@
-# OmniCast Engine — Project Context v3.7 (Enterprise-grade)
+# OmniCast Engine — Project Context v4.0 (Enterprise-grade)
 
 > **Dành cho AI agents:** Đọc file này trước khi làm bất kỳ task nào.
-> Nguồn sự thật duy nhất.
+> Đây là context tổng hợp. Khi có xung đột, thứ tự ưu tiên là:
+> **code + test hiện tại** → `docs/SCRIPT_ENGINE_REVIEW_PACK.md` →
+> `IMPLEMENTATION_STATUS.md` → các section lịch sử bên dưới.
 > v3.1: OAuth2 lifecycle, GPU scheduling, DRP, YMYL compliance, Content Lifecycle.
 > v3.2: Operator Experience Layer (Sections 32-44).
 > v3.3: Channel Quality Diagnostics & Auto-Correction (Section 49).
@@ -9,6 +11,144 @@
 > v3.5: Gemini quality fixes — scoring rework, Shorts filter, tiered breakout, Reddit/category seed enrichment (Section 52).
 > v3.6: Scene-based script format, Two-stage Critic (VO/Prod split), VisualDirectorAgent, Storage chain fix (Section 53).
 > v3.7: T5 Category Sweeper, Niche Dedup Agent, Critic AND logic, ChannelGuard (Velocity & Strike), Brand Identity JSON override.
+> v4.0: Runtime-truth refresh; unit-first narrative engine, bounded self-improvement,
+> fail-closed release integrity, cross-video memory và candidate hospital (Section 0).
+
+---
+
+## 0. CURRENT RUNTIME TRUTH — đọc phần này trước (2026-07-22)
+
+Phần lớn section 1-53 là **lịch sử thiết kế** được tích luỹ từ tháng 5. Chúng vẫn hữu ích
+để hiểu mục tiêu, nhưng không được dùng để suy ra đường chạy hiện tại nếu chưa đối chiếu code.
+Runtime đang hoạt động nằm chủ yếu trong `implementation/`; tài liệu chi tiết nhất về script
+engine là `docs/SCRIPT_ENGINE_REVIEW_PACK.md`.
+
+### 0.1 Entry point và lựa chọn script flow
+
+Nguồn quyết định là `implementation/src/omnicast/pipeline/steps.py::_step_script`:
+
+- Kênh narrative có `channel.script_profile` hợp lệ mặc định chạy **`unit_first`**.
+- Kênh khác mặc định chạy **`claude_first`**.
+- **`debate`** là đường legacy/experimental, chỉ dùng khi override
+  `OMNICAST_SCRIPT_FLOW=debate`; Evolution mặc định tắt và chỉ bật bằng
+  `OMNICAST_DEBATE_EVOLUTION=1`.
+- Kênh `true_dread_files_us` đang khai `script_profile=true_horror_strict_v1`, vì vậy
+  đường production của nó là `NarrativeUnitPipeline`, không phải Writer/Critic debate cũ.
+
+Các file phải đọc cùng nhau khi sửa script engine:
+
+| File | Vai trò runtime |
+|---|---|
+| `implementation/src/omnicast/pipeline/steps.py` | Chọn flow, resolve model role, lưu artifact, chặn promote script fail |
+| `implementation/src/omnicast/agents/narrative_pipeline.py` | Plan/write/audit/repair/release state machine |
+| `implementation/src/omnicast/config/narrative_quality.py` | Profile bất biến và quality floors theo kênh |
+| `implementation/src/omnicast/agents/cross_video.py` | Rolling fingerprint chống lặp giữa video |
+| `implementation/scripts/run_seq_batch.py` | Batch policy, role mặc định và quota-aware retry |
+| `implementation/scripts/finish_candidate.py` | Hospital pass cho candidate đã lưu; không auto-release |
+
+### 0.2 “Tự nâng cấp khi sinh script” thực sự là gì
+
+Tên đúng về mặt kỹ thuật là **bounded generate → verify → repair**. Hệ thống tự cải thiện
+ứng viên trong một run và dùng memory nhẹ để steering run sau; nó **không tự sửa source
+code, không tự train model và không tự phát minh rồi persist rule/prompt mới**.
+
+Luồng `unit_first` hiện tại:
+
+1. Đọc 20 fingerprint gần nhất của kênh, feed-forward tên, motif và archetype
+   `threat_identity/escape_mechanism` cần tránh. Lỗi đọc history fail-open nhưng phải log.
+2. Planner sinh `CompilationPlan` typed. Mỗi story khóa 5 mechanism axes, ledger liên tục,
+   `topic_promise`, safety obligation, voice seed và `distinguishing_turn`.
+3. Schema có đúng một contract retry. Sau đó chạy deterministic preflight, mechanism
+   diversity, premise freshness và semantic plan audit **trước khi mua prose**.
+4. Plan bị block chỉ được targeted repair story lỗi; story sạch phải byte-identical và toàn
+   bộ gate/audit chạy lại. Profile strict hiện cho `maximum_plan_attempts=2`,
+   `maximum_plan_repairs=1` mỗi outer attempt.
+5. Ba story writer chạy song song, mỗi writer chỉ thấy locked plan của story mình.
+6. Deterministic gate chạy trước semantic judge. Lỗi cục bộ có bounded recovery; story
+   không audit được vì gộp beat có đúng một rewrite rescue rồi re-audit.
+7. Per-story compliance kiểm entailment của từng locked beat bằng exact, ordered,
+   non-overlapping quotes. Critic chấm 7 chiều trên 100 và merge compliance findings.
+8. Repair engine tạo **hai patch candidate** hoặc full rewrite, chạy trial gate, blind
+   selector, compliance và critic lại. Chỉ nhận patch theo priority-monotonic rule:
+   không tăng gate/critical/major, phải giảm blocker được giao, giữ floor với noise band 1đ.
+9. Tối đa ba repair wave có điều kiện: wave đầu sửa gate/major; wave hai chỉ cho candidate
+   đã mạnh; wave ba chỉ là finishing wave cho bản sát release, ít blocker và mọi blocker
+   có quote. Bản sạch major nhưng thiếu tối đa 3 điểm có một near-miss minor wave.
+10. Wave nhiều story bị reject toàn cục được salvage tối đa hai story, xếp patch từng cái
+    trên trạng thái vừa được chấp nhận; một patch hỏng không được kéo patch tốt xuống theo.
+11. Nếu **originality là điều kiện duy nhất** chặn lock, challenger-tier model được chấm
+    lại đúng một lần; kết quả thay thế điểm cũ theo cả hai chiều, không hạ floor.
+12. Candidate đạt floor mới qua final editor. Final editor có thể cấp một bounded repair
+    còn budget. Adversarial release challenger là gate cuối; veto không được sửa trong cùng
+    attempt, outer retry phải dùng concept mới.
+13. `run_with_retry` mặc định tối đa 2 outer attempt, cấm dùng lại spent concept, giữ best
+    `needs_edit` candidate, và cộng đủ call/cost/latency của mọi attempt. Run không sinh được
+    candidate ghi `narrative_failure_audit.json`, không bịa score hay script để lấp chỗ trống.
+14. Chỉ khi content lock + final editor + challenger + annotation coverage đều đạt thì
+    `production_ready=True`. Candidate fail được lưu để audit nhưng không có canonical
+    `script.txt` renderable.
+
+### 0.3 Quality contract hiện tại của True Dread Files
+
+Profile `true_horror_strict_v1` là immutable named strategy:
+
+- Tổng điểm tối thiểu **84/100**; continuity tối thiểu **23/25**.
+- Mỗi dimension phải đạt ít nhất **65%** thang điểm của chính dimension.
+- Ít nhất 2/3 story là human threat; ít nhất một story evidence-free.
+- Gate bắt buộc: distinct typed mechanisms, topic alignment, plan-fact fidelity,
+  safety response, forbidden ending, stylometric texture và premise freshness.
+- `distinguishing_turn` phải là clause 4-25 từ, khác giữa các story và không được chỉ
+  paraphrase threat. Đây là hợp đồng plan-time cho originality, không phải lời quảng cáo.
+- Stylometric gate bắt exact shared phrase từ 5 token giữa hai narrator khi còn ít nhất
+  3 content word sau khi trừ stopword/domain vocabulary; quote toàn bộ occurrence để repair.
+- Plan và critic issues ở mức major/critical phải có bằng chứng ground được. Provider,
+  schema hoặc grounding contract hỏng thì fail-closed.
+
+### 0.4 Model routing và failure domain
+
+- `run_seq_batch.py` ghim standard role: planner + writer = `claude-sonnet-5/high`, nhưng
+  explicit operator environment vẫn được ưu tiên.
+- Judge mode có thể DeepSeek-first hoặc Claude-only; Gemini CLI là failure-domain fallback
+  opt-in. Health được theo **provider account**, không theo model name: hai model cùng account
+  không phải HA fallback.
+- Release challenger mặc định là Claude Opus. Code đo independence theo resolved identity
+  thực sự đã chạy; provider-family independence mạnh hơn có thể opt-in bằng
+  `OMNICAST_NARRATIVE_CHALLENGER_PROVIDER=deepseek` sau khi account có balance.
+- Quota retry chỉ áp cho run thực sự chết vì session limit/0-score poisoned verdict; một
+  verdict nội dung đã hoàn tất không được chạy lại chỉ vì log có marker limit cũ.
+
+### 0.5 Memory và giới hạn của “learning”
+
+Đã implement:
+
+- Cross-video rolling fingerprint: tên, motif, typed archetype; history tối đa 20 script.
+- Typed audit artifacts, rejected-plan evidence, attempt accounting và failure audit.
+- Human/autopsy-driven hardening: mỗi lớp lỗi live được chuyển thành rule + regression test.
+- `hospital_pass` có thể nhặt candidate đã lưu, re-judge và chạy cùng repair machinery; output
+  là `hospital_script.txt` + `hospital_report.json` để **human review**, không auto-release.
+
+Chưa được phép claim:
+
+- Không có runtime tự động biến analytics/critic result thành code hoặc prompt mới.
+- Bảng `lessons`, `TopicBrief.lessons` và KB client là hạ tầng có sẵn, nhưng `unit_first`
+  chưa tự extract/distill lesson từ mỗi run rồi inject lại một cách production-verified.
+- Section 12B bên dưới là target architecture dài hạn; các ví dụ `lessons.json`, weekly
+  distillation và auto-rule generation không mô tả đường script production hiện tại.
+- Cross-video freshness mới nhớ 2/5 typed mechanism axes; chưa phải semantic memory đầy đủ.
+- Chưa được claim artifact `production_ready` mới đã vượt toàn bộ policy hiện hành nếu chưa
+  có live artifact + independent manual audit tương ứng.
+
+### 0.6 Artifact và test evidence
+
+- Candidate audit: `output/products/<channel>/<run>/narrative_audit.json`.
+- Zero-candidate failure: `narrative_failure_audit.json`.
+- Rejected prose: `needs_edit.txt`; không promote sang `script.txt`.
+- Hospital output: `hospital_script.txt`, `hospital_report.json`; human-only.
+- Kiểm tra tại lần refresh context này: focused script suite **240 passed**; full
+  `tests/unit` trên chính working tree **1430 passed, 6 skipped** (10 deprecation warning
+  FastAPI `on_event`, không có test failure).
+- Con số suite trong tài liệu cũ là bằng chứng lịch sử; dùng con số ở đây cho snapshot
+  2026-07-22 và chạy lại nếu working tree tiếp tục thay đổi.
 
 ---
 
@@ -198,6 +338,10 @@ INAUTHENTIC_CHECKS = {
 ---
 
 ## 5. Kiến trúc Agent System
+
+> **Lưu ý runtime:** sơ đồ và Tournament-based Debate trong section này là kiến trúc
+> legacy/generic. Với channel narrative có named `script_profile`, dùng Section 0 và
+> `NarrativeUnitPipeline`; không suy ra runtime True Dread Files từ sơ đồ dưới đây.
 
 ### Sơ đồ luồng tổng thể
 
@@ -941,6 +1085,11 @@ ROI = (Revenue - Cost) / Cost
 ---
 
 ## 12B. Self-Improving Learning Loop Architecture (CORE SYSTEM)
+
+> **Trạng thái 2026-07-22:** đây là **target architecture**, không phải mô tả đầy đủ code
+> production hiện tại. Phần self-improvement đã chạy thật của script engine được chốt ở
+> Section 0.2 và 0.5. Đặc biệt, không được nói hệ thống đang auto-update prompt/rule hay
+> distill `lessons.json` nếu chưa chỉ ra wiring runtime + test tương ứng.
 
 > **Đây là phần quan trọng nhất sau Content Creation Engine.**
 > Hệ thống không có learning loop = static AI = output không cải thiện theo thời gian.
@@ -4125,11 +4274,13 @@ NEW:
 
 ---
 
-*Version: 3.6.0 — Last updated: 2026-05-26*
+*Version: 4.0.0 — Last updated: 2026-07-22*
 *v3.3 additions: Channel Quality Diagnostics & Auto-Correction (Section 49)*
 *v3.4 additions: Niche Vault + Health Monitor (Section 50), Scanner filter fixes + deepseek-chat (Section 51)*
 *v3.5 additions: Gemini quality fixes — scoring rework, Shorts filter, tiered breakout, seed enrichment (Section 52)*
 *v3.6 additions: Scene-based script format, Two-stage Critic (VO/Prod split), VisualDirectorAgent, Storage chain fix (Section 53)*
+*v4.0 additions: Current Runtime Truth (Section 0), unit-first narrative flow, bounded
+self-improvement, fail-closed release gates, cross-video memory và hospital pass.*
 
 **Quy tắc cập nhật context:**
 Sau mỗi phiên có thay đổi code/kiến trúc đáng kể → AI agent PHẢI cập nhật file này (thêm section mới hoặc sửa section liên quan) + cập nhật memory files tại `C:\Users\Tailolicon\.claude\projects\E--Project-OmniCast-Engine\memory\`. Không được để context lỗi thời qua nhiều phiên.
