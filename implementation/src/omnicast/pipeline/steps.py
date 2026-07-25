@@ -139,15 +139,15 @@ def _narrative_role_clients(
     # making. Under max-quality the planner is Opus.
     planner_model = _opt(
         "OMNICAST_NARRATIVE_PLANNER_MODEL",
-        "claude-opus-4-8" if max_quality else "claude-sonnet-5",
+        "claude-opus-5" if max_quality else "claude-sonnet-5",
     )
     writer_model = _opt(
         "OMNICAST_NARRATIVE_WRITER_MODEL",
-        "claude-opus-4-8" if max_quality
+        "claude-opus-5" if max_quality
         else (getattr(settings, "claude_model", "") or "claude-sonnet-5"),
     )
     judge_model = _opt("OMNICAST_NARRATIVE_JUDGE_FALLBACK_MODEL", "claude-sonnet-5")
-    challenger_model = _opt("OMNICAST_NARRATIVE_CHALLENGER_MODEL", "claude-opus-4-8")
+    challenger_model = _opt("OMNICAST_NARRATIVE_CHALLENGER_MODEL", "claude-opus-5")
     annotation_model = _opt("OMNICAST_NARRATIVE_ANNOTATION_MODEL", "claude-sonnet-5")
     # EFFORT IS A PROPERTY OF THE ROLE, NOT THE MODEL. Live 2026-07-17 14:32: a
     # Sonnet *planner* call ran 7 minutes and 11,924 output tokens and a Sonnet

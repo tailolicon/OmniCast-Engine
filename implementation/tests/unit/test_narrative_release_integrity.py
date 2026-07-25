@@ -589,11 +589,11 @@ def _dead_primary_pipeline(*, critic_fallback=None, writer_calls=None):
     )
     escalation = _identified(
         _FakeStructuredLLM(lambda _p, _s: PlanPlausibilityReview(), auto_plan_audit=False),
-        "anthropic", "claude-opus-4-8",
+        "anthropic", "claude-opus-5",
     )
     pipe = NarrativeUnitPipeline(
-        _identified(_FakeStructuredLLM(lambda _p, _s: _plan()), "anthropic", "claude-opus-4-8"),
-        _identified(_FakeStructuredLLM(write), "anthropic", "claude-opus-4-8"),
+        _identified(_FakeStructuredLLM(lambda _p, _s: _plan()), "anthropic", "claude-opus-5"),
+        _identified(_FakeStructuredLLM(write), "anthropic", "claude-opus-5"),
         critic, None,
         compliance_llm=compliance,
         plan_audit_escalation_llm=escalation,
@@ -607,7 +607,7 @@ def _dead_primary_pipeline(*, critic_fallback=None, writer_calls=None):
                 ),
                 auto_plan_audit=False,
             ),
-            "anthropic", "claude-opus-4-8",
+            "anthropic", "claude-opus-5",
         ),
     )
     return pipe, primary_calls, escalation
@@ -657,7 +657,7 @@ async def test_a_genuinely_independent_critic_fallback_lets_the_run_proceed():
         return _passing_score()
 
     fallback = _identified(
-        _FakeStructuredLLM(judge, auto_plan_audit=False), "anthropic", "claude-opus-4-8"
+        _FakeStructuredLLM(judge, auto_plan_audit=False), "anthropic", "claude-opus-5"
     )
     pipe, _primary_calls, _escalation = _dead_primary_pipeline(
         critic_fallback=fallback, writer_calls=writer_calls
@@ -1024,7 +1024,7 @@ def _health_pipeline(
     )
     pipe = NarrativeUnitPipeline(
         _identified(_FakeStructuredLLM(lambda _p, _s: _plan()), "anthropic", "claude-sonnet-5"),
-        _identified(_FakeStructuredLLM(write), "anthropic", "claude-opus-4-8"),
+        _identified(_FakeStructuredLLM(write), "anthropic", "claude-opus-5"),
         critic, None,
         compliance_llm=compliance,
         compliance_escalation_llm=compliance_fallback,
@@ -1059,7 +1059,7 @@ def _opus_challenger():
             ),
             auto_plan_audit=False,
         ),
-        "anthropic", "claude-opus-4-8",
+        "anthropic", "claude-opus-5",
     )
 
 

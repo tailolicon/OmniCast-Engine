@@ -90,6 +90,6 @@ def test_standard_roles_pinned_but_operator_export_wins():
     assert env["OMNICAST_NARRATIVE_PLANNER_EFFORT"] == "high"
     assert env["OMNICAST_NARRATIVE_WRITER_EFFORT"] == "high"
 
-    operator = {"OMNICAST_NARRATIVE_WRITER_MODEL": "claude-opus-4-8"}
+    operator = {"OMNICAST_NARRATIVE_WRITER_MODEL": "claude-opus-5"}
     seq.apply_standard_roles(operator)
-    assert operator["OMNICAST_NARRATIVE_WRITER_MODEL"] == "claude-opus-4-8"
+    assert operator["OMNICAST_NARRATIVE_WRITER_MODEL"] == "claude-opus-5"

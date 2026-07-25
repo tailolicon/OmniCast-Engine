@@ -39,6 +39,13 @@ _STANDARD_ROLE_ENV = {
     "OMNICAST_NARRATIVE_PLANNER_EFFORT": "high",
     "OMNICAST_NARRATIVE_WRITER_MODEL": "claude-sonnet-5",
     "OMNICAST_NARRATIVE_WRITER_EFFORT": "high",
+    # 2026-07-25, operator-funded and operator-approved: the release
+    # challenger runs on DeepSeek — a genuinely different PROVIDER lineage
+    # than the Sonnet judges and Opus escalation (both external reviews named
+    # the all-Anthropic judging stack a shared-blind-spot risk). Balance was
+    # probed live before this was pinned; with a dead balance the challenger
+    # is unreachable and releases fail closed, which is the correct failure.
+    "OMNICAST_NARRATIVE_CHALLENGER_PROVIDER": "deepseek",
 }
 
 

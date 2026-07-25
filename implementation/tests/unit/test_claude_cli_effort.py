@@ -86,8 +86,8 @@ def test_the_rest_of_the_command_is_unchanged_by_effort():
 
 
 def test_model_is_still_pinned_per_client():
-    argv = ClaudeCLIClient(model="claude-opus-4-8", effort="max")._build_command("/exe/claude")
-    assert argv[argv.index("--model") + 1] == "claude-opus-4-8"
+    argv = ClaudeCLIClient(model="claude-opus-5", effort="max")._build_command("/exe/claude")
+    assert argv[argv.index("--model") + 1] == "claude-opus-5"
     assert argv[argv.index("--effort") + 1] == "max"
 
 
@@ -348,7 +348,7 @@ def test_llm_response_stays_constructible_without_the_new_fields():
 def test_llm_client_passes_effort_and_role_to_the_cli_delegate(monkeypatch):
     monkeypatch.setenv("OMNICAST_CLAUDE_BACKEND", "cli")
     client = LLMClient(
-        provider="anthropic", model="claude-opus-4-8",
+        provider="anthropic", model="claude-opus-5",
         cli_effort="max", role="writer",
     )
     assert isinstance(client._delegate, ClaudeCLIClient)
@@ -380,7 +380,7 @@ def test_options_are_immutable_per_client(monkeypatch):
     monkeypatch.setenv("OMNICAST_CLAUDE_BACKEND", "cli")
     planner = LLMClient(provider="anthropic", model="claude-sonnet-5",
                         cli_effort="medium", role="planner")
-    writer = LLMClient(provider="anthropic", model="claude-opus-4-8",
+    writer = LLMClient(provider="anthropic", model="claude-opus-5",
                        cli_effort="max", role="writer")
     assert planner._delegate._effort == "medium"
     assert writer._delegate._effort == "max"
