@@ -203,6 +203,83 @@ def test_heard_before_saw_scaffold_is_rationed_across_stories():
     assert tic[0].story_ids == ["story_2"]
 
 
+def _titled(*titles: str):
+    plan = _plan()
+    stories = [
+        _draft(i).model_copy(update={
+            "narration": _clean(f"seed{i}"), "title": titles[i - 1],
+        })
+        for i in range(1, 4)
+    ]
+    return plan, stories
+
+
+def test_shared_title_anomaly_formula_is_caught():
+    """Cross-lineage audit 2026-07-25 (codex, two compilations): every story
+    title was cut from one formula — 'The <thing> That <anomaly>'. Titles are
+    read together on the card beats; three variations of one shape is a
+    production-template tell in the most visible place on the video."""
+    plan, stories = _titled(
+        "The Room That Isn't There", "The Uniform That Changed", "Mile Marker 12"
+    )
+    hits = [f for f in gate_compilation(plan, stories, _horror()).failures
+            if f.code == "stylometric_title_template"]
+    assert hits, "two anomaly-clause titles in one compilation must fail"
+    assert hits[0].story_ids == ["story_2"]  # the later one changes
+
+
+def test_all_titles_opening_on_the_is_caught():
+    plan, stories = _titled(
+        "The Far End of the Corridor", "The Blind Wedge", "The Name on the Cooler"
+    )
+    hits = [f for f in gate_compilation(plan, stories, _horror()).failures
+            if f.code == "stylometric_title_template"]
+    assert hits
+    assert "open with 'The'" in hits[0].message
+
+
+def test_varied_titles_pass():
+    plan, stories = _titled(
+        "The Blind Wedge", "Nobody Signed That Manifest", "Row C, After Hours"
+    )
+    hits = [f for f in gate_compilation(plan, stories, _horror()).failures
+            if f.code == "stylometric_title_template"]
+    assert not hits
+
+
+def test_routine_invariance_and_cold_coffee_are_rationed():
+    """Two more classes the same audit found across compilations: every
+    narrator asserting their routine never varies (the profile ASKS for an
+    ordinary-routine opening, so the assertion converges), and cold coffee —
+    the single most reused prop in the corpus."""
+    once = _compilation({
+        "story_1": _clean("alpha") + " The order of things never changes on that route.",
+        "story_2": _clean("bravo") + " My coffee had gone cold by then.",
+        "story_3": _clean("charlie"),
+    })
+    codes = [f.message for f in gate_compilation(*once, _horror()).failures
+             if f.code == "stylometric_rationed_tic"]
+    assert not [m for m in codes if "routine-invariance" in m or "cold-coffee" in m]
+
+    twice = _compilation({
+        "story_1": _clean("alpha") + " The order of things never changes on that route.",
+        "story_2": _clean("bravo") + " It runs the same way every night I work it.",
+        "story_3": _clean("charlie"),
+    })
+    tic = [f for f in gate_compilation(*twice, _horror()).failures
+           if f.code == "stylometric_rationed_tic" and "routine-invariance" in f.message]
+    assert tic and tic[0].story_ids == ["story_2"]
+
+    coffee = _compilation({
+        "story_1": _clean("alpha") + " My coffee had gone cold on the counter.",
+        "story_2": _clean("bravo") + " There was cold coffee still sitting there.",
+        "story_3": _clean("charlie"),
+    })
+    hits = [f for f in gate_compilation(*coffee, _horror()).failures
+            if f.code == "stylometric_rationed_tic" and "cold-coffee" in f.message]
+    assert hits and hits[0].story_ids == ["story_2"]
+
+
 def test_composure_claim_is_rationed_across_stories():
     """Live 2026-07-19 mall attempt 2 (critic minor): two narrators asserted
     composure with the same stock 'I don't spook/scare' device at their most

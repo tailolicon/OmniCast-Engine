@@ -1530,6 +1530,23 @@ _RATIONED_TICS = (
     ("'I don't spook/scare' composure claim", re.compile(
         r"\bI\s+(?:don'?t|do\s+not|never)\s+(?:spook|scare|rattle)\b", re.I,
     )),
+    # The routine-invariance declaration: "the order of things never changes",
+    # "runs the same way every night", "I have never once skipped a step". The
+    # profile ASKS for an ordinary-routine opening, and without variation
+    # guidance every narrator asserts their routine's sameness in the same
+    # breath (cross-lineage audit 2026-07-25 found it in three of four
+    # compilations). One narrator may own the claim.
+    ("routine-invariance declaration", re.compile(
+        r"\b(?:never changes|the same (?:way )?every (?:night|shift|run|time)|"
+        r"never once (?:skipped|missed|failed|varied))\b", re.I,
+    )),
+    # Cold coffee on the night-shift counter — the single most reused prop in
+    # the corpus (audit 2026-07-25: two separate compilations, three stories).
+    ("cold-coffee prop", re.compile(
+        r"\bcoffee\b[^.!?\n]{0,40}\b(?:gone|going|went)\s+cold\b"
+        r"|\bcold\s+coffee\b",
+        re.I,
+    )),
     # The ears-before-eyes SCAFFOLD: the prompt requires every story to let
     # sound precede sight, and without variation guidance all three writers
     # converge on the literal "heard X before I saw Y" construction (live
@@ -1819,6 +1836,9 @@ def _stylometric_texture_findings(
     # shuttle van" — and two content words are required so shared function-word
     # runs ("and I went back to") never fire.
     failures.extend(_shared_phrase_failures(stories, plan_by_id))
+    # Titles are read together on the card beats — an unchecked surface until
+    # the 2026-07-25 cross-lineage audit found all three cut from one formula.
+    failures.extend(_title_template_failures(stories))
 
     return failures, flags
 
@@ -1980,6 +2000,54 @@ def _finishing_wave_allowed(
         (issue.evidence_quote or issue.anchor_quote).strip()
         for issue in remaining
     )
+
+
+_TITLE_LEADING_ARTICLE_RE = re.compile(r"^\s*the\b", re.I)
+# "The Room That Isn't There", "The Uniform That Changed", "The Waypoint That
+# Wasn't There" — noun phrase plus a restrictive clause announcing the anomaly.
+_TITLE_ANOMALY_CLAUSE_RE = re.compile(
+    r"^\s*the\s+\w+[\w\s'-]*\s+(?:that|which|nobody|no one|who)\b", re.I,
+)
+
+
+def _title_template_failures(stories: list[StoryDraft]) -> list[GateFailure]:
+    """Story TITLES are a surface no gate has ever read.
+
+    Cross-lineage audit 2026-07-25 (codex, two separate compilations): all
+    three story titles in a compilation shared one template — "The <noun
+    phrase>" and, worse, "The <noun> That <anomaly>". A viewer sees the three
+    titles together on the card beats; three variations of one formula is a
+    production-template tell in the exact place the channel looks most
+    manufactured. Two may rhyme; three is the formula."""
+    titles = [(s.story_id, (s.title or "").strip()) for s in stories]
+    named = [(sid, t) for sid, t in titles if t]
+    if len(named) < 3:
+        return []
+    failures: list[GateFailure] = []
+
+    anomaly = [(sid, t) for sid, t in named if _TITLE_ANOMALY_CLAUSE_RE.match(t)]
+    if len(anomaly) >= 2:
+        failures.append(_failure(
+            "stylometric_title_template",
+            f"{anomaly[-1][0]} titles its story {anomaly[-1][1]!r} on the same "
+            f"'The <thing> that <anomaly>' formula already used by "
+            f"{anomaly[0][0]} ({anomaly[0][1]!r}); the three titles are read "
+            "together on the card beats — give this one a different shape "
+            "(a plain place or object, a spoken fragment, a time)",
+            anomaly[-1][0],
+        ))
+        return failures
+
+    leading = [(sid, t) for sid, t in named if _TITLE_LEADING_ARTICLE_RE.match(t)]
+    if len(leading) == len(named):
+        failures.append(_failure(
+            "stylometric_title_template",
+            f"all {len(named)} story titles open with 'The' "
+            f"({', '.join(repr(t) for _sid, t in named)}); vary at least one — "
+            "three titles cut from one pattern read as a template",
+            named[-1][0],
+        ))
+    return failures
 
 
 def _near_miss_minor_ids(
