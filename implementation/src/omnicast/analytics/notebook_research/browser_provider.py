@@ -363,12 +363,22 @@ class NotebookLMWorker:
             raise UiDeadline("run_prompt: chat input not found")
 
         deadline = time.monotonic() + DEADLINE_RESPONSE
+        _polls = 0
         while time.monotonic() < deadline:
             try:
                 if box.is_editable():
                     break
             except Exception:
                 pass
+            # A lingering citation panel/dialog disables the chat box (run 9:
+            # two prompts click-timed-out right after citation capture) —
+            # nudge it closed while waiting.
+            _polls += 1
+            if _polls % 3 == 0:
+                try:
+                    self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
             time.sleep(POLL_S)
         else:
             raise UiDeadline("run_prompt: chat box never became editable "
@@ -486,6 +496,14 @@ class NotebookLMWorker:
                     rec["error"] = str(exc)[:120]
                 out.append(rec)
             break  # first working strategy wins
+        # Leave the UI clean: a citation panel left open disables the chat box
+        # and starves every later prompt (run 9).
+        for _ in range(3):
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                break
+            time.sleep(0.5)
         return out
 
 
