@@ -1,0 +1,90 @@
+{
+  "channel_id": "senior_wealth_us",
+  "name": "WORKING TITLE — pending operator pick (Phase A step 4)",
+  "niche": "finance",
+  "sub_niche": "retirement finance for 60-75 US viewers: Social Security decisions, retirement taxes, outliving-your-money risk, senior-targeted scams",
+  "market": "US",
+  "visual_style": "clean_trust",
+  "channel_style": "footage",
+  "music_mood": "warm_neutral",
+  "voice_profile": "edge:en-US-RogerNeural",
+  "voice_fallback": [
+    "edge:en-US-DavisNeural",
+    "edge:en-US-GuyNeural"
+  ],
+  "voice_persona": "calm_experienced_male_60",
+  "brand_voice": "A calm, patient explainer who respects the viewer's intelligence and lifetime of experience. Plain English, concrete dollar examples, zero hype, zero fear-mongering. Educational only — never personal advice; every number carries its source and year.",
+  "tone": "warm_direct",
+  "hook_format": "One clear consequence stated with a concrete number in the first 15 seconds — e.g. 'Claiming at 62 instead of 67 costs this retiree $612 every month, for life.'",
+  "brand_color_hex": "#1B3A5C",
+  "font_vibe": "serif_trust_large",
+  "competitor_handles": [
+    "@HolySchmidt",
+    "@DevinCarroll",
+    "@SafeguardWealthManagement",
+    "@RootFP",
+    "@AzulWells",
+    "@joekuhnlovesretirement",
+    "@rob_berger"
+  ],
+  "audience": {
+    "age_range": "60-75",
+    "pain_points": [
+      "when to claim Social Security and the fear of choosing wrong forever",
+      "outliving savings — the money has to last 25+ years",
+      "taxes in retirement nobody explained: 401k withdrawals, RMDs, IRMAA",
+      "scams that specifically target retirees",
+      "feeling patronized by advisors and by young-finance YouTube"
+    ],
+    "content_triggers": [
+      "one decision explained end-to-end with real dollar amounts",
+      "current-year rules and thresholds, dated and sourced",
+      "checklists they can act on this week",
+      "scam anatomies with the exact phrases criminals use"
+    ],
+    "engagement_drivers": [
+      "ask which decision they're facing this year",
+      "clear chapter markers so they can rewatch one section"
+    ]
+  },
+  "trends_keywords": [
+    "when to take social security",
+    "retirement taxes explained",
+    "401k withdrawal strategy",
+    "RMD rules",
+    "retirement scams seniors",
+    "how much do I need to retire at 65"
+  ],
+  "rss_feeds": [],
+  "subreddits": ["retirement", "SocialSecurity", "personalfinance"],
+  "rpm_floor": 25.0,
+  "target_duration_min": 15,
+  "destinations": [
+    {
+      "destination_id": "senior_wealth_us_youtube",
+      "platform_id": "youtube",
+      "account_id": "senior_wealth_us",
+      "format_variant": "youtube_16x9",
+      "enabled": false,
+      "approval_required": true,
+      "schedule_policy": "prime_time",
+      "market": "US",
+      "metadata_overrides": {}
+    }
+  ],
+  "channel_type": "hub",
+  "language": "en",
+  "ref_channels": [
+    "@HolySchmidt",
+    "@DevinCarroll",
+    "@RootFP"
+  ],
+  "strip_script_outro": false,
+  "description_disclaimer": "This channel is educational only and is not financial, tax, or legal advice. Rules and numbers change - verify current figures with official sources (ssa.gov, irs.gov) or a licensed professional before acting.",
+  "ymyl": true,
+  "shorts": {
+    "cadence_days": 2,
+    "modes": ["cut_from_long", "single_question"],
+    "cta": "full breakdown in the linked video"
+  }
+}
