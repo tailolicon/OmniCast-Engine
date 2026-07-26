@@ -95,8 +95,18 @@ FALLBACKS: dict[str, tuple[str, ...]] = {
 # exists for.
 SYNTHETIC_MODES = frozenset({AI_ILLUSTRATION, RECONSTRUCTION, ANIMATION})
 
-# How the router's answer maps onto the storyboard's existing vocabulary, so
-# `channel_styles.enforce_policy` and the renderers keep working unchanged.
+# How the router's answer maps onto the storyboard's existing vocabulary.
+#
+# READ THE SECOND COLUMN. Several modes have no renderer of their own and are
+# only ever APPROXIMATED by an existing one — an infographic drawn by an image
+# model is not an infographic, and the image providers themselves warn that they
+# are poor at charts, numbers and text. Those modes are marked `approximated`,
+# and the router does NOT overwrite a storyboard cell with them: it annotates
+# the cell with the mode it detected and leaves the visual type alone, so a
+# considered storyboard is never downgraded to "AI picture of a chart" by a
+# classifier that cannot deliver the thing it named.
+#
+# `renderer` means: this visual type really is how the mode is produced.
 VISUAL_TYPE: dict[str, str] = {
     REAL_EVIDENCE: "stock_video",
     STOCK: "stock_video",
@@ -107,6 +117,26 @@ VISUAL_TYPE: dict[str, str] = {
     SCREEN_CAPTURE: "generated_image",
     TALKING_HEAD: "stock_video",
     SILENCE_HOLD: "hold",
+}
+
+# Modes whose VISUAL_TYPE is the real production path for them.
+RENDERED_MODES: frozenset[str] = frozenset({
+    STOCK,             # stock_video IS stock footage
+    AI_ILLUSTRATION,   # generated_image IS an AI illustration
+    RECONSTRUCTION,    # a dramatised still is an AI illustration, honestly
+    SILENCE_HOLD,      # a hold needs no new asset
+})
+
+# Modes we can name but not yet produce as themselves. Each says what is missing
+# so the gap is a work item rather than a silent downgrade.
+APPROXIMATED_MODES: dict[str, str] = {
+    INFOGRAPHIC: ("no chart/motion-graphics renderer — an image model asked for "
+                  "a chart produces unreadable numbers and text"),
+    SCREEN_CAPTURE: "no screen-recording capture step in the render pipeline",
+    REAL_EVIDENCE: ("no archival/rights-cleared source; a stock clip is not the "
+                    "document being cited"),
+    TALKING_HEAD: "no presenter and no avatar renderer",
+    ANIMATION: "no animation renderer — see omnicast.animation.readiness()",
 }
 
 
@@ -163,6 +193,9 @@ class SceneRoute:
     fallback_reason: str = ""
     requires_disclosure: bool = False
     notes: list[str] = field(default_factory=list)
+    # Set when a capability upgrades a normally-approximated mode into a real
+    # renderer (INFOGRAPHIC + chart_render → the chart_gen PNG renderer).
+    visual_type_override: str = ""
 
     @property
     def was_substituted(self) -> bool:
@@ -170,7 +203,21 @@ class SceneRoute:
 
     @property
     def visual_type(self) -> str:
-        return VISUAL_TYPE[self.mode]
+        return self.visual_type_override or VISUAL_TYPE[self.mode]
+
+    @property
+    def is_rendered_as_itself(self) -> bool:
+        """Whether `visual_type` actually produces this mode.
+
+        False means the mode was correctly identified and will be approximated
+        by something else — which a caller must not treat as delivery."""
+        return bool(self.visual_type_override) or self.mode in RENDERED_MODES
+
+    @property
+    def approximation_gap(self) -> str:
+        if self.visual_type_override:
+            return ""
+        return APPROXIMATED_MODES.get(self.mode, "")
 
     def as_dict(self) -> dict:
         return {
@@ -183,6 +230,8 @@ class SceneRoute:
             "evidence": self.evidence,
             "requires_disclosure": self.requires_disclosure,
             "visual_type": self.visual_type,
+            "is_rendered_as_itself": self.is_rendered_as_itself,
+            "approximation_gap": self.approximation_gap,
             "notes": list(self.notes),
         }
 
@@ -241,6 +290,21 @@ def route_scene(
                 "a reconstruction is standing in for real evidence — the script "
                 "must not describe it as footage of the actual event")
 
+    # INFOGRAPHIC stops being an approximation the moment a real chart renderer
+    # is declared AND backed (see capabilities_from_channel): the cell renders
+    # as a data-true chart PNG via media/providers/chart_gen, never as an image
+    # model's idea of a graph.
+    visual_type_override = ""
+    if mode == INFOGRAPHIC and "chart_render" in available:
+        visual_type_override = "chart"
+        notes.append("chart_render capability present — rendered as a real data "
+                     "chart (chart_gen), not an AI approximation")
+
+    if mode in APPROXIMATED_MODES and not visual_type_override:
+        notes.append(
+            f"{mode} has no renderer of its own — it will be approximated by "
+            f"`{VISUAL_TYPE[mode]}`: {APPROXIMATED_MODES[mode]}")
+
     disclosure = bool(depicts_real_events and mode in SYNTHETIC_MODES)
     if disclosure:
         notes.append(
@@ -255,7 +319,7 @@ def route_scene(
     return SceneRoute(scene_index=index, mode=mode, requested_mode=requested,
                       confidence=confidence, evidence=evidence,
                       fallback_reason=reason, requires_disclosure=disclosure,
-                      notes=notes)
+                      notes=notes, visual_type_override=visual_type_override)
 
 
 def route_storyboard(
@@ -289,25 +353,93 @@ def summarise(routes: list[SceneRoute]) -> dict:
         counts[route.mode] = counts.get(route.mode, 0) + 1
     substituted = [r.as_dict() for r in routes if r.was_substituted]
     defaulted = sum(1 for r in routes if r.confidence <= 0.4)
+    approximated = [r.as_dict() for r in routes if not r.is_rendered_as_itself]
     return {
         "scenes": len(routes),
         "modes": counts,
         "substituted": substituted,
         "substituted_count": len(substituted),
+        "approximated": approximated,
+        "approximated_count": len(approximated),
+        "approximation_note": (
+            "A scene counted here was classified correctly and will be produced "
+            "by a DIFFERENT mechanism, because this mode has no renderer yet. "
+            "The router is a classifier with honest fallbacks; it is not a "
+            "production-mode system until those renderers exist."
+        ),
         "defaulted_count": defaulted,
         "classified_ratio": (round(1 - defaulted / len(routes), 3) if routes else 0.0),
         "requires_disclosure": any(r.requires_disclosure for r in routes),
     }
 
 
+# Capabilities that need a working RENDERER, not just a line in a config file.
+# A channel declaring `character_animation` with nothing able to draw a frame
+# produced `mode=animation, was_substituted=False` — and then fell through to a
+# generated image downstream, which is the "AI images plus a crossfade" the
+# review rejects, now wearing the label of the thing it is not.
+# `screen_capture` is here for the same reason as animation: this module's own
+# APPROXIMATED_MODES says "no screen-recording capture step in the render
+# pipeline", and granting it by default let the router — and `stack_fit`, which
+# reads the same vocabulary — treat a software tutorial as producible. A
+# capability the engine does not have must not be free.
+RENDERER_BACKED = frozenset({"character_animation", "screen_capture", "chart_render"})
+
+
+def chart_render_available() -> bool:
+    """Whether the real data-chart renderer can run (matplotlib present).
+
+    Backed by media/providers/chart_gen.py — a complete bar-chart PNG renderer
+    that had zero callers until the flagship finance channel wired it in."""
+    try:
+        from omnicast.media.providers import chart_gen
+
+        return chart_gen.available()
+    except Exception:
+        return False
+
+
+def screen_capture_available() -> bool:
+    """Whether a screen-recording capture step exists. It does not.
+
+    Declared as a function rather than a constant so that adding the capture
+    step is a one-line change here, and so the absence is greppable."""
+    return False
+
+
+def animation_renderer_available() -> bool:
+    """Whether a real animation renderer is registered AND healthy.
+
+    Returns False today, deliberately and visibly: `omnicast.animation` is a
+    planning layer — its own `readiness()` reports `renders_frames: False`. When
+    a renderer adapter exists it registers here, and until then ANIMATION stays
+    unroutable no matter what a config says."""
+    try:
+        from omnicast.animation.bible import readiness
+
+        state = readiness()
+    except Exception:
+        return False
+    return bool(state.get("renders_frames")) and not state.get("unbuilt")
+
+
 def capabilities_from_channel(channel) -> set[str]:
-    """Which production modes this channel has declared it can deliver.
+    """Which production modes this channel can ACTUALLY deliver.
 
     Derived from the same `supported_production` list the topic scorer reads, so
-    an operator declares a capability once. `screen_capture` is granted by
-    default because OmniCast can record a screen; nothing else is, because
-    nothing else is true of the engine by default."""
+    an operator declares a capability once — but a declaration is not a
+    capability for anything in `RENDERER_BACKED`. NOTHING is granted for free:
+    `screen_capture` used to be, on the strength of "OmniCast can record a
+    screen", which no part of the render pipeline actually does."""
     declared = {str(x).strip().lower()
                 for x in (getattr(channel, "supported_production", None) or [])
                 if str(x).strip()}
-    return declared | {"screen_capture"}
+    backing = {
+        "character_animation": animation_renderer_available,
+        "screen_capture": screen_capture_available,
+        "chart_render": chart_render_available,
+    }
+    for capability, available in backing.items():
+        if capability in declared and not available():
+            declared.discard(capability)
+    return declared

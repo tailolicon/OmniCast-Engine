@@ -1607,6 +1607,74 @@ def _web_cache_path(query: str, w: int, h: int) -> Path:
     return _IMG_CACHE_DIR / f"web_{key}.png"
 
 
+class ChartAuditError(RuntimeError):
+    """A chart value failed the fact-ledger audit — the render must stop."""
+
+
+def _ledger_digit_cores(script_path: Path) -> set[str] | None:
+    """Digit cores of every value in the product's fact ledger, or None when no
+    ledger exists (non-YMYL channel or pre-ledger product)."""
+    lf = script_path.parent / "fact_ledger.json"
+    if not lf.exists():
+        return None
+    try:
+        data = _json.loads(lf.read_text(encoding="utf-8"))
+        entries = (data.get("ledger") or {}).get("entries") or []
+        cores: set[str] = set()
+        for e in entries:
+            for tok in re.findall(r"\d[\d,]*(?:\.\d+)?", f"{e.get('value', '')} {e.get('claim', '')}"):
+                core = re.sub(r"\D", "", tok)
+                if core:
+                    cores.add(core)
+        return cores
+    except Exception as exc:
+        print(f"[chart] [warn] fact ledger unreadable ({exc}) — treating as absent")
+        return None
+
+
+def _render_chart_cell(spec: dict, dest: Path, script_path: Path, w: int, h: int) -> bool:
+    """Render a storyboard chart cell as a REAL data chart (chart_gen PNG).
+
+    Fail-closed audit: when the product carries a fact ledger, every chart value
+    must appear in it — a figure the ledger never sourced must not reach the
+    screen (raises ChartAuditError, which aborts the render on purpose)."""
+    labels = [str(x) for x in (spec.get("labels") or [])]
+    values_raw = spec.get("values") or []
+    if not labels or len(labels) != len(values_raw) or not (2 <= len(labels) <= 6):
+        print(f"[chart] [warn] malformed chart_spec (labels={len(labels)}, "
+              f"values={len(values_raw)}) — skipping chart")
+        return False
+    try:
+        values = [float(v) for v in values_raw]
+    except (TypeError, ValueError):
+        print("[chart] [warn] non-numeric chart values — skipping chart")
+        return False
+
+    cores = _ledger_digit_cores(script_path)
+    if cores is None:
+        print("[chart] [warn] no fact ledger to audit against — chart skipped "
+              "(unaudited numbers must not render)")
+        return False
+    bad = [v for v in values
+           if re.sub(r"\D", "", f"{v:g}") and re.sub(r"\D", "", f"{v:g}") not in cores]
+    if bad:
+        raise ChartAuditError(
+            f"chart values {bad} not present in fact_ledger.json — a figure "
+            "without a sourced ledger entry must not be drawn (fix the ledger "
+            "or the storyboard, then re-render)")
+
+    from omnicast.media.providers import chart_gen
+    if not chart_gen.available():
+        print("[chart] [warn] matplotlib unavailable — chart skipped")
+        return False
+    return chart_gen.render_chart(
+        list(zip(labels, values)), dest,
+        title=str(spec.get("title") or ""),
+        highlight_label=(str(spec.get("highlight")) if spec.get("highlight") else None),
+        source=str(spec.get("source") or ""),
+        w=w, h=h)
+
+
 # Content-addressed image cache: identical (prompt, model, canvas size) always
 # yields the same illustration, so we never re-spend Flow/Imagen quota on a shot
 # we already rendered. Survives re-renders that only change compose/concat/BGM/
@@ -1785,19 +1853,43 @@ def _storyboard_chunk(scenes: list[Scene], offset: int, total: int,
                                "neutral atmosphere cutaways (sky, rain, fire). ")
         except Exception:
             pass
+        # Real-chart mode: channels that declare (and can back) `chart_render`
+        # may request a data-true chart cell. The chart is drawn by matplotlib
+        # from the numbers given — NEVER by an image model — so CRITICAL #1c
+        # (never a chart) is lifted only for this explicit visual_type.
+        _chart_mode = "chart_render" in {
+            str(x).strip().lower()
+            for x in (channel_meta or {}).get("supported_production", []) or []}
+        _chart_type = ' | "chart"' if _chart_mode else ""
+        _chart_keys = (
+            '  "chart_spec": {"title": "<short chart title>", '
+            '"labels": ["<bar label>", "..."], "values": [<number>, ...], '
+            '"highlight": "<label of the key bar, else empty>", '
+            '"source": "<source name + year, e.g. SSA 2026>"},  // ONLY when visual_type is "chart"\n'
+            if _chart_mode else "")
+        _chart_note = (
+            "CHART MODE ENABLED (overrides CRITICAL #1c for this channel): when the "
+            "narration COMPARES 2-6 real numbers (claiming ages, tax tiers, costs), "
+            "use visual_type 'chart' with a chart_spec. Use ONLY numbers spoken in "
+            "the narration — the chart is rendered from your values by a real chart "
+            "engine and every value is audited against the fact ledger; an invented "
+            "value blocks the render. Single numbers still use the kinetic stat "
+            "callout, not a chart. "
+            if _chart_mode else "")
         user = (
             f"{chunk_note}{len(scenes)} scenes below. Pick the best visual_type per scene. "
-            f"{prefer_line}"
+            f"{prefer_line}{_chart_note}"
             f"Keep one continuous world + consistent style for any generated images.\n\n{scene_block}\n\n"
             "Return a JSON array, one object per scene IN ORDER:\n"
             '[{\n'
             '  "scene_index": 0,\n'
-            '  "visual_type": "stock_video" | "generated_image" | "web_search_image" | "web_screenshot",\n'
+            f'  "visual_type": "stock_video" | "generated_image" | "web_search_image" | "web_screenshot"{_chart_type},\n'
             '  "stock_query": "<2-5 word B-roll keywords if stock_video, else empty>",\n'
             '  "search_query": "<search query or URL if web_search_image/web_screenshot, else empty>",\n'
             '  "image_prompt": "<detailed prompt for generation, or fallback if a fetch fails>",\n'
             '  "video_prompt": "<camera/motion for image-to-video>",\n'
             '  "negative_prompt": "<things to avoid>",\n'
+            + _chart_keys +
             '  "stat_number": "<big number/stat if any, e.g. 52% — else empty>",\n'
             '  "stat_label": "<short ALL-CAPS caption for the stat, else empty>"\n'
             '}]'
@@ -2341,26 +2433,46 @@ def main() -> None:
                 _caps = capabilities_from_channel(
                     type("_C", (), {"supported_production":
                                     channel_meta.get("supported_production", [])})())
-                _routes = route_storyboard(_scenes_for_router, capabilities=_caps)
+                # DEPICTS REAL EVENTS. Without this the disclosure branch was
+                # dead code: the router defaulted to False and never marked a
+                # single scene. A channel is non-fiction unless it says
+                # otherwise — the safe default for a disclosure flag.
+                _real = bool(channel_meta.get(
+                    "depicts_real_events",
+                    str(channel_meta.get("content_mode", "")).lower() != "fiction"))
+                _routes = route_storyboard(_scenes_for_router, capabilities=_caps,
+                                           depicts_real_events=_real)
                 for _route in _routes:
                     _cell = board[_route.scene_index]
                     if not isinstance(_cell, dict):
                         continue
                     _cell["production_mode"] = _route.mode
                     _cell["production_mode_confidence"] = _route.confidence
+                    if _route.approximation_gap:
+                        _cell["production_mode_approximated"] = _route.approximation_gap
                     if _route.requires_disclosure:
                         _cell["requires_ai_disclosure"] = True
-                    # Only a confident classification overrides the board. A
-                    # defaulted route (0.4) carries no information, and letting
-                    # it rewrite a considered LLM choice would be a downgrade
-                    # dressed as a decision.
-                    if _route.confidence >= 0.75 and _route.visual_type != "hold":
+                    # OVERRIDE ONLY WHERE THE MODE IS REALLY PRODUCED THAT WAY.
+                    # `INFOGRAPHIC -> generated_image` is an approximation, and
+                    # the image providers warn they are poor at charts, numbers
+                    # and text — so rewriting a considered storyboard cell into
+                    # "AI picture of a chart" on a 0.75-confidence keyword match
+                    # made the video worse while looking like a decision.
+                    if (_route.confidence >= 0.75
+                            and _route.is_rendered_as_itself
+                            and _route.visual_type != "hold"):
                         _cell["visual_type"] = _route.visual_type
-                _summary = summarise(_routes)
+                _summary_extra = summarise(_routes)
+                _summary = _summary_extra
                 status.log(
                     f"production modes: {_summary['modes']} "
                     f"(substituted {_summary['substituted_count']}, "
+                    f"approximated {_summary['approximated_count']}, "
                     f"defaulted {_summary['defaulted_count']})")
+                for _appx in _summary["approximated"][:5]:
+                    print(f"      [mode] scene {_appx['scene_index']}: "
+                          f"{_appx['mode']} approximated — "
+                          f"{_appx['approximation_gap']}")
                 for _sub in _summary["substituted"][:5]:
                     print(f"      [mode] scene {_sub['scene_index']}: "
                           f"{_sub['fallback_reason']}")
@@ -2416,7 +2528,12 @@ def main() -> None:
                 # plain white kinetic callout sits over footage — NOT a generated
                 # cartoon that bakes the number into a chart/book (rule #1b). The
                 # LLM sometimes ignores this, so force it here.
-                if (cell.get("stat_number") or "").strip() and visual_type != "stock_video":
+                if (cell.get("stat_number") or "").strip() and visual_type == "chart":
+                    # A chart already draws its numbers — a kinetic callout on
+                    # top would double-print them. The chart wins.
+                    cell["stat_number"] = ""
+                    cell["stat_label"] = ""
+                elif (cell.get("stat_number") or "").strip() and visual_type != "stock_video":
                     visual_type = "stock_video"
                     cell["visual_type"] = "stock_video"
                     if not stock_query:
@@ -2448,6 +2565,46 @@ def main() -> None:
                     else:
                         print(f"[stock-video] [warn] failed scene {i}; will use text card.")
                     continue
+
+                # --- Real data chart (chart_render channels; audited vs ledger) ---
+                if visual_type == "chart":
+                    _spec = cell.get("chart_spec") or {}
+                    dest = work / f"scene_{i:02d}_chart.png"
+                    _chart_ok = False
+                    try:
+                        _chart_ok = _render_chart_cell(_spec, dest, script_path, W, H)
+                    except ChartAuditError as _ce:
+                        # Fail-closed on purpose: a chart whose number the fact
+                        # ledger never sourced must not ship in a YMYL video.
+                        raise SystemExit(f"[chart] AUDIT BLOCK scene {i}: {_ce}")
+                    except Exception as e:
+                        print(f"[chart] [warn] error scene {i}: {e}")
+                    if _chart_ok and dest.exists() and dest.stat().st_size > 0:
+                        bg_paths[i] = dest
+                        print(f"[chart] rendered scene {i}: "
+                              f"'{str(_spec.get('title') or '')[:48]}'")
+                        continue
+                    # Never approximate a failed chart with an AI graph — fall
+                    # back to real B-roll of the scene's subject instead.
+                    _sq = _filmable(stock_query,
+                                    re.sub(r"[\[\]]", "", scenes[i].heading))
+                    if _sq:
+                        vclip = work / f"scene_{i:02d}_stock.mp4"
+                        print(f"[chart] [warn] chart failed scene {i}; stock fallback '{_sq}'")
+                        try:
+                            if download_best_stock_video(_sq, vclip, W, H, max_seconds=15) \
+                                    and vclip.exists() and vclip.stat().st_size > 0:
+                                stock_paths[i] = vclip
+                                continue
+                        except Exception as e:
+                            print(f"[chart] [warn] stock fallback error scene {i}: {e}")
+                    # Last resort is a generic illustration — scrub any chart
+                    # wording so the image model is never asked to draw a graph.
+                    if re.search(r"\b(chart|graph|diagram|infographic|bar|axis)\b",
+                                 (cell.get("image_prompt") or ""), re.I):
+                        cell["image_prompt"] = ""
+                    cell["visual_type"] = "generated_image"
+                    visual_type = "generated_image"
 
                 # --- Real moving B-roll footage (preferred) ---
                 if visual_type == "stock_video" and stock_query:
@@ -3258,13 +3415,34 @@ def main() -> None:
     status.video(out.name); status.log(f"done {dur:.0f}s {size_mb:.1f}MB")
     print(f"[4/5] Rendered: {out}")
 
+    # Imported here so the handler below can NAME the fail-closed error rather
+    # than catching it with everything else.
+    try:
+        from omnicast.analytics.intel_gate import CompetitorIntelRequired
+    except Exception:  # pragma: no cover - package unavailable in bare scripts
+        class CompetitorIntelRequired(RuntimeError):
+            """Fallback so the handler below stays well-formed."""
+
     # Clickbait title + thumbnail (all channels). Title -> <stem>_title.txt,
     # thumbnail 1280x720 -> <stem>_thumb.png. Thumbnail bg = the hook
     # illustration (or a frame pulled from the final video as fallback).
     try:
         import clickbait
+        # The pillar comes from the BRIEF (recorded in product meta), not from
+        # re-reading the script: `TopicBrief.pillar_id` already decided it, and
+        # re-classifying 2,000 characters could hand an annuities video the
+        # social-security playbook because it mentions Medicare a lot. The
+        # classifier remains a fallback and says so.
+        _pillar_ssot = ""
+        try:
+            from omnicast.storage import products as _products_meta
+            _pillar_ssot = str((_products_meta.read_meta(out.parent) or {}).get(
+                "pillar_id") or "")
+        except Exception:
+            _pillar_ssot = ""
         cb = clickbait.generate_clickbait(
-            script_path.read_text(encoding="utf-8"), channel_meta)
+            script_path.read_text(encoding="utf-8"), channel_meta,
+            pillar_id=_pillar_ssot)
         if cb:
             (out.with_name(out.stem + "_title.txt")).write_text(
                 cb["title"], encoding="utf-8")
@@ -3420,6 +3598,33 @@ def main() -> None:
             status.log(f"title: {cb['title']}")
             print(f"[4b/5] Title : {cb['title']}")
             print(f"[4b/5] Thumb : {thumb}  ('{cb['thumb_text']}')")
+            # A previous run may have persisted a fail-closed packaging state.
+            # Clear it only after this run has produced the complete title and
+            # thumbnail package; the exception handlers below must leave it set.
+            from omnicast.storage import products as _products
+            _products.mark_packaging_ready(out.parent)
+    except CompetitorIntelRequired as exc:
+        # FAIL CLOSED, ALL THE WAY OUT. `generate_clickbait` re-raises this, and
+        # catching it here with everything else put the declaration back to
+        # sleep one frame further out: the render printed a warning, printed
+        # DONE, and shipped packaging built from patterns the channel had said
+        # it would rather not ship at all.
+        #
+        # The MP4 stays on disk — it is already rendered and re-rendering costs
+        # money — but the product is marked unpublishable and the process exits
+        # non-zero, so no caller mistakes this for a completed render.
+        status.error(f"competitor intel required but unusable: {exc}")
+        print(f"[5/5] BLOCKED — {exc}")
+        print("       The video was rendered but has NO approved packaging and "
+              "must not be published. Re-run competitor intel for this channel, "
+              "or clear `competitor_intel_required` if that is really intended.")
+        try:
+            from omnicast.storage import products as _products
+            _products.write_meta(out.parent, packaging_blocked=str(exc),
+                                 publishable=False)
+        except Exception:
+            pass
+        raise
     except Exception as exc:
         print(f"      [warn] clickbait failed: {exc}")
 

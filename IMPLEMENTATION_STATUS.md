@@ -554,6 +554,23 @@ lớn nhất niche (x132); authority đến từ nguồn trích (FBI/IRS/SSA/Van
 không từ persona — khuôn hợp lệ duy nhất cho kênh faceless YMYL; nhịp đọc winner
 ~180 wpm; recency (rule năm hiện hành) vừa là compliance vừa là moat.
 
+### Phase B — content engine finance (2026-07-26, cùng phiên)
+
+Kênh đã TẠO THẬT: "The Retirement Desk", channel_id `UChHsEnEh2QceXN2V1SBEzgg`,
+handle `@TheRetirementDesk-ays` (YouTube chặn handle sạch cho kênh mới); mô tả +
+quốc gia + keywords + audience đã set qua Studio. Content engine:
+
+| Mảnh | Module | Trạng thái |
+|---|---|---|
+| Rubric YMYL accuracy-first | `agents/rubrics/finance_explainer.py` + `NicheConfig.rubric_id` + entry `finance.retirement_senior` (niches.py) | ✅ 8 VO dims (accuracy_trust 16 nặng nhất) + 2 prod dims (data_visualization); chọn qua `_rubric_dims(is_narr, rubric_id)`; cap máy: persona-ban (accuracy≤4, compliance≤1), guarantee→0, personalized advice≤2 — enforce trong Python, không nhờ LLM; flag đọc-citation-thành-tiếng TẮT cho niche này (cohort: winner trích nguồn thành tiếng là trust feature) |
+| Fact-citation ledger | `compliance/fact_ledger.py` + `agents/fact_ledger_agent.py` + caller trong `pipeline/steps.py` (sau approve, trước render) | ✅ LLM đề xuất binding, máy validate 4 chiều: coverage (mọi token số regex bắt được phải có entry — fail-closed khi ledger rỗng), completeness (source+as_of bắt buộc), recency (year_sensitive phải đúng năm rule hiện hành), consistency (entry mồ côi = chặn). Artifact `fact_ledger.json` + `.md` (bảng human-review) + SHA-256 script. **Ranh giới trung thực ghi trên artifact: gate chứng minh MỌI SỐ CÓ NGUỒN+NGÀY, không chứng minh số ĐÚNG — đó là việc của human YMYL review** |
+| Chart renderer thật | `production_router.py` (capability `chart_render` backed bởi matplotlib) + `render_real_video.py` (visual_type "chart" + `_render_chart_cell`) + `channel_styles.py` (chart miễn coercion) | ✅ `chart_gen.py` (viết sẵn, 0 caller) nay là renderer thật của INFOGRAPHIC khi kênh khai `supported_production: ["chart_render"]`; storyboard LLM được mở khoá #1c CHỈ cho visual_type "chart" với chart_spec; **audit fail-closed: giá trị chart không có trong fact_ledger.json → SystemExit chặn render**; chart fail → fallback stock B-roll, không bao giờ ảnh-AI-vẽ-biểu-đồ |
+| YMYL upload compliance finance | `upload/compliance.py`: check `ymyl_finance_safety` + `_check_ymyl_finance_text` | ✅ song song với health check (trước đây health-only): disclaimer bắt buộc, cấm guarantee/urgency, cấm advisor-persona trong metadata |
+| Tests | `tests/unit/test_finance_explainer_phase_b.py` (26 test) | ✅ rubric selection/weights/caps, extraction/gate 7 nhánh, upload compliance 6 nhánh, router chart 4 nhánh; suites ghim cũ (critic/router/styles/compliance) pass nguyên |
+
+Còn lại của Phase B→C: chạy 1 script e2e thật qua rubric mới + ledger (cần quota
+LLM), Shorts system (Phase C), benchmark gate vs golden set.
+
 ## 5. Chỉ mục tài liệu (cái nào tin được)
 
 | Doc | Loại | Tin tiến độ? |

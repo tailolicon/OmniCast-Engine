@@ -165,6 +165,11 @@ def enforce_policy(board: list[dict], headings: list[str],
         if not isinstance(cell, dict):
             continue
         vtype = cell.get("visual_type", "generated_image")
+        # A 'chart' cell only exists on channels that declared (and can back)
+        # the chart_render capability — it is a REAL data visual with its own
+        # fail-closed audit, never a sourcing-style question. Leave it alone.
+        if vtype == "chart":
+            continue
         # Empty stub cells (storyboard salvage losses default to generated_image
         # with no prompt at all) can't render anything useful — route them to the
         # policy's preferred source instead of a doomed blank image gen.

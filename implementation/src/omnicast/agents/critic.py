@@ -49,6 +49,15 @@ NICHE_FATAL_RULES: dict[str, list[str]] = {
         "Specific stock/fund recommendation without disclaimer → niche_compliance ≤ 2",
         "Claiming specific future price targets → niche_compliance = 0",
         "Promising viewer will achieve specific dollar outcome → niche_compliance = 0",
+        "Narrator claiming to BE a licensed advisor/CPA/planner or to have clients "
+        "('as a financial advisor…', 'my clients…') → niche_compliance = 0 "
+        "(synthetic-voice channel: credentials would be fabricated)",
+    ],
+    "finance.retirement_senior": [
+        "Same rules as finance PLUS:",
+        "'You will have $X at retirement' without showing math/assumptions → niche_compliance = 0",
+        "Social Security / IRS / Medicare number without naming source + year → niche_compliance ≤ 2",
+        "Personalized directive ('you should claim at 62') instead of educational framing → niche_compliance ≤ 2",
     ],
     "finance.retirement": [
         "Same rules as finance PLUS:",
@@ -100,14 +109,19 @@ def _get_fatal_rules(niche_key: str) -> list[str]:
 
 
 from omnicast.agents.rubrics import narrative_horror as _nh
+from omnicast.agents.rubrics import finance_explainer as _fe
 
 
-def _rubric_dims(is_narrative: bool):
+def _rubric_dims(is_narrative: bool, rubric_id: str = ""):
     """(VO_DIMS, PROD_DIMS, VO_PASS, PROD_PASS) for the genre. Narrative horror uses
-    its own story-dimension set (continuity/voice/fear/variety/originality); the
-    subtotals still land in the 70/30 buckets so routing + approval are unchanged."""
+    its own story-dimension set (continuity/voice/fear/variety/originality); a
+    niche may also name an explicit rubric (NicheConfig.rubric_id) that swaps the
+    explainer value system (e.g. YMYL accuracy-first finance). The subtotals still
+    land in the 70/30 buckets so routing + approval are unchanged."""
     if is_narrative:
         return _nh.VO_DIMS, _nh.PROD_DIMS, _nh.VO_PASS, _nh.PROD_PASS
+    if rubric_id == _fe.RUBRIC_ID:
+        return _fe.VO_DIMS, _fe.PROD_DIMS, _fe.VO_PASS, _fe.PROD_PASS
     return VO_DIMS, PROD_DIMS, VO_PASS, PROD_PASS
 
 
@@ -311,9 +325,17 @@ class CriticAgent(BaseAgent):
             # dims, and — for the variance re-score — average PER DIMENSION so the
             # final total ALWAYS equals sum(dimensions) and caps can't be bypassed.
             _is_narr = getattr(niche_cfg, "content_format", "explainer") == "narrative"
-            _VOD, _PRD, _VP, _PP = _rubric_dims(_is_narr)
+            _rid = getattr(niche_cfg, "rubric_id", "") or ""
+            _VOD, _PRD, _VP, _PP = _rubric_dims(_is_narr, _rid)
             _MAXES = {**_VOD, **_PRD}                       # canonical name -> max
-            _caps = _narrative_slop_signals(_canonical_spoken(draft))[1] if _is_narr else {}
+            if _is_narr:
+                _caps = _narrative_slop_signals(_canonical_spoken(draft))[1]
+            elif _rid == _fe.RUBRIC_ID:
+                # YMYL hard caps (persona ban, guarantees, personalized advice)
+                # are enforced HERE in Python, not requested from the LLM.
+                _caps = _fe.finance_slop_signals(_canonical_spoken(draft))[1]
+            else:
+                _caps = {}
 
             def _normalize(dims) -> dict:
                 got: dict[str, int] = {}
@@ -564,11 +586,15 @@ class CriticAgent(BaseAgent):
             "i share every week",
         ]
         import re as _re
+        _is_fin = (getattr(niche_cfg, "rubric_id", "") or "") == _fe.RUBRIC_ID
         flags: list[str] = []
         for phrase in _BANNED:
             if phrase in full_text:
                 flags.append(f'banned phrase in VO: "{phrase}"')
-        if _re.search(r"\b(trial|study|journal|review|meta-analysis)\s+(found|showed|shows|confirmed)", full_text):
+        # Spoken attribution is a TRUST FEATURE in the senior-finance niche
+        # (cohort evidence: winners cite FBI/IRS/Vanguard aloud) — the
+        # read-citation-aloud tell only applies to the default explainer register.
+        if not _is_fin and _re.search(r"\b(trial|study|journal|review|meta-analysis)\s+(found|showed|shows|confirmed)", full_text):
             flags.append("citation read ALOUD in VO (show-don't-read: source belongs in visual)")
         # Length flag scales with THIS brief's target (8-12+ min), never a hard
         # word count. 10% tolerance so a near-target script isn't nagged.
@@ -647,6 +673,11 @@ class CriticAgent(BaseAgent):
         if _is_narrative:
             _nflags, _ = _narrative_slop_signals(full_text)
             flags.extend(_nflags)
+        # ── FINANCE YMYL FLAGS (same scan is ENFORCED as hard caps in execute()
+        # via finance_slop_signals — here they're shown to the LLM too) ─────────
+        if _is_fin:
+            _fflags, _ = _fe.finance_slop_signals(full_text)
+            flags.extend(_fflags)
 
         if flags:
             prosody_stats += (
@@ -793,10 +824,26 @@ class CriticAgent(BaseAgent):
   "visual_fixes": ["<specific visual fix 1: Scene X — replace 'Y' with 'Z'>"]
 }}
 """
-        _dim_and_json = (
-            _nh.dimension_rubric() + "\n\n" + _nh.json_template()
-            if _is_narrative else _explainer_block
-        )
+        if _is_narrative:
+            _dim_and_json = _nh.dimension_rubric() + "\n\n" + _nh.json_template()
+        elif _is_fin:
+            _dim_and_json = _fe.dimension_rubric() + "\n\n" + _fe.json_template()
+            _narrative_note = (
+                "\n═══ CONTENT FORMAT: SENIOR-FINANCE YMYL EXPLAINER (accuracy-first rubric) ═══\n"
+                "Educational retirement-finance for 60-75 US viewers. ACCURACY IS THE PRODUCT:\n"
+                "  • Every dollar amount, percentage, threshold, age rule and deadline must be "
+                "attributed to a named source WITH a year (SSA, IRS, CFPB, FBI IC3, published "
+                "fund research). An uncited precise number is the worst failure in this format.\n"
+                "  • Spoken attribution (\"according to SSA's 2026 fact sheet\") is REQUIRED "
+                "trust-building, never an AI-tell.\n"
+                "  • The narrator is an EDITOR who reads official sources — never an advisor. "
+                "Any credential claim or 'my clients' framing is a fatal persona violation.\n"
+                "  • Educational framing only: worked examples (\"for this example retiree…\"), "
+                "never personal directives (\"you should claim at…\").\n"
+                "  • Register: plain English at a normal adult pace (~180 wpm), short sentences, "
+                "jargon defined on first use, zero condescension toward older viewers.\n")
+        else:
+            _dim_and_json = _explainer_block
         prompt = f"""Review this script for: {brief.title}
 Niche: {niche_key} | Market: {brief.market.value}
 Variant: {draft.variant_id}

@@ -5,6 +5,8 @@
   "youtube_channel_id": "UChHsEnEh2QceXN2V1SBEzgg",
   "niche": "finance",
   "sub_niche": "retirement finance for 60-75 US viewers: Social Security decisions, retirement taxes, outliving-your-money risk, senior-targeted scams",
+  "niche_config_key": "finance.retirement_senior",
+  "supported_production": ["chart_render"],
   "market": "US",
   "visual_style": "clean_trust",
   "channel_style": "footage",

@@ -1032,6 +1032,51 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         encoding="utf-8")
     script_path = str(best_txt)
 
+    # ── FACT-CITATION LEDGER (YMYL finance rubric only, fail-closed) ─────────
+    # An approved finance script is NOT releasable until every figure carries a
+    # source + date and year-sensitive figures cite the current rule year. The
+    # LLM proposes the binding; gate_fact_ledger validates deterministically.
+    _fact_gate_report = None
+    if (getattr(niche_cfg, "rubric_id", "") or "") == "finance_explainer_v1":
+        from datetime import datetime as _dt, timezone as _tz
+
+        from omnicast.agents.fact_ledger_agent import FactLedgerAgent
+        from omnicast.compliance.fact_ledger import gate_fact_ledger, render_markdown
+
+        _script_text = best_txt.read_text(encoding="utf-8")
+        _prog("Fact ledger (claim→source)", 78, detail="binding every figure to a source")
+        _live("FactLedger (claude): binding every figure to a source + year…", "agent_start")
+        _ledger = await FactLedgerAgent(llm=llm_claude).execute(
+            _script_text,
+            proof_sources=list(getattr(niche_cfg, "proof_sources", []) or []),
+            current_year=_dt.now(_tz.utc).year,
+            model_label="claude",
+        )
+        _fact_gate_report = gate_fact_ledger(_script_text, _ledger)
+        (product_dir / "fact_ledger.json").write_text(_json.dumps({
+            "ledger": _ledger.model_dump(mode="json"),
+            "gate": _fact_gate_report.model_dump(mode="json"),
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
+        (product_dir / "fact_ledger.md").write_text(
+            render_markdown(_ledger, _fact_gate_report), encoding="utf-8")
+        _live(f"Fact ledger: {_fact_gate_report.covered_count}/{_fact_gate_report.claim_count} "
+              f"claims covered — GATE {'PASSED' if _fact_gate_report.passed else 'FAILED'}",
+              "gate")
+        if not _fact_gate_report.passed:
+            _needs = product_dir / "needs_citations.txt"
+            _needs.write_text(_script_text, encoding="utf-8")
+            _products.write_meta(
+                product_dir, channel=channel_id, topic=topic, slug=product_dir.name,
+                stage="needs_citations", script=None, best_variant=best.variant_id,
+                score=best.final_score, approved=True, script_approved=True,
+                production_ready=False, release_gate_version=1,
+                candidate="needs_citations.txt",
+                fact_ledger_gate=_fact_gate_report.model_dump(mode="json"),
+            )
+            raise RuntimeError(
+                "Fact-ledger gate FAILED (fail-closed — every figure needs a source "
+                "and current-year recency): " + "; ".join(_fact_gate_report.notes[:3]))
+
     # PROSODY SIDECAR: script.json = full storyboard (all scenes incl. prosody)
     # of the winning draft. render_real_video prefers this over prose script.txt
     # so per-scene pace/pause/emphasis actually reach TTS. Skipped only if the
@@ -1134,6 +1179,15 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         pass
     _products.write_meta(
         product_dir, channel=channel_id, topic=topic, slug=product_dir.name,
+        # PILLAR SSOT. `brief.pillar_id` is the answer the scorer and the writer
+        # both used; packaging reads it back off this metadata. Without this
+        # line the field the renderer looks for is never written, so packaging
+        # silently falls back to re-classifying the script text — and a video
+        # already filed under one pillar can take another pillar's playbook.
+        pillar_id=getattr(brief, "pillar_id", "") or "",
+        intel_archetype=getattr(brief, "intel_archetype", "") or "",
+        audience_segment=getattr(brief, "audience_segment", "") or "",
+        content_format=getattr(brief, "content_format", "") or "",
         stage="script", script="script.txt", best_variant=best.variant_id,
         score=best.final_score, approved=True, script_approved=True,
         content_locked=True, production_ready=True, release_gate_version=1,
@@ -1151,6 +1205,9 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         critical_issues=(
             _narrative_result.scorecard.critical_issues
             if _narrative_result else []
+        ),
+        fact_ledger_gate=(
+            _fact_gate_report.model_dump(mode="json") if _fact_gate_report else None
         ),
         llm_cost_script_usd=(_script_cost["total"] if _script_cost else None),
         llm_cost_script_by_model=(_script_cost["by_model"] if _script_cost else None))
@@ -1240,12 +1297,28 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         from omnicast.media.output_audit import OutputQualityAuditor
 
         audit = OutputQualityAuditor().inspect_product(out_mp4, product_dir)
+
+        # §9 quality gates run INSIDE `inspect_product`, before the sidecar is
+        # written, and their failures are already audit issues by the time we
+        # get here — so `audit["passed"]` below is a real gate. Running them out
+        # here appended a report to a file that had already been written and
+        # never fed the verdict back, which is telemetry, not a gate.
+        quality = audit.get("quality_gates") or {}
+
         try:
             _products.write_meta(
                 product_dir,
                 output_audit="_output_audit.json",
                 output_audit_passed=bool(audit.get("passed")),
                 output_audit_issues=audit.get("issues") or [],
+                quality_gate_coverage=quality.get("coverage"),
+                quality_gates_failed=quality.get("failed") or [],
+                quality_needs_human=quality.get("needs_human") or [],
+                # The publish gate reads this. The render does NOT fail on it:
+                # blocking the render blocked the only route to the review that
+                # would clear the flag.
+                requires_human_review=bool(audit.get("requires_human_review")),
+                artifact_sha256=OutputQualityAuditor.artifact_hash(out_mp4),
             )
         except Exception as exc:
             logger.warning("pipeline.render: output audit meta write failed", error=str(exc))
@@ -1253,6 +1326,12 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             issues = ", ".join(str(issue) for issue in audit.get("issues") or [])
             _budget.record_failure(_sig, "output_audit", issues)
             raise RuntimeError(f"Output audit failed: {issues}")
+        if audit.get("requires_human_review"):
+            logger.info(
+                "pipeline.render: product flagged for human review",
+                channel=channel_id,
+                gates=audit.get("human_review_gates") or [],
+                note="render succeeded; publish is gated until a review is recorded")
         return audit
 
     async def _auto_queue_approval() -> None:
