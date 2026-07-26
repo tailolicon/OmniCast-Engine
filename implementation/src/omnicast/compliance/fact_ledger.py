@@ -194,15 +194,56 @@ def extract_numeric_claims(text: str) -> list[str]:
     return [t.raw for t in numeric_tokens(text)]
 
 
-def _matches(token: NumericToken, entry_tokens: set[tuple[str, float]]) -> bool:
+def _matches(token: NumericToken, entry_tokens: set[tuple[str, float]],
+             *, chart_side: bool = False) -> bool:
     """A script token is covered by an entry token of the same value when the
-    kinds agree or either side is unitless `plain`."""
+    kinds agree, with a limited unitless-`plain` bridge.
+
+    The bridge is asymmetric on purpose (codex verify 2026-07-26): a ledger
+    entry whose only token is a bare "30" must NOT cover a spoken "30%" or
+    "age 62" — percent and age claims need an explicitly typed entry token
+    (the claim text almost always carries the unit). Money/year/day may still
+    interop with plain, because ledger `value` fields are routinely written
+    unitless ("23,400"). On the CHART side the full bridge stays: chart_spec
+    values are bare floats by schema, and each must equal a sourced figure of
+    any kind — the value itself is what was sourced."""
     if token.key in entry_tokens:
         return True
+    strict_kinds = () if chart_side else ("percent", "age")
     for kind, value in entry_tokens:
-        if value == token.value and (kind == "plain" or token.kind == "plain"):
+        if value != token.value:
+            continue
+        if kind == "plain" and token.kind in strict_kinds:
+            continue
+        if kind == "plain" or token.kind == "plain":
             return True
     return False
+
+
+def uncovered_figures(text: str, ledger_data: dict) -> list[str]:
+    """Figures in `text` with no sourced ledger entry (raw display forms).
+
+    Used at render time to audit text the script-step gate never saw — the
+    script.json sidecar narration and kinetic stat overlays — against the same
+    ledger. Year tokens may be covered by entry as_of/source years (spoken
+    attribution)."""
+    entries = (ledger_data.get("ledger") or {}).get("entries") or []
+    entry_tokens: set[tuple[str, float]] = set()
+    attribution_years: set[float] = set()
+    for e in entries:
+        for tok in numeric_tokens(f"{e.get('value', '')} {e.get('claim', '')}"):
+            entry_tokens.add(tok.key)
+        for tok in numeric_tokens(f"{e.get('as_of', '')} {e.get('source_name', '')}"):
+            if 1900 <= tok.value <= 2099:
+                attribution_years.add(tok.value)
+    out: list[str] = []
+    for tok in numeric_tokens(text):
+        if _matches(tok, entry_tokens):
+            continue
+        if tok.kind == "year" and tok.value in attribution_years:
+            continue
+        out.append(tok.raw)
+    return out
 
 
 # Claims whose figures change with the rule year — year-sensitivity is inferred
@@ -370,20 +411,27 @@ def audit_chart_spec(spec: dict, ledger_data: dict, script_text: str) -> list[st
         except (TypeError, ValueError):
             failures.append(f"non-numeric chart value: {v!r}")
             continue
-        if fv < 0:
-            fv = abs(fv)
-        if not _matches(NumericToken("plain", fv, str(v)), entry_tokens):
+        # No abs(): a negative bar is a different figure from its positive —
+        # a ledger entry for 62 must not authorise -62 (codex verify).
+        if not _matches(NumericToken("plain", fv, str(v)), entry_tokens,
+                        chart_side=True):
             failures.append(f"chart value {v} has no ledger entry")
 
-    display_text = " | ".join(
-        [str(x) for x in (spec.get("labels") or [])]
-        + [str(spec.get("title") or ""), str(spec.get("source") or "")])
-    for tok in numeric_tokens(display_text):
+    # Attribution years may cover the SOURCE line only ("SSA 2026") — a year in
+    # a label or the title is a displayed claim and needs a typed entry token
+    # (codex verify: globally pooled years covered unrelated chart text).
+    label_title_text = " | ".join(
+        [str(x) for x in (spec.get("labels") or [])] + [str(spec.get("title") or "")])
+    for tok in numeric_tokens(label_title_text):
+        if _matches(tok, entry_tokens):
+            continue
+        failures.append(f"chart text figure '{tok.raw}' has no ledger entry")
+    for tok in numeric_tokens(str(spec.get("source") or "")):
         if _matches(tok, entry_tokens):
             continue
         if tok.kind in ("year", "plain") and tok.value in attribution_years:
             continue
-        failures.append(f"chart text figure '{tok.raw}' has no ledger entry")
+        failures.append(f"chart source figure '{tok.raw}' has no ledger entry")
     return failures
 
 

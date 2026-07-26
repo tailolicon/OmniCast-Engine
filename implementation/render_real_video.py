@@ -2276,22 +2276,60 @@ def main() -> None:
     # AUDIT_EXIT_CODE so the pipeline knows this is a compliance failure, not a
     # provider outage, and must not retry/degrade (finding 7).
     _ymyl_rubric = ""
-    try:
-        _nk = str(channel_meta.get("niche_config_key") or "").strip()
-        if _nk:
+    _nk = str(channel_meta.get("niche_config_key") or "").strip()
+    if _nk:
+        try:
             from omnicast.config.niches import get_niche_config as _gnc
             _ncfg = _gnc(*_nk.split(".", 1)) if "." in _nk else _gnc(_nk)
             _ymyl_rubric = getattr(_ncfg, "rubric_id", "") or ""
-    except Exception as _ne:
-        print(f"[warn] niche config unreadable for YMYL precheck: {_ne}")
+        except Exception as _ne:
+            # FAIL-CLOSED: a channel that DECLARES a niche key whose config we
+            # cannot read might be YMYL — "can't tell" must not mean "skip the
+            # compliance gate" (codex verify: detection failed open).
+            from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE
+            print(f"[ERROR] niche config '{_nk}' unreadable — cannot determine "
+                  f"YMYL status, refusing to render: {_ne}")
+            sys.exit(AUDIT_EXIT_CODE)
     if _ymyl_rubric == "finance_explainer_v1":
-        from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE, render_precheck
-        _ok, _why = render_precheck(script_path.parent / "fact_ledger.json",
+        import json as _pjson
+
+        from omnicast.compliance.fact_ledger import (
+            AUDIT_EXIT_CODE,
+            render_precheck,
+            uncovered_figures,
+        )
+        _ledger_file = script_path.parent / "fact_ledger.json"
+        _ok, _why = render_precheck(_ledger_file,
                                     script_path.read_text(encoding="utf-8"))
         if not _ok:
             print(f"[ERROR] YMYL fact-ledger precheck FAILED: {_why}")
             sys.exit(AUDIT_EXIT_CODE)
-        print("[ymyl] fact-ledger precheck passed (gate PASSED, sha-bound)")
+        # The renderer PREFERS script.json narration over script.txt — so the
+        # sidecar's spoken text must pass the same coverage audit, or a stale/
+        # tampered sidecar could voice figures nobody sourced (codex verify,
+        # critical: checked text differed from rendered narration).
+        _sidecar_f = script_path.parent / "script.json"
+        if _sidecar_f.exists():
+            try:
+                _sb_data = _pjson.loads(_sidecar_f.read_text(encoding="utf-8"))
+                _sb_scenes = _sb_data.get("scenes") if isinstance(_sb_data, dict) else _sb_data
+                _sb_text = " ".join(str(s.get("voiceover") or "")
+                                    for s in (_sb_scenes or []) if isinstance(s, dict))
+            except Exception as _sbe:
+                print(f"[ERROR] script.json unreadable for YMYL audit: {_sbe}")
+                sys.exit(AUDIT_EXIT_CODE)
+            _ledger_data = _pjson.loads(_ledger_file.read_text(encoding="utf-8"))
+            _miss = uncovered_figures(_sb_text, _ledger_data)
+            if _miss:
+                print("[ERROR] YMYL sidecar audit FAILED — script.json narration "
+                      f"contains {len(_miss)} figures with no ledger entry: "
+                      + ", ".join(_miss[:6]))
+                sys.exit(AUDIT_EXIT_CODE)
+        print("[ymyl] fact-ledger precheck passed (gate PASSED, sha-bound, "
+              "sidecar covered)")
+        _ymyl_ledger_data = _pjson.loads(_ledger_file.read_text(encoding="utf-8"))
+    else:
+        _ymyl_ledger_data = None
 
     print(f"[1/5] Script: {script_path}")
     # PROSODY SIDECAR: phase-2 writes script.json (full storyboard incl. per-scene
@@ -2530,6 +2568,20 @@ def main() -> None:
                           "channel has no backed chart_render capability — using stock")
                     cell["visual_type"] = "stock_video"
                     visual_type = "stock_video"
+
+                # YMYL: a kinetic stat overlay is a DISPLAYED figure — audit it
+                # against the ledger like everything else; an uncovered number
+                # is dropped (safe degrade: the gated narration still carries
+                # the content). Codex verify: chart-failure fallback used to
+                # render stat_number unaudited.
+                if _ymyl_ledger_data is not None and (cell.get("stat_number") or "").strip():
+                    from omnicast.compliance.fact_ledger import uncovered_figures as _uf
+                    _stat_miss = _uf(str(cell.get("stat_number") or ""), _ymyl_ledger_data)
+                    if _stat_miss:
+                        print(f"[ymyl] [warn] scene {i} stat overlay "
+                              f"'{cell.get('stat_number')}' has no ledger entry — dropped")
+                        cell["stat_number"] = ""
+                        cell["stat_label"] = ""
                 query = (cell.get("search_query") or "").strip()
                 stock_query = (cell.get("stock_query") or "").strip()
 

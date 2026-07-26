@@ -380,6 +380,72 @@ class TestCodexAuditFixes:
         assert any("disclaimer" in x for x in v)
 
 
+class TestCodexVerifyRound2:
+    """Pins for the codex VERIFY-pass findings (2026-07-26, round 2)."""
+
+    def test_plain_entry_cannot_cover_percent_or_age(self):
+        # Ledger value "30.0" (unitless) must not cover a spoken "30%".
+        ledger = FactLedger(entries=[
+            _entry(claim="a reduction applies", value="30.0",
+                   year_sensitive=False, as_of="2026")])
+        report = gate_fact_ledger("That is a 30% permanent reduction.", ledger,
+                                  current_year=2026)
+        assert any("30" in u for u in report.uncovered)
+
+    def test_chart_value_still_matches_typed_percent_entry(self):
+        from omnicast.compliance.fact_ledger import audit_chart_spec, script_sha256
+        script = "The fee rose from 6.2% to 8.1%."
+        data = {"gate": {"passed": True},
+                "ledger": {"script_sha256": script_sha256(script), "entries": [
+                    {"claim": "fee rose from 6.2% to 8.1%", "value": "",
+                     "source_name": "Fund prospectus 2026", "as_of": "2026"}]}}
+        spec = {"labels": ["Before", "After"], "values": [6.2, 8.1],
+                "title": "Fee change", "source": "Fund prospectus 2026"}
+        assert audit_chart_spec(spec, data, script) == []
+
+    def test_negative_chart_value_not_authorised_by_positive_entry(self):
+        from omnicast.compliance.fact_ledger import audit_chart_spec, script_sha256
+        script = "The gap is 62 dollars, at age 62."
+        data = {"gate": {"passed": True},
+                "ledger": {"script_sha256": script_sha256(script), "entries": [
+                    {"claim": "claiming at 62", "value": "$62",
+                     "source_name": "SSA 2026", "as_of": "2026"}]}}
+        spec = {"labels": ["a", "b"], "values": [-62, 62], "title": "", "source": ""}
+        failures = audit_chart_spec(spec, data, script)
+        assert any("-62" in f for f in failures)
+
+    def test_attribution_year_covers_source_line_not_labels(self):
+        from omnicast.compliance.fact_ledger import audit_chart_spec, script_sha256
+        script = "The limit is $23,400."
+        data = {"gate": {"passed": True},
+                "ledger": {"script_sha256": script_sha256(script), "entries": [
+                    {"claim": "the limit is $23,400", "value": "$23,400",
+                     "source_name": "SSA 2026", "as_of": "2026"}]}}
+        clean = {"labels": ["Limit"], "values": [23400], "title": "", "source": "SSA 2026"}
+        assert audit_chart_spec(clean, data, script) == []
+        year_label = {"labels": ["2026 limit"], "values": [23400], "title": "", "source": ""}
+        assert any("2026" in f for f in audit_chart_spec(year_label, data, script))
+
+    def test_uncovered_figures_audits_sidecar_text(self):
+        from omnicast.compliance.fact_ledger import uncovered_figures, script_sha256
+        data = {"gate": {"passed": True},
+                "ledger": {"script_sha256": script_sha256("x"), "entries": [
+                    {"claim": "the limit is $23,400", "value": "$23,400",
+                     "source_name": "SSA 2026", "as_of": "2026"}]}}
+        assert uncovered_figures("The limit is $23,400 this year.", data) == []
+        miss = uncovered_figures("Your benefit is $9,999.", data)
+        assert any("9,999" in m for m in miss)
+
+    def test_401k_with_parens_is_finance(self):
+        assert ComplianceChecker._looks_finance_ymyl("Your 401(k) rollover guide")
+        assert ComplianceChecker._looks_finance_ymyl("How to invest at 65")
+
+    def test_upload_persona_uses_rubric_detector(self):
+        v = ComplianceChecker._check_ymyl_finance_text(
+            "My 401(k) plan", "I'm your CPA, trust me. Educational only.")
+        assert any("persona" in x for x in v)
+
+
 class TestChartRouting:
     def test_infographic_without_capability_stays_approximated(self):
         route = pr.route_scene(0, _CHART_TEXT, capabilities=set())

@@ -148,8 +148,8 @@ class ComplianceChecker:
         "social security", "retirement", "401k", "401(k)", "ira", "iras",
         "roth", "medicare", "rmd", "rmds", "irmaa", "pension", "pensions",
         "annuity", "annuities", "tax bracket", "tax brackets", "capital gains",
-        "withdrawal", "withdrawals", "investing", "investment", "investments",
-        "portfolio", "brokerage", "estate plan", "reverse mortgage", "bond",
+        "withdrawal", "withdrawals", "invest", "investing", "investment",
+        "investments", "portfolio", "brokerage", "estate plan", "reverse mortgage", "bond",
         "bonds", "stocks", "stock market", "trading", "dividend", "dividends",
         "interest rate", "interest rates", "savings",
     ]
@@ -286,7 +286,9 @@ class ComplianceChecker:
     def _looks_finance_ymyl(cls, text: str) -> bool:
         import re
         low = text.lower()
-        return any(re.search(rf"\b{re.escape(term)}\b", low)
+        # Lookarounds instead of \b: terms ending in punctuation ("401(k)")
+        # have a non-word edge where \b can never match (codex verify).
+        return any(re.search(rf"(?<!\w){re.escape(term)}(?!\w)", low)
                    for term in cls._FINANCE_TERMS)
 
     @classmethod
@@ -319,7 +321,17 @@ class ComplianceChecker:
         if not any(phrase in low for phrase in cls._FINANCE_DISCLAIMER):
             violations.append("finance/YMYL: missing educational/not-financial-advice disclaimer")
 
+        # Single-source the persona detector with the script-time rubric so the
+        # two layers can never drift apart ("I'm your CPA" was caught at script
+        # time but missed here — codex verify).
         persona = [p for p in cls._FINANCE_PERSONA if p in low]
+        try:
+            from omnicast.agents.rubrics.finance_explainer import _PERSONA_RE
+            m = _PERSONA_RE.search(text)
+            if m and m.group(0).lower() not in persona:
+                persona.append(m.group(0))
+        except Exception:
+            pass
         if persona:
             violations.append(
                 f"finance/YMYL: advisor-persona claim on a synthetic-voice channel: {', '.join(persona)}")

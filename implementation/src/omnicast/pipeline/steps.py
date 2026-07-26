@@ -1363,14 +1363,30 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         proc = await asyncio.create_subprocess_exec(
             *(base + extra), cwd=str(impl_root),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        _, err = await proc.communicate()
-        return proc.returncode, (err.decode(errors="replace") if err else "")
+        out, err = await proc.communicate()
+        # Renderer prints its audit/error diagnostics to STDOUT — discarding it
+        # made every audit block look like a silent crash (codex verify).
+        combined = ((err.decode(errors="replace") if err else "")
+                    + "\n" + (out.decode(errors="replace")[-2000:] if out else ""))
+        return proc.returncode, combined.strip()
+
+    from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE as _AUDIT_RC
+
+    def _audit_stop(rc: int, err: str) -> None:
+        """A fact/chart AUDIT failure is a compliance stop, not a render bug —
+        no retry, no --all-stock degrade, on ANY render path."""
+        if rc == _AUDIT_RC:
+            _budget.record_failure(_sig, "render_ymyl_audit", err[-300:])
+            raise RuntimeError(
+                "Render BLOCKED by YMYL fact/chart audit (no retry, no fallback): "
+                + err[-500:])
 
     # FLOW_SKIP=1 → go straight to all-stock (fast, reliable acceptance runs / when
     # Flow is flaky). Otherwise try Flow first for the richest visuals.
     if os.environ.get("FLOW_SKIP") == "1":
         logger.info("pipeline.render: FLOW_SKIP=1 → all-stock", channel=channel_id)
         rc, err = await _run(["--all-stock"])
+        _audit_stop(rc, err)
         if rc != 0 or not out_mp4.exists():
             _budget.record_failure(_sig, "render_all_stock", err[-300:])
             raise RuntimeError(f"Render failed (all-stock). rc={rc}: {err[-500:]}")
@@ -1402,12 +1418,7 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     # A fact/chart AUDIT failure is a compliance stop, not a Flow outage — the
     # --all-stock retry would bypass the very check that fired (codex audit
     # 2026-07-26 finding 7). Distinct exit code → hard stop, no degradation.
-    from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE as _AUDIT_RC
-    if rc == _AUDIT_RC:
-        _budget.record_failure(_sig, "render_ymyl_audit", err[-300:])
-        raise RuntimeError(
-            "Render BLOCKED by YMYL fact/chart audit (no retry, no fallback): "
-            + err[-500:])
+    _audit_stop(rc, err)
     if not flow_ok:
         # Most Flow failures = the Google login session in .flow_profile expired
         # (Playwright can't find the prompt box / times out). Make that LOUD and
@@ -1427,6 +1438,7 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
                            channel=channel_id, tail=err[-300:])
         flow_degraded = True
         rc, err = await _run(["--all-stock"])
+        _audit_stop(rc, err)
         if rc != 0 or not out_mp4.exists():
             _budget.record_failure(_sig, "render_flow_allstock", err[-300:])
             raise RuntimeError(f"Render failed (flow + all-stock). rc={rc}: {err[-500:]}")
