@@ -156,7 +156,9 @@ RabbitMQ+DLQ · Redis circuit-breaker + rate-limiter · `services/budget`+`llm/c
 ## 4b. P0/P0.1 competitor-intel + opportunity model — phiên 2026-07-26
 
 > Nối tiếp `docs/HANDOFF_MASTER.md` (phiên 2026-07-25). Toàn bộ §5 của handoff đó
-> đã được làm; brief §15 P0 đã đóng cả 3 nhóm. **Chưa commit** — vẫn nằm trên
+> đã được làm; brief §15 P0 đã có implementation cho cả 3 nhóm, nhưng **chưa đóng
+> production acceptance**: scoring v2 vẫn shadow/chưa hiệu chuẩn và router còn
+> nhiều mode chỉ xấp xỉ. **Chưa commit** — vẫn nằm trên
 > working tree `ws/visuals-flow`, xem §"Trạng thái git" bên dưới.
 
 ### Đã làm
@@ -270,6 +272,287 @@ không đi qua bridge được (`.git/objects` không unlink được) — chạ
 trên Windows. `_to_delete/` ở gốc repo vẫn cần xoá tay.
 
 ---
+
+## 4c. P1 + P2.0 §15 (2026-07-26) — trạng thái theo từng mục
+
+> **KHÔNG phải "P1 + P2 hoàn tất".** Ba vòng phản biện (2 subagent đối kháng +
+> 1 reviewer ngoài) đều chỉ ra chỗ tuyên bố vượt code. Bảng dưới là trạng thái
+> thật của từng mục.
+
+| Mục | Trạng thái | Còn thiếu |
+|---|---|---|
+| **P1.1** AV forensics (§5) | 🟡 **partial** | Analyzer chạy thật. Video **của ta**: mọi render. Video **đối thủ**: có caller nhưng **opt-in** (`OMNICAST_COMPETITOR_FORENSICS=1`, cần yt-dlp) — mặc định tắt, và khi tắt blueprint khai báo visual là chưa đo. SFX taxonomy + mọi thứ cần vision model vẫn `missing` |
+| **P1.2** Channel strategy (§11) | 🟡 **partial** | Thesis/architecture/stage gate/portfolio/journey/metrics + endpoint đã chạy. **Chưa có**: `series`, `packaging profile`; `shorts_to_long_funnel()` chưa có caller (chưa có nơi khai báo short→long) |
+| **P1.3** Quality & benchmark (§8/§9) | 🟡 **partial** | 12 gate + benchmark có caller thật, chặn render thật. **Headline vẫn luôn bị giữ lại** vì SFX placement và music energy curve chưa có analyser — đúng yêu cầu §8, nhưng nghĩa là đây mới là *framework* đánh giá |
+| **P2.0** Animation foundation (§7.1) | 🟡 **planning primitives implemented** | **Chưa render một giây hoạt hình nào.** Chưa có rigging, prop interaction, camera choreography, renderer. `readiness()` báo `renders_frames: False` |
+
+### P1.1 — audiovisual forensics (`analytics/av_forensics.py`, `av_fetch.py`)
+
+Đo từ file: shot boundary (`scdet`), **dissolve** (quét nhiều cửa sổ 0.4–3.0s,
+dung sai **tương đối** — blend tuyến tính chia đều thay đổi qua các bước, frame
+giữa = trung bình hai đầu; hard cut dồn hết vào 1 bước; animation có frame giữa
+không liên quan hai đầu), thời lượng shot, motion, colour mood, silence,
+nhạc/SFX bed, loudness. Text overlay chỉ là **proxy** (`inferred`).
+**Hai caller:**
+1. `OutputQualityAuditor.inspect_production_grammar` — video **của ta**, mọi render.
+2. `av_fetch.measure_competitor_video` → `competitor_intel._measure_production` —
+   video **đối thủ**. **Opt-in** qua setting `omnicast_competitor_forensics`
+   (khai báo trong `config/settings.py`, đọc từ `.env` — không phải `os.environ`
+   trần, vì dự án cấu hình qua pydantic Settings và một cờ env-only sẽ vô hình
+   với `.env`). Download shell ra **yt-dlp CLI** để có **wall-clock timeout
+   thật** (`socket_timeout` chỉ chặn một lần đọc, không chặn tổng thời gian).
+   Tải bản
+   ≤480p của top winner, đo, **xoá ngay**. Không lưu, không đưa vào render (đó là
+   vấn đề bản quyền, không phải tính năng). Tắt (mặc định) ⇒ blueprint ghi rõ
+   "forensics is OFF" và mọi trường visual là chưa đo.
+
+Trước đó §5 chỉ đóng ở nửa **không quan trọng cho việc học**: chính docstring của
+`competitor_intel` viết "no frames are fetched".
+
+### P1.2 — channel strategy (`strategy/`)
+
+Khai báo, không tự sinh. Stage gate thiếu dữ liệu → `unknown`, **không phải
+fail**. Endpoint `GET /api/strategy/{channel_id}` nay đọc `channel_metrics_daily`
+(impressions, CTR, AVD, revenue, RPM) nên gate đi được tới packaging/retention/
+monetization. `returning_viewer_rate` vẫn `unknown` vì **chưa có gì fetch** chiều
+returning-viewer của YouTube Analytics.
+
+### P1.3 — quality & benchmark (`quality/`)
+
+Gate chạy **trong** `inspect_product`, trước khi ghi sidecar. Evidence lấy từ
+script.txt (claim/citation/proof density/overpromise), storyboard (repeated shot,
+visual source mix), compliance record, forensics, pacing, benchmark.
+`script_editorial` là **WARN** chứ không FAIL — ngưỡng chưa hiệu chuẩn, và kênh
+kể chuyện hợp lệ vẫn không có số liệu. "Không có citation" là `unknown`, không
+phải fail provenance (đó là câu hỏi của `research_accuracy`).
+
+**Vòng đời duyệt (sửa deadlock nghiêm trọng):**
+`FAIL` → chặn render. `needs_human` → **render thành công**, sản phẩm bị gắn cờ,
+**publish** bị chặn. Trước đó `needs_human` thành audit issue ⇒ render ném
+exception ⇒ không bao giờ tới bước xếp hàng duyệt, mà không có gì khác ghi
+`human_reviewed` — nên finance/health **không thể sản xuất được**.
+`POST /api/products/{id}/review` ghi reviewer + timestamp + **SHA-256 của bản
+cut**; re-render làm mất hiệu lực bản duyệt.
+
+### Router: classifier, **chưa phải** production-mode system
+
+`INFOGRAPHIC`, `SCREEN_CAPTURE`, `REAL_EVIDENCE`, `TALKING_HEAD`, `ANIMATION`
+không có renderer riêng — chúng chỉ được **xấp xỉ** bằng `generated_image`/
+`stock_video`. Nay:
+
+* `RENDERED_MODES` vs `APPROXIMATED_MODES` (mỗi mode nói rõ thiếu gì)
+* `SceneRoute.is_rendered_as_itself` + `approximation_gap`
+* **Renderer chỉ ghi đè `visual_type` khi mode thật sự được sản xuất theo cách
+  đó.** Trước đó một scene có số liệu bị phân loại INFOGRAPHIC ở confidence 0.75
+  và **ghi đè storyboard tốt** thành `generated_image` — trong khi chính provider
+  ảnh cảnh báo image model dựng chart/số/text không đọc được. Phân loại đúng tên
+  rồi làm video **tệ đi** là tệ hơn không phân loại.
+* `depicts_real_events` nay được truyền từ `render_real_video` (mặc định True trừ
+  khi channel khai `content_mode: fiction`) — trước đó nhánh disclosure là **code
+  chết**, router luôn nhận False.
+
+### Packaging (`clickbait.py`) — nay dùng đúng scope + gate
+
+Trước: `get_competitor_intel(niche)` trần trong `except Exception: pass`. Không
+scope, không gate, không log. Kênh retirement 65+ có thể dùng playbook của kênh
+finance 25 tuổi, hoặc artifact stale/uncontrolled — đúng lỗi §4.2, vẫn sống trên
+đường packaging sau khi writer đã được sửa.
+
+Nay dùng `intel_scope.resolve_scoped_playbook` — **cùng fallback chain và cùng
+`intel_gate`** với writer — ghi `[SCOPE NOTE: ...]` khi playbook được mượn từ
+scope rộng hơn, **scope theo content pillar**, và **fail-closed thật**:
+`CompetitorIntelRequired` được re-raise qua `_scoped_playbook`,
+`generate_clickbait`, **và `render_real_video`**.
+
+**Vòng 6 sửa hai chỗ cuối của chính đường này:**
+
+* **Fail-closed từng bị nuốt ở khung ngoài cùng.** `generate_clickbait` re-raise
+  đúng, nhưng `render_real_video` bắt lại bằng `except Exception`, in
+  `[warn] clickbait failed` rồi in `[5/5] DONE` — tuyên bố "không ship nếu thiếu
+  intel" quay về thành no-op, chỉ lùi ra một frame. Nay có clause
+  `except CompetitorIntelRequired` **đứng trước** clause rộng: in `[5/5] BLOCKED`,
+  ghi `packaging_blocked` + `publishable=False` vào product meta, rồi **raise**.
+  MP4 vẫn tồn tại nhưng không có packaging được duyệt và không được publish.
+* **Pillar của packaging nay lấy từ brief, không phân loại lại.** Trước đó
+  `_packaging_pillar` đọc 2000 ký tự đầu của script — nên một video mà **scorer đã
+  xếp** vào `annuities` có thể lấy playbook `social_security`: hai nửa của cùng
+  một hệ thống bất đồng về việc video này là gì. Nay
+  `generate_clickbait(..., pillar_id=...)` nhận `TopicBrief.pillar_id` qua product
+  metadata (SSOT); classifier chỉ còn là **fallback có in nhãn**
+  `classified from script (no pillar on the brief)` cho caller không có brief.
+
+### Vòng 7 — hai gate mới chỉ có nửa đường dây
+
+Cùng một loại lỗi lần thứ bảy, lần này ở **phía ghi** thay vì phía đọc:
+
+* **`meta.json["pillar_id"]` chưa bao giờ được ghi.** Renderer đọc nó, nhưng
+  `_step_script()` không ghi ⇒ production LUÔN rơi về classifier, và fix vòng 6
+  chỉ đúng trên giấy. Nay `_step_script` ghi `pillar_id` + `intel_archetype` +
+  `audience_segment` + `content_format` từ chính `brief` — cả 4 chiều của scope
+  key, không riêng cái đang được nhắc tên.
+* **`publishable=False` là cờ, chưa phải cổng.** MP4 đã được ghi nhận là bản
+  render mới nhất TRƯỚC khi packaging fail, nên người dùng vẫn queue/upload tay
+  được chính artifact bị đánh dấu. Nay `products.publish_blockers()` +
+  `publish_blockers_for_video()` được gọi ở **cả ba** chỗ: `/api/publish/{id}`
+  (409, không tạo approval row), `/api/upload/{id}` (409, đường ngắn hơn tới
+  YouTube), và `platforms/service.publish_approval_row()` — chỗ gần network call
+  nhất, để approval row tạo TRƯỚC khi có gate cũng không lọt.
+  **`force=true` KHÔNG override**: nó tồn tại cho false-positive của compliance
+  (heuristic sai), còn cờ này ghi lại một quyết định operator đã khai trong
+  channel config.
+  **Cố ý KHÔNG nhét vào `release_issues()`** (cổng RENDER): re-render chính là
+  đường sửa, chặn render = chặn đúng lối thoát duy nhất — đúng deadlock đã mắc
+  một lần với `needs_human`. Có test khoá riêng chuyện này lại.
+
+### Vòng 8 — đóng state transition và mọi đường publish YMYL
+
+* **Re-render thành công nay thực sự gỡ packaging block cũ.** `write_meta()` là
+  merge-only; trước vòng này nhánh lỗi ghi `publishable=False` và
+  `packaging_blocked`, nhưng nhánh thành công không thay hai field đó nên một
+  product từng lỗi bị khoá vĩnh viễn. `products.mark_packaging_ready()` nay ghi
+  `publishable=True` + `packaging_blocked=""`, và renderer chỉ gọi helper sau khi
+  title + thumbnail hoàn tất; mọi exception giữ nguyên trạng thái fail-closed.
+* **Human review không còn chỉ chặn đường queue.**
+  `publish_blockers_for_video()` nay kiểm tra review có reviewer, timestamp và
+  SHA-256 khớp đúng cut hiện tại. Vì direct upload và
+  `platforms/service.publish_approval_row()` đều dùng helper asset-aware này,
+  `force=true` hoặc approval row cũ không thể lách review bắt buộc của
+  finance/health/flagship. Queue vẫn giữ thông báo riêng
+  `human_review_required` cho UX.
+
+### Không còn capability ảo
+
+`screen_capture` từng được cấp **mặc định** với lý do "OmniCast quay được màn
+hình", trong khi chính `APPROXIMATED_MODES` của router ghi "không có bước
+screen-recording trong pipeline". `stack_fit` đọc cùng bộ từ vựng đó, nên một
+topic tutorial cần quay màn hình trông **khả thi với cả topic scorer**. Nay
+`RENDERED_MODES` gồm cả `screen_capture`, và `capabilities_from_channel` không
+cấp gì miễn phí.
+
+**Vòng 6:** sửa router **chưa đủ** — topic scorer không đi qua router, nó đọc
+`PIPELINE_UNSUPPORTED_PRODUCTION` trong `config/channel.py`, và `screen_capture`
+không có trong đó ⇒ `stack_fit` vẫn coi tutorial phần mềm là sản xuất được **tại
+đúng thời điểm hệ thống chọn làm gì**. Nay `screen_capture` nằm trong set đó;
+kênh nào thật sự có bộ quay màn hình thì khai `supported_production` và lấy lại
+capability (veto là mặc định của engine, không phải luật). Test cũ mang tên
+"does not reach the topic scorer" **chỉ chạy router** — đúng loại anti-pattern
+mà chính báo cáo này chê ở chỗ khác; nay có test dựng `ChannelProfile` thật,
+gọi `TopicScorer.score()` và assert `stack_fit == 0.0`.
+
+### P2.0 — animation foundation (`animation/`)
+
+`bible.py` (character bible + continuity theo từng vi phạm), `timing.py`
+(easing/anticipation/squash-and-stretch bảo toàn thể tích/comic timing),
+`lipsync.py` (viseme timing). **Router fail-closed**: khai báo
+`character_animation` trong config **không** mở ANIMATION — cần
+`animation_renderer_available()` trả True, mà hiện tại luôn False. Trước đó một
+chuỗi trong config cho ra `mode=animation, was_substituted=False` rồi rơi xuống
+generated_image — đúng "ảnh AI + crossfade" mà brief bác bỏ, đội lốt thứ nó
+không phải.
+
+### Ba vòng phản biện — lỗi đáng nhớ
+
+| Lỗi | Vì sao nghiêm trọng |
+|---|---|
+| `needs_human` chặn render ⇒ **deadlock** | Cờ chặn đúng con đường duy nhất dẫn tới việc gỡ cờ |
+| `is_ymyl` không nơi nào suy ra | Mọi video finance/health qua cổng human với lý do "not YMYL" |
+| Dissolve detector chỉ đúng với fade 0.75–1.5s, tương phản 25–60/255 | Bỏ sót gần hết dissolve thật mà vẫn công bố `shots: measured` |
+| `benchmark.headline` **không thể đạt** với mọi input | Ngưỡng §8 không bao giờ kích hoạt |
+| Router nhận animation chỉ vì một chuỗi trong config | Scene mang nhãn animation nhưng render ra ảnh AI |
+| Quality gate ghi **sau** sidecar, verdict không hồi về | Telemetry, không phải gate |
+| `bool("no")` là True | Qua cổng compliance với `"false"`, công bố headline với `"no"` |
+| `scoring_calibration._num` phân kỳ | `"1e400"` → `inf` vào báo cáo; `10**400` → `OverflowError` giết `summarize` |
+| `squash_and_stretch` làm tròn hai trục độc lập | Ở 1e6 một trục thành `0.0` ⇒ nhân vật bẹp thành đường |
+| `OVERSHOOT_AMOUNT=0.10` thực giao 0.001 | Bump nhân với số hạng ≈0 đúng chỗ đỉnh |
+| Track viseme chạy ngược thời gian; dòng tiếng Hàn ⇒ một cue `rest` | Segment lệch thứ tự là bình thường; repo có sẵn giọng Hàn |
+| Fail-closed re-raise đúng ở module, bị `except Exception` của renderer nuốt | Khai báo "thà dừng còn hơn ship" thành no-op, và in `[5/5] DONE` |
+| `screen_capture` vắng trong `PIPELINE_UNSUPPORTED_PRODUCTION` | Router bị vá nhưng **topic scorer** vẫn chấm tutorial là khả thi |
+| Packaging phân loại lại pillar từ script | Scorer nói `annuities`, thumbnail lấy playbook `social_security` |
+| Test tên "does not reach the topic scorer" chỉ test router | Suite xanh chứng minh sai thứ — sáu vòng review đều là biến thể của lỗi này |
+| `meta.json["pillar_id"]` có người đọc, không có người ghi | Fix vòng 6 đúng trên giấy, production vẫn 100% rơi về classifier |
+| `publishable=False` không ai đọc | Video "không được publish" vẫn queue + upload tay được |
+
+Đã gom một helper số duy nhất `shared/numbers.py` (`num`/`count`/`rate`/`ratio`/
+`flag`) — bảy bản `_num` khác nhau chính là nơi phần lớn lỗi trên sinh ra.
+
+### Test — ĐO Ở ĐÂU
+
+Sandbox Linux, Python 3.10 + shim, 9 module không collect được.
+`tests/unit` (chạy 3 batch): **1777 pass, 8 fail, 6 skip, 9 collection error**;
+`tests/agents|media|models` + jobengine: **88 pass, 1 fail (Gemini), 5 skip**.
+Toàn bộ fail/error là **của sandbox**: `Path.walk` (3.12+), f-string có backslash
+(3.12+), Claude CLI không cài (⇒ `DryRunClient`), không có local SD, họ Gemini.
+Không cái nào chạm vào code vòng này — reviewer đo trên máy thật (3.12) là con số
+đáng tin.
+
+Test mới: `test_av_forensics_p1.py` (render video thật rồi đo),
+`test_channel_strategy_p1.py`, `test_quality_gates_p1.py`, `test_animation_p2.py`,
+`test_p1_p2_review_fixes.py`, `test_review_round4_fixes.py` (**32 pass**, gồm 6
+test vòng 6: scorer thật veto `screen_capture`, kênh khai capability lấy lại được,
+renderer re-raise fail-closed, `generate_clickbait` dùng pillar của brief,
+fallback classifier vẫn phục vụ caller cũ, và call site có truyền pillar xuống).
+
+`test_review_round6_wiring.py` (**14 pass**) chạy xuyên đường thật: gọi thẳng
+`queue_channel_publish`, `upload_video`, `publish_approval_row`.
+
+Focused strategic suite trên máy thật: **483 pass** cho competitor intelligence,
+opportunity/scoring, router, AV forensics, strategy, quality, animation và
+disclosure; sau vòng 8, focused publish/quality regression: **136 pass**.
+
+Đã verify **test fail khi gỡ fix** (đo ở sandbox, không phải máy bạn):
+bỏ `screen_capture` khỏi `PIPELINE_UNSUPPORTED_PRODUCTION` ⇒ test scorer đỏ;
+gỡ 4 đoạn của vòng 7 ⇒ **5/10 test vòng 7 đỏ** (5 test còn lại là của
+`publish_blockers` thuần, không bị gỡ).
+
+### Việc còn lại để đóng P1/P2
+
+1. `series` + `packaging profile` + khai báo short→long (P1.2)
+2. Analyser cho SFX placement và music energy curve (mở khoá headline §8)
+3. **Renderer theo mode**: chart/motion-graphics, screen capture, archival/rights
+   source, talking head — hiện đều chỉ được xấp xỉ
+4. Renderer/rig/scene graph cho animation (P2 thật)
+5. Fetch returning-viewer từ YouTube Analytics
+6. Bật `OMNICAST_COMPETITOR_FORENSICS` mặc định sau khi đo chi phí băng thông/thời
+   gian trên tập đối thủ thật
+
+## 4d. Kết luận đối chiếu toàn bộ strategic brief — 2026-07-26
+
+> **Brief chưa hoàn thành.** Module tồn tại không đồng nghĩa capability đã được
+> rollout, có renderer, có dữ liệu hiệu chuẩn hoặc có đường publish an toàn.
+
+| Phạm vi brief | Trạng thái production |
+|---|---|
+| §4 / P0 competitor intelligence | **Gần hoàn thành** — cohort, matched control, transcript/ASR, comments, schedule, pillar, dossier và provenance đã có caller/gate. Phần hình ảnh đối thủ vẫn opt-in vì AV download mặc định tắt |
+| §3 / P0 niche opportunity | **Implementation xong, rollout chưa xong** — v2 có supply/stack/audience/repeatability/risk nhưng `omnicast_scoring_mode="shadow"`. Corpus cũ 96 row trộn revision không dùng được; corpus mới `senior_wealth_us` (xem §4e) có 75 row YouTube single-revision, decoupling ĐẠT, nhưng churn 30.7%>25% và 0 label/outcome ⇒ `ready_to_promote=false` đúng luật |
+| §7 / P0 production router | **Classifier/gate đã wire; production mode chưa đủ** — stock, AI illustration, reconstruction và hold có đường thật; infographic, screen capture, real evidence, talking head và animation chưa có renderer/source tương ứng |
+| §5 / P1 AV forensics | **Partial** — đo cut/motion/transition/colour/text proxy/loudness; chưa có SFX taxonomy, face/talking-head understanding và vision semantics; competitor path opt-in |
+| §11 / P1 channel strategy | **Partial** — endpoint thesis/architecture/stage gates/portfolio/metrics chạy thật; thiếu series, packaging profile, short→long declaration/caller và returning-viewer data |
+| §8–9 / P1 quality/benchmark | **Partial nhưng đã là gate thật** — render/publish bị chặn đúng; YMYL review bound theo SHA-256 của cut. Chưa thể công bố similarity headline vì thiếu SFX placement/music-energy dimensions và golden/live benchmark đủ dữ liệu |
+| §7.1 / P2 animation | **Foundation only** — bible/continuity/timing/viseme có test; `renders_frames=False`, chưa rig/scene graph/renderer |
+| §18 multilingual/localization | **Open** — chỉ có locale TTS/default language; chưa có time-aware dubbing, localized metadata/thumb/subtitle, multi-audio publishing, jurisdiction router hay country compliance |
+| §19 Script Engine | **Partial / ongoing** — xem `Plans.md`: task 1.6 reopened và 2.1 WIP; scene-state simulator, semantic memory, wildcard allocation và accepted paid artifact vẫn chưa đóng |
+| §20 policy/provenance | **Partial** — truth framing và `containsSyntheticMedia` đã wire; chưa có full per-video rights/provenance package, channel-level authenticity audit hoàn chỉnh, risk-domain inventory hay appeal pack |
+
+---
+
+## 4e. FLAGSHIP senior-finance — Phase A (2026-07-26, phiên chính)
+
+> Nhiệm vụ hiện hành theo chỉ đạo operator: một kênh tài chính/hưu trí cho người
+> 60-75 (US) là điều kiện tiên quyết trước khi nâng cấp cho kênh khác. Plan:
+> `FLAGSHIP_SeniorFinance_Channel.md`. Kênh creepy DỪNG gen (tow-truck 89
+> lockable vẫn chờ operator duyệt ở `output/_review_pass/07`).
+
+| Bước Phase A | Trạng thái | Bằng chứng |
+|---|---|---|
+| A1 config `channels/senior_wealth_us.json` | ✅ (name/handle chờ user chọn) | Load sạch qua `ChannelProfile`, 7 competitor handles resolve 7/7 |
+| A2 competitor dossier THẬT | ✅ | `scripts/flagship_research.py` (caller production đầu tiên của `analytics/cohort.py`): 7 kênh × 40 video → 12 winners/7 controls, coverage 0.583; 19/19 transcript (`scripts/fetch_transcripts.py`); phân tích tại `docs/FLAGSHIP_CompetitorDossier_SeniorFinance.md`; artifacts `implementation/output/research/senior_wealth_us/` |
+| A3 scoring v2 calibration | 🟡 fail-closed đúng luật | `scripts/run_discovery.py` (caller production của orchestrator+shadow_log ngoài API): run `00b328d51018` → 75 topics thật, 75 youtube rows single-revision. Decoupling ĐẠT; churn 30.7% > 25% (cần quyết định người) + 0 label/outcome ⇒ v2 Ở LẠI shadow, corpus tích luỹ qua các run sau |
+| A4 gói nhận diện kênh | 🟡 chờ user chọn | `docs/FLAGSHIP_ChannelIdentity_Options.md` — 4 phương án, handle đã check trống qua API (@TheRetirementDesk ★, @RetirementClarity, @PlainRetirement, @RetireSteady) |
+
+Phát hiện chiến lược chính (chi tiết trong dossier): scam-protection là outlier
+lớn nhất niche (x132); authority đến từ nguồn trích (FBI/IRS/SSA/Vanguard) chứ
+không từ persona — khuôn hợp lệ duy nhất cho kênh faceless YMYL; nhịp đọc winner
+~180 wpm; recency (rule năm hiện hành) vừa là compliance vừa là moat.
 
 ## 5. Chỉ mục tài liệu (cái nào tin được)
 
