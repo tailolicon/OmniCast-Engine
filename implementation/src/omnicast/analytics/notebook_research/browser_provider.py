@@ -365,11 +365,23 @@ class NotebookLMWorker:
         if prompt_text[:60] not in (got or ""):
             raise UiDeadline("run_prompt: prompt text did not land in the chat box "
                              "(wrong element matched?)")
-        send = self.find("send_button", timeout_s=10)
+        # Angular Material enables Submit only on REAL input events — a
+        # programmatic fill leaves it disabled (run 6 timed out clicking a
+        # disabled button). Nudge with a no-op keystroke pair, then click;
+        # Enter in the box is the fallback either way.
+        box.press("End")
+        self.page.keyboard.type(" ")
+        self.page.keyboard.press("Backspace")
+        clicked = False
+        send = self.find("send_button", timeout_s=5)
         if send is not None:
-            send.click()
-        else:
-            self.page.keyboard.press("Enter")
+            try:
+                send.click(timeout=8000)
+                clicked = True
+            except Exception:
+                pass
+        if not clicked:
+            box.press("Enter")
 
         deadline = time.monotonic() + DEADLINE_RESPONSE
         last, stable = "", 0
