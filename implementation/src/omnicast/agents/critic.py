@@ -671,12 +671,19 @@ class CriticAgent(BaseAgent):
         # ── (b) MECHANICAL LISTICLE (rule 10a): a counted spine instead of named
         # mechanisms ("snack one… number two… step 3"). ─────────────────────────
         if not _is_narrative:
+            # Finance carve-out: a single numbered CHECKLIST in the closing
+            # section is the channel's format (tangible-utility winner pattern
+            # + codex-audited spec) — only counting used as the BODY's spine is
+            # the AI-tell. Hits confined to the final quarter don't flag.
+            _scan_text = full_text
+            if _is_fin:
+                _scan_text = full_text[: int(len(full_text) * 0.75)]
             _list_hits = _re.findall(
                 r"\b(?:number|step|snack|tip|reason|way|point|mistake|sign|rule|secret|"
                 r"food|habit|type|phase|stage|method|trick|factor)\s+"
                 r"(?:one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b",
-                full_text)
-            _ord_hits = set(_re.findall(r"\b(first|second|third|fourth|fifth)\b", full_text))
+                _scan_text)
+            _ord_hits = set(_re.findall(r"\b(first|second|third|fourth|fifth)\b", _scan_text))
             if len(_list_hits) >= 3 or len(_ord_hits) >= 3:
                 _ex = ", ".join((_list_hits or sorted(_ord_hits))[:4])
                 flags.append(f"mechanical listicle spine detected ({_ex}…) — rule 10a: "

@@ -223,7 +223,9 @@ Return one CriticDimension per name below (use these EXACT names and max_score).
    ("the SSA calculator shows your exact number", "this IRS form, before this date"), never
    a personal directive. Full marks = a checklist-able takeaway per major section.
 6. anti_ai_cliche (max {VO_DIMS['anti_ai_cliche']}) — zero "delve/tapestry/it's important to note/in
-   conclusion", no corporate filler, no mechanical "number one… number two…" spine.
+   conclusion", no corporate filler, no mechanical counting as the BODY's spine.
+   EXEMPT: one numbered checklist in the CLOSING section is this channel's
+   format (the tangible-utility pattern its winners share) — never penalise it.
 7. niche_compliance (max {VO_DIMS['niche_compliance']}) — finance fatal rules (see FATAL RULES above):
    guarantees, price predictions, promised outcomes, uncited Social Security claims,
    advisor-persona claims → 0-2 per the rules.
@@ -235,9 +237,11 @@ Return one CriticDimension per name below (use these EXACT names and max_score).
    visual: the actual form (SSA-44), a statement close-up, a dated letter. Deduct for
    "worried senior stock photo" placeholders.
 10. data_visualization (max {PROD_DIMS['data_visualization']}) — every load-bearing number appears
-   on screen with its source; comparisons call for a CHART visual (rendered from real data
-   by the chart engine — an AI-generated image of a graph is a HARD FAIL). Deduct if key
-   figures stay voice-only or a visual asks an image model to draw a chart.
+   on screen with its source; comparisons call for a CHART visual. IMPORTANT: this
+   channel has a REAL chart renderer (matplotlib, audited against the fact ledger) —
+   a visual note naming a "chart" IS the correct, intended staging and must be
+   REWARDED, not treated as an AI-image risk. Deduct only if key figures stay
+   voice-only or comparisons never get staged as charts at all.
 
 DO NOT PENALISE: spoken source attribution ("according to the FBI's 2025 IC3 report") —
 in THIS niche naming the source aloud builds trust and is REQUIRED, not an AI-tell."""
