@@ -83,6 +83,29 @@ class TestFinanceSlopSignals:
             "The FBI's 2025 IC3 report counted 2 billion dollars in losses.")
         assert not flags
 
+    # Autopsy v1 (2026-07-27) — machine tells that survived the LLM critic once
+    def test_greeting_opener_caps_hook(self):
+        _, caps = fe.finance_slop_signals("Hey there — glad you're here. Today we talk rules.")
+        assert caps.get("hook_quality", 99) <= 4
+
+    def test_attribution_tic_capped(self):
+        text = " ".join(["According to the Social Security Administration, x."] * 6)
+        flags, caps = fe.finance_slop_signals(text)
+        assert any("attribution tic" in f for f in flags)
+        assert caps.get("anti_ai_cliche", 99) <= 3
+
+    def test_attribution_within_ration_ok(self):
+        text = " ".join(["According to SSA, x."] * 3)
+        flags, _ = fe.finance_slop_signals(text)
+        assert not any("attribution tic" in f for f in flags)
+
+    def test_nobody_scaffold_rationed(self):
+        text = ("That's the part almost nobody explains. "
+                "This is what they don't tell you about the rule.")
+        flags, caps = fe.finance_slop_signals(text)
+        assert any("scaffold" in f for f in flags)
+        assert caps.get("anti_ai_cliche", 99) <= 3
+
 
 # ── Niche config wiring ───────────────────────────────────────────────────────
 

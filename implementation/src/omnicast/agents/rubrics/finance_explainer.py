@@ -97,6 +97,22 @@ _URGENCY_RE = re.compile(
     r"\bact now\b|\bbefore it'?s too late\b|\btime is running out\b",
     re.IGNORECASE)
 
+# Autopsy v1 (gen 20260727_0036, 76/100) — three machine-detectable tells that
+# survived the LLM critic and must never survive again:
+#   greeting opener; "according to X" as a verbal tic; the "nobody tells you"
+#   scaffold repeated as filler authority.
+_GREETING_OPEN_RE = re.compile(
+    r"^\s*(?:hey there|hey|hi there|hi|hello|welcome back|welcome|greetings)\b",
+    re.IGNORECASE)
+_ATTRIBUTION_TIC_RE = re.compile(r"\baccording to (?:the )?", re.IGNORECASE)
+_NOBODY_SCAFFOLD_RE = re.compile(
+    r"\b(?:almost )?nobody (?:explains|mentions|talks about|tells you)\b"
+    r"|\balmost no one\b|\bthe part almost everyone misses\b"
+    r"|\brarely makes it into\b|\bwhat they don'?t tell you\b",
+    re.IGNORECASE)
+MAX_ATTRIBUTION_TICS = 4
+MAX_NOBODY_SCAFFOLDS = 1
+
 
 def fatal_caps(caps: dict[str, int]) -> bool:
     """Whether the deterministic caps constitute a FATAL violation.
@@ -133,6 +149,23 @@ def finance_slop_signals(text: str) -> tuple[list[str], dict[str, int]]:
     if _URGENCY_RE.search(text):
         flags.append("scam-adjacent urgency (\"act now / before it's too late\") — this channel "
                      "teaches scam defense; it must never sound like one")
+        caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
+    if _GREETING_OPEN_RE.search(text):
+        flags.append("greeting opener (\"Hey there / welcome\") — winners cold-open on the "
+                     "subject; a greeting burns the most valuable 3 seconds of the video")
+        caps["hook_quality"] = min(caps.get("hook_quality", 99), 4)
+    tics = len(_ATTRIBUTION_TIC_RE.findall(text))
+    if tics > MAX_ATTRIBUTION_TICS:
+        flags.append(f"attribution tic: 'according to …' used {tics}x (max "
+                     f"{MAX_ATTRIBUTION_TICS}) — vary the sourcing language "
+                     "(named document, 'SSA's published figures', 'the rule says') "
+                     "and vary its position in the sentence")
+        caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
+    scaffolds = len(_NOBODY_SCAFFOLD_RE.findall(text))
+    if scaffolds > MAX_NOBODY_SCAFFOLDS:
+        flags.append(f"'nobody tells you' scaffold used {scaffolds}x (max "
+                     f"{MAX_NOBODY_SCAFFOLDS}) — manufactured-secret framing "
+                     "repeated as filler is a signature AI tell")
         caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
     return flags, caps
 
