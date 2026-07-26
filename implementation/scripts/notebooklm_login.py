@@ -81,11 +81,12 @@ def main() -> None:
         print("      Waiting until the notebook list UI appears (up to 8 min)...", flush=True)
 
         # Signed-in NotebookLM shows a create-notebook affordance. Poll for it.
+        import re as _re
         detected = False
         for i in range(160):  # 160 * 3s = 8 min
             try:
                 for probe in (
-                    page.get_by_role("button", name=lambda n: n and "create" in n.lower()),
+                    page.get_by_role("button", name=_re.compile(r"create|new notebook|tạo", _re.I)),
                     page.locator("text=/create new|new notebook|tạo/i"),
                 ):
                     try:
