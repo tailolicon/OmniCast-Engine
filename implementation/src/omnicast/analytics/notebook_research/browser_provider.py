@@ -170,6 +170,12 @@ class NotebookLMWorker:
         Priority: stored URL → title match on the home list → create new
         (then best-effort rename via the 'Untitled notebook' header)."""
         if notebook_url:
+            # Force English UI: the ACCOUNT language (Vietnamese) overrides the
+            # browser locale, and a bare notebook URL rendered VI — which is
+            # why EN-only probes missed "Hộp truy vấn". Selectors stay
+            # bilingual anyway; hl=en just narrows the variance.
+            if "hl=" not in notebook_url:
+                notebook_url += ("&" if "?" in notebook_url else "?") + "hl=en"
             self.page.goto(notebook_url, wait_until="domcontentloaded",
                            timeout=DEADLINE_NOTEBOOK * 1000)
             if self._wait_notebook_open():
@@ -298,10 +304,10 @@ class NotebookLMWorker:
         first live run sat on `[role=listitem]` (which matches nothing in the
         real sources panel) until deadline."""
         try:
-            texts = self.page.locator(r"text=/\d+\s+sources?/i")
+            texts = self.page.locator(r"text=/\d+\s+(sources?|nguồn)/i")
             best = 0
             for i in range(min(texts.count(), 6)):
-                m = re.search(r"(\d+)\s+sources?",
+                m = re.search(r"(\d+)\s+(?:sources?|nguồn)",
                               texts.nth(i).inner_text(), re.I)
                 if m:
                     best = max(best, int(m.group(1)))
@@ -350,6 +356,15 @@ class NotebookLMWorker:
             raise UiDeadline("run_prompt: chat input not found")
         box.click()
         box.fill(prompt_text)
+        # WRONG-BOX GUARD: run 5 filled the sources-panel discovery textarea
+        # and nothing noticed. The value must land in the box we filled.
+        try:
+            got = box.input_value()
+        except Exception:
+            got = ""
+        if prompt_text[:60] not in (got or ""):
+            raise UiDeadline("run_prompt: prompt text did not land in the chat box "
+                             "(wrong element matched?)")
         send = self.find("send_button", timeout_s=10)
         if send is not None:
             send.click()

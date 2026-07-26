@@ -60,20 +60,28 @@ SELECTORS: dict[str, list[tuple[str, str]]] = {
         ("css", "input[aria-label*='title'], input[aria-label*='Title']"),
     ],
     "chat_input": [
-        ("role:textbox", r"(ask|question|nhập|hỏi)"),
-        ("css", "textarea"),
+        # Calibrated from live DOM 2026-07-26: the REAL chat box is
+        # aria-label "Hộp truy vấn" / placeholder "Đặt câu hỏi hoặc tạo nội
+        # dung" (VI) or "Ask a question…" (EN). The sources panel has ANOTHER
+        # textarea (web-source discovery, aria "Khám phá nguồn…") that a bare
+        # `textarea` fallback matched first — run 5 typed the prompt in there.
+        ("role:textbox", r"(hộp truy vấn|query box|ask|question|câu hỏi)"),
+        ("css", "textarea[aria-label*='truy vấn'], textarea[aria-label*='uery']"),
+        ("css", "textarea[placeholder*='câu hỏi'], textarea[placeholder*='question'], "
+                "textarea[placeholder*='Ask']"),
+        ("css", "textarea:not([aria-label*='Khám phá']):not([aria-label*='iscover'])"),
         ("css", "[contenteditable=true]"),
     ],
     "send_button": [
         ("role:button", r"(send|submit|gửi)"),
-        ("css", "button[aria-label*='end']"),
+        ("css", "button[aria-label*='end'], button[aria-label*='ửi']"),
     ],
     "source_list_item": [
         ("css", "[role=listitem]"),
         ("css", "[data-testid*=source]"),
     ],
     "processing_indicator": [
-        ("text", r"(processing|importing|đang xử lý|đang nhập)"),
+        ("text", r"(processing|importing|đang xử lý|đang nhập|đang tải)"),
         ("css", "[role=progressbar]"),
     ],
     "citation_chip": [
