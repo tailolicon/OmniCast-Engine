@@ -1,4 +1,6 @@
-> STATUS: ACTIVE — chờ USER CHỌN (Phase A4 của FLAGSHIP_SeniorFinance_Channel.md)
+> STATUS: DONE (2026-07-26) — User đã chọn Phương án 1 **The Retirement Desk**; kênh đã
+> tạo với handle `@TheRetirementDesk-ays` (YouTube tự thêm suffix). Giữ file vì
+> FLAGSHIP plan tham chiếu prompt avatar/banner của phương án 1.
 
 # Gói nhận diện kênh flagship — 4 phương án (user quyết)
 
