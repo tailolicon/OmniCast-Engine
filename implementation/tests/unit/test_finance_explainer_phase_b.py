@@ -99,6 +99,19 @@ class TestFinanceSlopSignals:
         flags, _ = fe.finance_slop_signals(text)
         assert not any("attribution tic" in f for f in flags)
 
+    def test_verbatim_duplicate_sentence_flagged(self):
+        line = ("Miss that second lane and you might assume you are losing far "
+                "more than you actually are today. ")
+        flags, caps = fe.finance_slop_signals(line + "Filler sentence here. " + line)
+        assert any("self-duplication" in f for f in flags)
+        assert caps.get("anti_ai_cliche", 99) <= 3
+
+    def test_normal_prose_no_duplicate_flag(self):
+        flags, _ = fe.finance_slop_signals(
+            "The limit is high. The rate is gentle. The rule expires at sixty seven "
+            "for everyone born in nineteen sixty or later, says the fact sheet.")
+        assert not any("self-duplication" in f for f in flags)
+
     def test_anecdote_evidence_flagged(self):
         flags, caps = fe.finance_slop_signals(
             "I've read Social Security's own community forums — this is a top complaint.")

@@ -167,6 +167,19 @@ def finance_slop_signals(text: str) -> tuple[list[str], dict[str, int]]:
                      "(named document, 'SSA's published figures', 'the rule says') "
                      "and vary its position in the sentence")
         caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
+    # Autopsy v3: a long sentence repeated VERBATIM (copy-paste padding) —
+    # the LLM reused a whole teaser line twice and the critic missed it.
+    sentences = [s.strip().lower() for s in re.split(r"[.!?]\s+", text)
+                 if len(s.split()) >= 9]
+    seen: dict[str, int] = {}
+    for s in sentences:
+        key = re.sub(r"[^a-z0-9 ]", "", s)
+        seen[key] = seen.get(key, 0) + 1
+    dup = next((s for s, n in seen.items() if n >= 2), "")
+    if dup:
+        flags.append(f"verbatim self-duplication: a long sentence appears twice "
+                     f"(\"{dup[:60]}…\") — copy-paste padding, cut one")
+        caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
     if _ANECDOTE_EVIDENCE_RE.search(text):
         flags.append("unverifiable anecdote as evidence (\"I've read the forums…\") — "
                      "cite the document, not the comment section")

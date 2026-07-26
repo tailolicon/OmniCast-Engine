@@ -18,7 +18,7 @@ unattributable number must not survive to upload.
 from __future__ import annotations
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from omnicast.agents.base import BaseAgent
 from omnicast.compliance.fact_ledger import FactEntry, FactLedger, extract_numeric_claims
@@ -31,6 +31,22 @@ class _LedgerDraft(BaseModel):
     needs_verification: list[str] = Field(
         default_factory=list,
         description="Claims the model could NOT attribute to a real source")
+
+    @field_validator("needs_verification", mode="before")
+    @classmethod
+    def _coerce_items(cls, v):
+        """Models sometimes return rich dicts here ({'claim': …, 'reason': …})
+        instead of plain strings — live run 2026-07-27 crashed the whole step
+        on that. Coerce instead: the claim text is what the gate needs."""
+        if not isinstance(v, list):
+            return v
+        out = []
+        for item in v:
+            if isinstance(item, dict):
+                out.append(str(item.get("claim") or item.get("text") or item))
+            else:
+                out.append(str(item))
+        return out
 
 
 class FactLedgerAgent(BaseAgent):
