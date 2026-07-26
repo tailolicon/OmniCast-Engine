@@ -27,7 +27,12 @@ logger = structlog.get_logger()
 
 
 class _LedgerDraft(BaseModel):
-    entries: list[FactEntry] = Field(default_factory=list)
+    # REQUIRED with min_length=1 on purpose: every field defaulted meant ANY
+    # stray {...} blob in the response validated as an empty ledger (live
+    # 27/07: 20k tokens of model output parsed to zero entries, silently).
+    # A script with no facts never reaches this agent; a draft with no entries
+    # is always a parse failure and must raise, not pass.
+    entries: list[FactEntry] = Field(..., min_length=1)
     needs_verification: list[str] = Field(
         default_factory=list,
         description="Claims the model could NOT attribute to a real source")
@@ -79,12 +84,13 @@ class FactLedgerAgent(BaseAgent):
             f"RULE YEAR: {current_year}. Preferred source families: {sources}.\n\n"
             "For EVERY load-bearing claim — every dollar amount, percentage, "
             "threshold, rule age, deadline, historical year, and every stated "
-            "rule/law — emit one entry with ALL fields filled: {claim (as spoken), "
-            "value (the figure verbatim), source_name (the real document, with its "
-            "year, e.g. 'SSA 2026 Fact Sheet'), source_url (official page if known, "
-            "else empty), as_of (the year the figure is valid for — REQUIRED, never "
-            "empty), year_sensitive (true for anything that changes by rule year: "
-            "earnings limits, brackets, premiums), section (the script heading)}.\n\n"
+            "rule/law — emit one entry with ALL of these fields filled: claim (as "
+            "spoken), value (the figure verbatim), source_name (the real document "
+            "with its year, e.g. 'SSA 2026 Fact Sheet'), source_url (official page "
+            "if known, else empty), as_of (the year the figure is valid for — "
+            "REQUIRED, never empty), year_sensitive (true for anything that changes "
+            "by rule year: earnings limits, brackets, premiums), section (the "
+            "script heading it appears in).\n\n"
             "HYPOTHETICAL WORKED-EXAMPLE figures (an invented income, benefit "
             "amount, or hourly wage used purely for illustration) get "
             f"source_name='worked example (hypothetical)' and as_of='{current_year}' "
