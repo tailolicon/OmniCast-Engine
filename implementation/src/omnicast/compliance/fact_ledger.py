@@ -464,7 +464,8 @@ def render_markdown(ledger: FactLedger, report: FactGateReport | None = None) ->
             f"{'YES' if _entry_year_sensitive(e) else ''} |")
     if report is not None:
         lines += ["", f"**Gate: {'PASSED' if report.passed else 'FAILED'}** — "
-                      f"{report.covered_count}/{report.claim_count} claims covered"]
+                      f"{report.covered_count}/{report.claim_count} numeric tokens covered "
+                      "(entries may outnumber tokens: prose claims and multi-entry figures)"]
         for group, items in (("uncovered", report.uncovered),
                              ("invalid", report.invalid_entries),
                              ("stale", report.stale_entries),
