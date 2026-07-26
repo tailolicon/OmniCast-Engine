@@ -137,7 +137,24 @@ async def main() -> int:
     for idx_s, vis in edits.get("visual_replacements", {}).items():
         scenes[int(idx_s)]["visual_prompt"] = vis
     drop = set(edits.get("delete_scenes", []))
-    scenes = [s for i, s in enumerate(scenes) if i not in drop]
+    # insert_after: {"<orig index>": [scene dicts]} — new scenes inherit the
+    # anchor's segment unless they carry their own. Applied before deletion,
+    # keyed to ORIGINAL indices like every other op.
+    inserts = {int(k): v for k, v in edits.get("insert_after", {}).items()}
+    out: list[dict] = []
+    for i, s in enumerate(scenes):
+        if i not in drop:
+            out.append(s)
+        for new in inserts.get(i, []):
+            item = dict(new)
+            item.setdefault("segment", s.get("segment", ""))
+            item.setdefault("sfx", None)
+            item.setdefault("duration_s", 0)
+            item.setdefault("pace", "normal")
+            item.setdefault("pause_after_ms", 0)
+            item.setdefault("emphasis", [])
+            out.append(item)
+    scenes = out
     print(f"edits applied: {len(edits.get('voiceover_replacements', {}))} VO, "
           f"{len(edits.get('visual_replacements', {}))} visual, "
           f"{len(drop)} deleted -> {len(scenes)} scenes")
