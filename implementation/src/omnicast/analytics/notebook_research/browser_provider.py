@@ -291,6 +291,33 @@ class NotebookLMWorker:
             s.attempts += 1
             manifest.save(base_dir)
 
+    def _source_count_on_page(self) -> int:
+        """Indexed-source count, strongest signal first (calibrated from the
+        live UI 2026-07-26): the app itself prints "N sources" in the chat
+        footer and overview header — that number IS the indexed count. The
+        first live run sat on `[role=listitem]` (which matches nothing in the
+        real sources panel) until deadline."""
+        try:
+            texts = self.page.locator(r"text=/\d+\s+sources?/i")
+            best = 0
+            for i in range(min(texts.count(), 6)):
+                m = re.search(r"(\d+)\s+sources?",
+                              texts.nth(i).inner_text(), re.I)
+                if m:
+                    best = max(best, int(m.group(1)))
+            if best:
+                return best
+        except Exception:
+            pass
+        for probe in (r"text=/\.md/", SELECTORS["source_list_item"][0][1]):
+            try:
+                n = self.page.locator(probe).count()
+                if n:
+                    return n
+            except Exception:
+                continue
+        return 0
+
     def wait_for_indexing(self, manifest: RunManifest, base_dir: Path) -> None:
         """Condition wait: source count reaches expectation AND no processing
         indicator remains. Deadline scales with source count."""
@@ -298,11 +325,7 @@ class NotebookLMWorker:
         deadline = time.monotonic() + DEADLINE_INDEX_PER_SOURCE * max(1, expected)
         stable = 0
         while time.monotonic() < deadline:
-            try:
-                count = self.page.locator(
-                    SELECTORS["source_list_item"][0][1]).count()
-            except Exception:
-                count = 0
+            count = self._source_count_on_page()
             processing = self.find("processing_indicator", timeout_s=1) is not None
             if count >= expected and not processing:
                 stable += 1
@@ -316,7 +339,8 @@ class NotebookLMWorker:
                 stable = 0
             time.sleep(POLL_S)
         raise UiDeadline(
-            f"wait_for_indexing: {expected} sources not ready within deadline")
+            f"wait_for_indexing: {expected} sources not ready within deadline "
+            f"(last count {self._source_count_on_page()})")
 
     def run_prompt(self, prompt_text: str) -> str:
         """Send one prompt; return the final response text once it stops
