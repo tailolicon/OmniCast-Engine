@@ -439,13 +439,19 @@ def run_notebook_stage(manifest: RunManifest, base_dir: Path,
         manifest.save(base_dir)
         state = RunState.AUTH_CHECK
     try:
-        if state in (RunState.AUTH_CHECK,):
-            worker.auth_check()
+        # NAVIGATION CONTEXT IS NEVER RESUMABLE: a fresh browser starts at
+        # about:blank no matter what the manifest remembers, so auth + opening
+        # the notebook run on EVERY invocation (cheap, idempotent). Live runs
+        # 3-4 hung exactly here — resume jumped to WAIT_FOR_INDEXING and polled
+        # a blank page until deadline.
+        worker.auth_check()
+        if state == RunState.AUTH_CHECK:
             manifest.transition(RunState.RESOLVE_NOTEBOOK, base_dir)
             state = RunState.RESOLVE_NOTEBOOK
+        manifest.notebook_url = worker.resolve_notebook(
+            manifest.notebook_key, manifest.notebook_url)
+        manifest.save(base_dir)
         if state == RunState.RESOLVE_NOTEBOOK:
-            manifest.notebook_url = worker.resolve_notebook(
-                manifest.notebook_key, manifest.notebook_url)
             manifest.transition(RunState.UPLOAD_SOURCES, base_dir)
             state = RunState.UPLOAD_SOURCES
         if state == RunState.UPLOAD_SOURCES:

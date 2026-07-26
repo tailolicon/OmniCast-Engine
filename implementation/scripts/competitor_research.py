@@ -80,6 +80,24 @@ def run_notebooklm(channel_id: str, report: dict, headless: bool) -> None:
         report["notebooklm"] = {"status": "auth_required",
                                 "reason": "profile missing — run scripts/notebooklm_login.py once"}
         return
+    # PRE-FLIGHT: a Chrome already holding this profile makes a second launch
+    # open about:blank and hang (live run 3, 2026-07-26). Refuse instead —
+    # never auto-kill someone else's session.
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "@(Get-CimInstance Win32_Process -Filter \"Name = 'chrome.exe'\" | "
+             "Where-Object { $_.CommandLine -match 'notebooklm_profile' }).Count"],
+            capture_output=True, text=True, timeout=30)
+        if int((out.stdout or "0").strip() or 0) > 0:
+            report["notebooklm"] = {
+                "status": "profile_locked",
+                "reason": "another Chrome holds output/notebooklm_profile — close "
+                          "it (or kill stale chrome.exe) and rerun"}
+            return
+    except Exception:
+        pass
 
     base = res / "notebooklm" / "runs"
     manifest = RunManifest.load_or_create(base, channel_id,
