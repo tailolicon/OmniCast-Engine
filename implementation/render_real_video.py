@@ -1608,36 +1608,19 @@ def _web_cache_path(query: str, w: int, h: int) -> Path:
 
 
 class ChartAuditError(RuntimeError):
-    """A chart value failed the fact-ledger audit — the render must stop."""
-
-
-def _ledger_digit_cores(script_path: Path) -> set[str] | None:
-    """Digit cores of every value in the product's fact ledger, or None when no
-    ledger exists (non-YMYL channel or pre-ledger product)."""
-    lf = script_path.parent / "fact_ledger.json"
-    if not lf.exists():
-        return None
-    try:
-        data = _json.loads(lf.read_text(encoding="utf-8"))
-        entries = (data.get("ledger") or {}).get("entries") or []
-        cores: set[str] = set()
-        for e in entries:
-            for tok in re.findall(r"\d[\d,]*(?:\.\d+)?", f"{e.get('value', '')} {e.get('claim', '')}"):
-                core = re.sub(r"\D", "", tok)
-                if core:
-                    cores.add(core)
-        return cores
-    except Exception as exc:
-        print(f"[chart] [warn] fact ledger unreadable ({exc}) — treating as absent")
-        return None
+    """A chart figure failed the fact-ledger audit — the render must stop."""
 
 
 def _render_chart_cell(spec: dict, dest: Path, script_path: Path, w: int, h: int) -> bool:
     """Render a storyboard chart cell as a REAL data chart (chart_gen PNG).
 
-    Fail-closed audit: when the product carries a fact ledger, every chart value
-    must appear in it — a figure the ledger never sourced must not reach the
-    screen (raises ChartAuditError, which aborts the render on purpose)."""
+    Fail-closed audit (compliance.fact_ledger.audit_chart_spec): the ledger
+    must exist, be gate-PASSED, be SHA-bound to this script, and EVERY figure
+    the chart displays — values, labels, title, source line — must be covered
+    by a sourced ledger entry. Any miss raises ChartAuditError, which aborts
+    the render on purpose (never degrade a compliance failure)."""
+    from omnicast.compliance.fact_ledger import audit_chart_spec
+
     labels = [str(x) for x in (spec.get("labels") or [])]
     values_raw = spec.get("values") or []
     if not labels or len(labels) != len(values_raw) or not (2 <= len(labels) <= 6):
@@ -1650,18 +1633,25 @@ def _render_chart_cell(spec: dict, dest: Path, script_path: Path, w: int, h: int
         print("[chart] [warn] non-numeric chart values — skipping chart")
         return False
 
-    cores = _ledger_digit_cores(script_path)
-    if cores is None:
-        print("[chart] [warn] no fact ledger to audit against — chart skipped "
-              "(unaudited numbers must not render)")
+    lf = script_path.parent / "fact_ledger.json"
+    if not lf.exists():
+        # The YMYL precheck already blocks finance channels without a ledger;
+        # reaching here means a non-finance channel produced a chart cell.
+        # Unaudited numbers must not render either way.
+        print("[chart] [warn] no fact ledger to audit against — chart skipped")
         return False
-    bad = [v for v in values
-           if re.sub(r"\D", "", f"{v:g}") and re.sub(r"\D", "", f"{v:g}") not in cores]
-    if bad:
+    try:
+        ledger_data = _json.loads(lf.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ChartAuditError(f"fact_ledger.json unreadable: {exc}")
+
+    failures = audit_chart_spec(spec, ledger_data,
+                                script_path.read_text(encoding="utf-8"))
+    if failures:
         raise ChartAuditError(
-            f"chart values {bad} not present in fact_ledger.json — a figure "
-            "without a sourced ledger entry must not be drawn (fix the ledger "
-            "or the storyboard, then re-render)")
+            "; ".join(failures[:4])
+            + " — a figure without a sourced ledger entry must not be drawn "
+              "(fix the ledger or the storyboard, then re-render)")
 
     from omnicast.media.providers import chart_gen
     if not chart_gen.available():
@@ -2278,6 +2268,31 @@ def main() -> None:
         print("[ERROR] No script found. Run content_flow.py --phase 2 first.")
         sys.exit(1)
 
+    # ── YMYL RENDER PRECHECK (fail-closed, BEFORE any acquisition path) ──────
+    # A finance-rubric channel may only render a script whose fact ledger
+    # exists, PASSED its gate, and is SHA-bound to exactly this script text.
+    # Placed here — ahead of --all-stock and every fallback — so no render
+    # entry point can bypass it (codex audit 2026-07-26, finding 1). Exits with
+    # AUDIT_EXIT_CODE so the pipeline knows this is a compliance failure, not a
+    # provider outage, and must not retry/degrade (finding 7).
+    _ymyl_rubric = ""
+    try:
+        _nk = str(channel_meta.get("niche_config_key") or "").strip()
+        if _nk:
+            from omnicast.config.niches import get_niche_config as _gnc
+            _ncfg = _gnc(*_nk.split(".", 1)) if "." in _nk else _gnc(_nk)
+            _ymyl_rubric = getattr(_ncfg, "rubric_id", "") or ""
+    except Exception as _ne:
+        print(f"[warn] niche config unreadable for YMYL precheck: {_ne}")
+    if _ymyl_rubric == "finance_explainer_v1":
+        from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE, render_precheck
+        _ok, _why = render_precheck(script_path.parent / "fact_ledger.json",
+                                    script_path.read_text(encoding="utf-8"))
+        if not _ok:
+            print(f"[ERROR] YMYL fact-ledger precheck FAILED: {_why}")
+            sys.exit(AUDIT_EXIT_CODE)
+        print("[ymyl] fact-ledger precheck passed (gate PASSED, sha-bound)")
+
     print(f"[1/5] Script: {script_path}")
     # PROSODY SIDECAR: phase-2 writes script.json (full storyboard incl. per-scene
     # pace/pause_after_ms/emphasis) next to the prose script.txt. Prefer it —
@@ -2496,8 +2511,25 @@ def main() -> None:
         # image on failure so a fetch problem never breaks the render.
         if board:
             _IMG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            # Chart cells are only honoured on channels whose chart_render
+            # capability is DECLARED AND BACKED — a rogue LLM 'chart' cell on
+            # any other channel is treated as stock (codex finding 10).
+            try:
+                from omnicast.media.production_router import (
+                    capabilities_from_channel as _cfc,
+                )
+                _chart_capability = "chart_render" in _cfc(
+                    type("_C", (), {"supported_production":
+                                    channel_meta.get("supported_production", [])})())
+            except Exception:
+                _chart_capability = False
             for i, cell in enumerate(board):
                 visual_type = cell.get("visual_type", "generated_image")
+                if visual_type == "chart" and not _chart_capability:
+                    print(f"[chart] [warn] scene {i} requested a chart but this "
+                          "channel has no backed chart_render capability — using stock")
+                    cell["visual_type"] = "stock_video"
+                    visual_type = "stock_video"
                 query = (cell.get("search_query") or "").strip()
                 stock_query = (cell.get("stock_query") or "").strip()
 
@@ -2528,12 +2560,8 @@ def main() -> None:
                 # plain white kinetic callout sits over footage — NOT a generated
                 # cartoon that bakes the number into a chart/book (rule #1b). The
                 # LLM sometimes ignores this, so force it here.
-                if (cell.get("stat_number") or "").strip() and visual_type == "chart":
-                    # A chart already draws its numbers — a kinetic callout on
-                    # top would double-print them. The chart wins.
-                    cell["stat_number"] = ""
-                    cell["stat_label"] = ""
-                elif (cell.get("stat_number") or "").strip() and visual_type != "stock_video":
+                if (cell.get("stat_number") or "").strip() and visual_type != "stock_video" \
+                        and visual_type != "chart":
                     visual_type = "stock_video"
                     cell["visual_type"] = "stock_video"
                     if not stock_query:
@@ -2574,13 +2602,22 @@ def main() -> None:
                     try:
                         _chart_ok = _render_chart_cell(_spec, dest, script_path, W, H)
                     except ChartAuditError as _ce:
-                        # Fail-closed on purpose: a chart whose number the fact
+                        # Fail-closed on purpose: a chart whose figures the fact
                         # ledger never sourced must not ship in a YMYL video.
-                        raise SystemExit(f"[chart] AUDIT BLOCK scene {i}: {_ce}")
+                        # Distinct exit code → the render step must NOT retry
+                        # or degrade to --all-stock on this (codex finding 7).
+                        from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE
+                        print(f"[ERROR] [chart] AUDIT BLOCK scene {i}: {_ce}")
+                        raise SystemExit(AUDIT_EXIT_CODE)
                     except Exception as e:
                         print(f"[chart] [warn] error scene {i}: {e}")
                     if _chart_ok and dest.exists() and dest.stat().st_size > 0:
                         bg_paths[i] = dest
+                        # The chart draws its numbers — clear the kinetic stat
+                        # only NOW so a failed chart keeps its callout on the
+                        # stock fallback (codex finding 10).
+                        cell["stat_number"] = ""
+                        cell["stat_label"] = ""
                         print(f"[chart] rendered scene {i}: "
                               f"'{str(_spec.get('title') or '')[:48]}'")
                         continue

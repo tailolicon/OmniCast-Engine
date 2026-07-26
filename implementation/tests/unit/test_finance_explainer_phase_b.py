@@ -232,6 +232,154 @@ class TestFinanceUploadCompliance:
 _CHART_TEXT = "In 2026 the earnings limit grew by 4% compared to last year."
 
 
+class TestCodexAuditFixes:
+    """Pins for the 2026-07-26 codex adversarial audit findings."""
+
+    # Finding 2 — typed tokens: kind collisions and as_of masking
+    def test_percent_not_covered_by_age_entry(self):
+        script = "The fund charges a 6.2% fee."
+        ledger = FactLedger(entries=[
+            _entry(claim="full retirement age is 67, early claiming at 62",
+                   value="62", year_sensitive=False, as_of="2026")])
+        report = gate_fact_ledger(script, ledger, current_year=2026)
+        assert any("6.2" in u for u in report.uncovered)
+
+    def test_money_not_covered_by_attribution_year(self):
+        script = "The penalty is $2,026 per year."
+        ledger = FactLedger(entries=[
+            _entry(claim="a penalty exists", value="", as_of="2026",
+                   year_sensitive=False, source_name="IRS 2026")])
+        report = gate_fact_ledger(script, ledger, current_year=2026)
+        assert any("2,026" in u for u in report.uncovered)
+
+    # Finding 3 — recency is deterministic, future years rejected
+    def test_future_as_of_is_invalid(self):
+        ledger = FactLedger(entries=[_entry(as_of="2027")])
+        report = gate_fact_ledger(SCRIPT, ledger, current_year=2026)
+        assert any("future" in v for v in report.invalid_entries)
+
+    def test_year_sensitive_inferred_from_claim_text(self):
+        # Model says year_sensitive=False, but "earnings limit" is a rule-year
+        # figure — the heuristic must overrule the model.
+        ledger = FactLedger(entries=[_entry(year_sensitive=False, as_of="2024")])
+        report = gate_fact_ledger("The earnings limit is $23,400.", ledger,
+                                  current_year=2026)
+        assert report.stale_entries
+
+    # Finding 5 — extraction forms
+    def test_extraction_decimals_ordinal_days_word_percent(self):
+        from omnicast.compliance.fact_ledger import numeric_tokens
+        toks = {(t.kind, t.value) for t in numeric_tokens(
+            "The multiplier is 1.027. File by July 10th. Costs eight percent.")}
+        assert ("plain", 1.027) in toks
+        assert ("day", 10.0) in toks
+        assert ("percent", 8.0) in toks
+
+    # Findings 1/6 — render precheck + full chart audit
+    def test_render_precheck_missing_and_mismatched(self, tmp_path):
+        from omnicast.compliance.fact_ledger import render_precheck
+        lf = tmp_path / "fact_ledger.json"
+        ok, why = render_precheck(lf, "text")
+        assert not ok and "missing" in why
+        lf.write_text(json.dumps({
+            "gate": {"passed": True},
+            "ledger": {"script_sha256": "deadbeef"},
+        }), encoding="utf-8")
+        ok, why = render_precheck(lf, "text")
+        assert not ok and "different script" in why
+
+    def test_render_precheck_pass(self, tmp_path):
+        from omnicast.compliance.fact_ledger import render_precheck, script_sha256
+        lf = tmp_path / "fact_ledger.json"
+        lf.write_text(json.dumps({
+            "gate": {"passed": True},
+            "ledger": {"script_sha256": script_sha256("the script")},
+        }), encoding="utf-8")
+        ok, why = render_precheck(lf, "the script")
+        assert ok, why
+
+    def _ledger_data(self, script: str) -> dict:
+        from omnicast.compliance.fact_ledger import script_sha256
+        return {
+            "gate": {"passed": True},
+            "ledger": {
+                "script_sha256": script_sha256(script),
+                "entries": [
+                    {"claim": "limit was $22,320 in 2025 and $23,400 in 2026",
+                     "value": "$23,400", "source_name": "SSA 2026", "as_of": "2026"},
+                    {"claim": "the old limit", "value": "$22,320",
+                     "source_name": "SSA 2025", "as_of": "2025"},
+                ],
+            },
+        }
+
+    def test_chart_audit_clean_spec_passes(self):
+        from omnicast.compliance.fact_ledger import audit_chart_spec
+        script = "Limit rose from $22,320 to $23,400."
+        spec = {"labels": ["2025", "2026"], "values": [22320, 23400],
+                "title": "Earnings limit", "source": "SSA 2026"}
+        assert audit_chart_spec(spec, self._ledger_data(script), script) == []
+
+    def test_chart_audit_catches_unsourced_label_and_title(self):
+        from omnicast.compliance.fact_ledger import audit_chart_spec
+        script = "Limit rose from $22,320 to $23,400."
+        spec = {"labels": ["Age 62", "Age 67"], "values": [22320, 23400],
+                "title": "2031 limits", "source": "SSA 2026"}
+        failures = audit_chart_spec(spec, self._ledger_data(script), script)
+        assert any("62" in f for f in failures)
+        assert any("2031" in f for f in failures)
+
+    def test_chart_audit_requires_gate_and_sha(self):
+        from omnicast.compliance.fact_ledger import audit_chart_spec
+        script = "Limit is $23,400."
+        data = self._ledger_data(script)
+        data["gate"]["passed"] = False
+        failures = audit_chart_spec({"labels": [], "values": []}, data, script)
+        assert any("gate" in f for f in failures)
+        data = self._ledger_data(script)
+        failures = audit_chart_spec({"labels": [], "values": []}, data, "other text")
+        assert any("sha mismatch" in f for f in failures)
+
+    # Finding 4 — fatal caps force rejection at the critic
+    def test_fatal_caps_helper(self):
+        assert not fe.fatal_caps({})
+        assert fe.fatal_caps({"niche_compliance": 0})
+        assert fe.fatal_caps({"accuracy_trust": 4})
+        assert not fe.fatal_caps({"anti_ai_cliche": 3})
+
+    # Finding 8 — regex evasions and over-breadth
+    def test_persona_evasions_caught(self):
+        for text in ("I'm your CPA, relax.",
+                     "I've advised retirees for twenty years; our clients agree."):
+            _, caps = fe.finance_slop_signals(text)
+            assert fe.fatal_caps(caps), text
+
+    def test_guarantee_with_interposed_number_caught(self):
+        for text in ("Guaranteed 8% returns.", "I guarantee an 8% return."):
+            _, caps = fe.finance_slop_signals(text)
+            assert caps.get("niche_compliance") == 0, text
+
+    def test_educational_frames_not_flagged(self):
+        for text in ("Whether you should claim at 62 depends on your record.",
+                     "As a CPA would tell you, verify this independently."):
+            flags, caps = fe.finance_slop_signals(text)
+            assert not caps, (text, flags)
+
+    # Finding 9 — upload classification
+    def test_iraq_is_not_finance(self):
+        assert not ComplianceChecker._looks_finance_ymyl("Best hiking trails in Iraq")
+
+    def test_guarantee_flagged_even_outside_finance_niche(self):
+        v = ComplianceChecker._check_ymyl_finance_text(
+            "Miracle course", "Guaranteed 8% returns for everyone!")
+        assert any("prohibited promise" in x for x in v)
+
+    def test_partial_disclaimer_phrase_not_enough(self):
+        v = ComplianceChecker._check_ymyl_finance_text(
+            "Retirement interview", "A talk with a licensed professional.")
+        assert any("disclaimer" in x for x in v)
+
+
 class TestChartRouting:
     def test_infographic_without_capability_stays_approximated(self):
         route = pr.route_scene(0, _CHART_TEXT, capabilities=set())

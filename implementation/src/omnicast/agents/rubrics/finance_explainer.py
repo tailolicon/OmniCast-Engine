@@ -59,24 +59,36 @@ slop_cap_dims: dict[str, str] = {
 # have clients. (YMYL + synthetic-voice channel — an AI claiming professional
 # credentials is the exact pattern YouTube's 2026 inauthentic-content policy
 # and our own charter prohibit.)
-_PERSONA_RE = re.compile(
-    r"\b(?:as an?|i'?m an?|i am an?|speaking as an?)\s+"
+_CREDENTIALS = (
     r"(?:financial advisor|retirement advisor|financial planner|"
     r"certified financial planner|cfp|cpa|fiduciary|tax professional|"
-    r"tax advisor|accountant|wealth manager|retirement specialist)\b"
-    r"|\bmy clients?\b|\bclients? of mine\b|\bin my practice\b",
+    r"tax advisor|accountant|wealth manager|retirement specialist)")
+
+_PERSONA_RE = re.compile(
+    # "as a CPA, I…" — but NOT the hypothetical "as a CPA would tell you"
+    r"\b(?:as an?|i'?m an?|i am an?|speaking as an?|i'?m your|i am your)\s+"
+    + _CREDENTIALS + r"(?!\s+(?:would|might|could|will|can)\b)"
+    r"|\bmy clients?\b|\bclients? of mine\b|\bour clients?\b|\bin my practice\b"
+    r"|\bi'?ve advised\b|\bi have advised\b"
+    r"|\bi advise (?:retirees|clients|people)\b",
     re.IGNORECASE)
 
 _GUARANTEE_RE = re.compile(
     r"\bguaranteed?\s+(?:returns?|profits?|income|growth|gains?)\b"
-    r"|\brisk[- ]free\b|\bcan(?:'|no)?t lose\b"
+    # "guaranteed 8% returns" / "I guarantee an 8% return" — a number between
+    # the promise and the noun must not be an escape hatch (codex finding 8).
+    r"|\bguaranteed?\s+(?:an?\s+)?\d[\d.,]*\s?%(?:\s*(?:returns?|profits?|yield|gains?|growth))?"
+    r"|\bi guarantee\b|\brisk[- ]free\b|\bcan(?:'|no)?t lose\b"
     r"|\byou (?:will|'ll) (?:definitely|certainly|surely)\b",
     re.IGNORECASE)
 
 # Direct second-person financial instruction = personalized advice. Education
 # frames the same content as "for this example retiree…" / "the rule says…".
+# "Whether/if you should claim…" is a legitimate educational frame, excluded
+# via fixed-width lookbehinds.
 _ADVICE_RE = re.compile(
-    r"\byou should (?:buy|sell|invest in|withdraw|claim (?:at|your)|"
+    r"(?<!whether )(?<!if )\byou (?:should|need to|have to|must) "
+    r"(?:buy|sell|invest in|withdraw|claim (?:at|your|now)|"
     r"move your money|roll over|convert|cash out)\b"
     r"|\bi recommend (?:you|buying|selling|claiming)\b",
     re.IGNORECASE)
@@ -84,6 +96,16 @@ _ADVICE_RE = re.compile(
 _URGENCY_RE = re.compile(
     r"\bact now\b|\bbefore it'?s too late\b|\btime is running out\b",
     re.IGNORECASE)
+
+
+def fatal_caps(caps: dict[str, int]) -> bool:
+    """Whether the deterministic caps constitute a FATAL violation.
+
+    Codex audit finding 4: a cap alone still let a maximally-scored persona
+    script pass (54/70 > 53). A fatal flag must force approved=False and a
+    writer route — CriticAgent.execute calls this to do exactly that."""
+    return (caps.get("niche_compliance", 99) <= 2
+            or caps.get("accuracy_trust", 99) <= 4)
 
 
 def finance_slop_signals(text: str) -> tuple[list[str], dict[str, int]]:

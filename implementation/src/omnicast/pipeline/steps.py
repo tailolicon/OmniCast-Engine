@@ -1399,6 +1399,15 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     rc, err = await _run(["--images", "flow"])
     flow_ok = (rc == 0 and out_mp4.exists())
     flow_degraded = False
+    # A fact/chart AUDIT failure is a compliance stop, not a Flow outage — the
+    # --all-stock retry would bypass the very check that fired (codex audit
+    # 2026-07-26 finding 7). Distinct exit code → hard stop, no degradation.
+    from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE as _AUDIT_RC
+    if rc == _AUDIT_RC:
+        _budget.record_failure(_sig, "render_ymyl_audit", err[-300:])
+        raise RuntimeError(
+            "Render BLOCKED by YMYL fact/chart audit (no retry, no fallback): "
+            + err[-500:])
     if not flow_ok:
         # Most Flow failures = the Google login session in .flow_profile expired
         # (Playwright can't find the prompt box / times out). Make that LOUD and

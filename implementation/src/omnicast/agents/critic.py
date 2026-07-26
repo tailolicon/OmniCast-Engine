@@ -414,13 +414,26 @@ class CriticAgent(BaseAgent):
             _floor = spoken_word_floor(getattr(brief, "target_duration_min", None))
             length_ok = _words >= int(_floor * 0.9)
 
+            # Hard gate 3 — FINANCE FATAL. A deterministic persona/guarantee/
+            # advice hit is a policy violation, not a scoring matter: a capped
+            # script can still total 84 and clear both group floors (measured),
+            # so the flag itself must force rejection (codex audit finding 4).
+            _fin_fatal = (not _is_narr and _rid == _fe.RUBRIC_ID
+                          and bool(_caps) and _fe.fatal_caps(_caps))
+
             _updates = {
                 "voiceover_score": vo_score,
                 "production_score": prod_score,
                 "total_score": total,
-                "approved": total >= threshold and both_groups_pass and length_ok,
+                "approved": (total >= threshold and both_groups_pass
+                             and length_ok and not _fin_fatal),
             }
             _reasons = list(feedback.rejection_reasons)
+            if _fin_fatal:
+                _reasons.append(
+                    "HARD GATE (finance YMYL, machine-verified): advisor-persona / "
+                    "guarantee / personalized-advice language — never approved; "
+                    "rewrite in educational register (sources speak, narrator explains)")
             if not length_ok:
                 _reasons.append(
                     f"HARD GATE: only {_words} spoken words (needs {_floor}+ for "
@@ -438,7 +451,7 @@ class CriticAgent(BaseAgent):
             # NEVER to the VisualDirector (which only touches visuals).
             if feedback.approved:
                 route = "approved"
-            elif (not length_ok) or (_is_narr and feedback.continuity_issues):
+            elif _fin_fatal or (not length_ok) or (_is_narr and feedback.continuity_issues):
                 route = "writer"
             elif vo_score >= _VP and prod_score < _PP:
                 route = "visual_director"

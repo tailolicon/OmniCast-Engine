@@ -142,22 +142,36 @@ class ComplianceChecker:
         "consult a doctor", "consult your healthcare provider",
         "speak with your healthcare provider", "ask your clinician",
     ]
+    # Word-boundary matched (codex audit finding 9: "ira" as a substring
+    # classified "hiking trails in Iraq" as finance).
     _FINANCE_TERMS = [
-        "social security", "retirement", "401k", "401(k)", "ira", "roth",
-        "medicare", "rmd", "irmaa", "pension", "annuity", "tax bracket",
-        "capital gains", "withdrawal", "invest", "portfolio", "brokerage",
-        "estate plan", "reverse mortgage",
+        "social security", "retirement", "401k", "401(k)", "ira", "iras",
+        "roth", "medicare", "rmd", "rmds", "irmaa", "pension", "pensions",
+        "annuity", "annuities", "tax bracket", "tax brackets", "capital gains",
+        "withdrawal", "withdrawals", "investing", "investment", "investments",
+        "portfolio", "brokerage", "estate plan", "reverse mortgage", "bond",
+        "bonds", "stocks", "stock market", "trading", "dividend", "dividends",
+        "interest rate", "interest rates", "savings",
     ]
+    # Complete disclaimer phrases only — "licensed professional" alone matched
+    # "interview with a licensed professional" (finding 9).
     _FINANCE_DISCLAIMER = [
         "not financial advice", "not financial, tax, or legal advice",
-        "not tax advice", "educational only", "educational purposes",
-        "consult a licensed professional", "licensed professional",
-        "consult a financial advisor", "consult your financial advisor",
+        "not tax advice", "not investment advice", "educational only",
+        "educational purposes", "consult a licensed professional",
+        "consult a licensed financial professional",
     ]
     _FINANCE_FATAL = [
         "guaranteed return", "guaranteed returns", "guaranteed profit",
         "guaranteed income", "risk-free investment", "can't lose", "cannot lose",
         "double your money", "get rich", "act now before",
+    ]
+    # Promise patterns with an interposed figure ("guaranteed 8% returns",
+    # "I guarantee a 12% yield") — regex because the number defeats substrings.
+    _FINANCE_FATAL_RE = [
+        r"\bguaranteed?\s+(?:an?\s+)?\d[\d.,]*\s?%",
+        r"\bi guarantee\b",
+        r"\brisk[- ]free\s+(?:returns?|investment|income)\b",
     ]
     # Synthetic-voice channel claiming professional credentials = fabricated
     # authority (YMYL + 2026 inauthentic-content policy). Same ban the critic
@@ -270,24 +284,40 @@ class ComplianceChecker:
 
     @classmethod
     def _looks_finance_ymyl(cls, text: str) -> bool:
-        return any(term in text.lower() for term in cls._FINANCE_TERMS)
+        import re
+        low = text.lower()
+        return any(re.search(rf"\b{re.escape(term)}\b", low)
+                   for term in cls._FINANCE_TERMS)
+
+    @classmethod
+    def _finance_fatal_hits(cls, low: str) -> list[str]:
+        import re
+        hits = [p for p in cls._FINANCE_FATAL if p in low]
+        hits += [m.group(0) for pat in cls._FINANCE_FATAL_RE
+                 for m in [re.search(pat, low)] if m]
+        return hits
 
     @classmethod
     def _check_ymyl_finance_text(cls, title: str, body: str = "") -> list[str]:
         """Finance analogue of the health YMYL text check (was health-only —
-        the flagship senior-finance channel made the gap production-relevant)."""
-        text = f"{title} {body}"
-        if not cls._looks_finance_ymyl(text):
-            return []
+        the flagship senior-finance channel made the gap production-relevant).
 
+        Promise/guarantee language is checked REGARDLESS of niche classification
+        — "guaranteed 8% returns" is a scam marker on any channel; only the
+        disclaimer requirement is scoped to finance-classified text."""
+        text = f"{title} {body}"
         low = text.lower()
         violations = []
-        if not any(phrase in low for phrase in cls._FINANCE_DISCLAIMER):
-            violations.append("finance/YMYL: missing educational/not-financial-advice disclaimer")
 
-        fatal = [p for p in cls._FINANCE_FATAL if p in low]
+        fatal = cls._finance_fatal_hits(low)
         if fatal:
             violations.append(f"finance/YMYL: prohibited promise/urgency language: {', '.join(fatal)}")
+
+        if not cls._looks_finance_ymyl(text):
+            return violations
+
+        if not any(phrase in low for phrase in cls._FINANCE_DISCLAIMER):
+            violations.append("finance/YMYL: missing educational/not-financial-advice disclaimer")
 
         persona = [p for p in cls._FINANCE_PERSONA if p in low]
         if persona:
