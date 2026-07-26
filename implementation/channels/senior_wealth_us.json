@@ -24,10 +24,10 @@
   "visual_style": "clean_trust",
   "channel_style": "footage",
   "music_mood": "warm_neutral",
-  "voice_profile": "edge:en-US-RogerNeural",
+  "voice_profile": "edge:en-US-AndrewMultilingualNeural",
   "voice_fallback": [
-    "edge:en-US-DavisNeural",
-    "edge:en-US-GuyNeural"
+    "edge:en-US-RogerNeural",
+    "edge:en-US-DavisNeural"
   ],
   "voice_persona": "calm_experienced_male_60",
   "brand_voice": "A calm, patient explainer who respects the viewer's intelligence and lifetime of experience. Plain English, concrete dollar examples, zero hype, zero fear-mongering. Educational only — never personal advice; every number carries its source and year.",
