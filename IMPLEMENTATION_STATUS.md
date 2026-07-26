@@ -583,6 +583,24 @@ quốc gia + keywords + audience đã set qua Studio. Content engine:
 | "ira" substring bắt nhầm "Iraq"; promise lọt ngoài niche | Term theo word-boundary; fatal-promise scan chạy ĐỘC LẬP với phân loại niche; disclaimer phải là câu đầy đủ |
 | Extraction sót dạng số | Thêm decimal, ordinal-day (July 10th), word-percent (eight percent), age-range; giới hạn còn lại GHI RÕ trong docstring (spelled-out hiếm, ½, ngoại tệ) — lớp bù: critic accuracy_trust + human review |
 
+**Vòng verify (codex, lần 2):** REQUEST_CHANGES lần nữa — 2 critical mới +
+5 major, đã sửa ở commit d46eef6 (suite 2152 pass / 0 fail): script.json
+sidecar (nguồn narration thật của renderer) giờ bị audit coverage như script.txt;
+lỗi đọc niche config → fail-CLOSED (trước đó fail-open bỏ qua precheck); stat
+overlay bị audit vs ledger (uncovered → drop); plain-wildcard không còn cover
+percent/age (chart-side giữ vì chart values là bare float theo schema); năm
+attribution chỉ cover dòng source của chart, không cover label/title; `_run`
+bắt cả stdout (diagnostics audit nằm ở đó) + exit-86 chặn cả 3 đường render
+(flow / fallback / FLOW_SKIP); `401(k)` match bằng lookaround; persona detector
+upload dùng chung regex với rubric (không drift).
+
+**Residual CHẤP NHẬN CÓ GHI CHÉP (không giấu):** (a) extractor không thấy số
+viết chữ hiếm ("seventy-three"), phân số unicode (73½), ngoại tệ — script toàn
+dạng đó sẽ pass gate rỗng; lớp bù = critic accuracy_trust + human YMYL review
+bắt buộc; (b) chưa có integration test mức subprocess cho FLOW_SKIP/exit-86/
+_step_render (logic được ghim ở mức helper); (c) stat_number không chứa token
+trích xuất được ("60+ min") không bị audit — cùng giới hạn (a).
+
 Còn lại của Phase B→C: chạy 1 script e2e thật qua rubric mới + ledger (cần quota
 LLM), Shorts system (Phase C), benchmark gate vs golden set.
 
