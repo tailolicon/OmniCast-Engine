@@ -372,12 +372,16 @@ class NotebookLMWorker:
         box.press("End")
         self.page.keyboard.type(" ")
         self.page.keyboard.press("Backspace")
+        # Enter in the chat box is the PROVEN send path (probe 2026-07-26).
+        # The only button matching aria "Submit" belongs to the sources-panel
+        # discovery form and sits disabled — clicking it burns the timeout.
         clicked = False
-        send = self.find("send_button", timeout_s=5)
+        send = self.find("send_button", timeout_s=2)
         if send is not None:
             try:
-                send.click(timeout=8000)
-                clicked = True
+                if send.is_enabled():
+                    send.click(timeout=5000)
+                    clicked = True
             except Exception:
                 pass
         if not clicked:
@@ -523,8 +527,12 @@ def run_notebook_stage(manifest: RunManifest, base_dir: Path,
                     job.last_error = str(exc)[:200]
                     worker.save_failure_artifacts(reason=f"prompt {job.prompt_id}")
                 manifest.save(base_dir)
-            manifest.transition(RunState.CAPTURE_RESPONSES, base_dir)
-            manifest.transition(RunState.VALIDATE, base_dir)
+            # Only advance when the recorded state is actually behind — a
+            # VALIDATE-state manifest re-entering this stage for prompt
+            # retries must not attempt an illegal VALIDATE→CAPTURE move.
+            if manifest.state == RunState.RUN_RESEARCH_PROMPTS:
+                manifest.transition(RunState.CAPTURE_RESPONSES, base_dir)
+                manifest.transition(RunState.VALIDATE, base_dir)
         return manifest
     except AuthRequired:
         # Not a failure of the run — a failure of the session. Record and let

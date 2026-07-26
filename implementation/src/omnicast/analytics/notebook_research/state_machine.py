@@ -57,7 +57,9 @@ RESUME_AT: dict[RunState, RunState] = {
     RunState.SOURCE_AUDIT: RunState.SOURCE_AUDIT,
     RunState.RUN_RESEARCH_PROMPTS: RunState.RUN_RESEARCH_PROMPTS,  # prompt-level dedupe
     RunState.CAPTURE_RESPONSES: RunState.RUN_RESEARCH_PROMPTS,
-    RunState.VALIDATE: RunState.VALIDATE,
+    # VALIDATE re-enters at the prompts stage: failed prompt jobs must get
+    # their retry (completed ones are hash-deduped), THEN validation reruns.
+    RunState.VALIDATE: RunState.RUN_RESEARCH_PROMPTS,
     RunState.INGEST: RunState.VALIDATE,   # validation is cheap; re-verify before ingest
     RunState.COMPLETE: RunState.COMPLETE,
     RunState.FAILED: RunState.AUTH_CHECK,  # a fresh attempt starts from auth

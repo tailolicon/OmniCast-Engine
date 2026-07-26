@@ -110,8 +110,9 @@ def run_notebooklm(channel_id: str, report: dict, headless: bool) -> None:
         vid = f.stem.split("_")[-1]
         packets.append((vid, roles.get(vid, ""), f))
     manifest.register_sources(packets)
-    prompts = {"source_audit": (pilot / "prompts" / "1_source_audit.md").read_text(encoding="utf-8")}
-    for pid, fname in (("pair_comparison", "3_pair_comparison.md"),
+    prompts = {}
+    for pid, fname in (("source_audit", "1_source_audit.md"),
+                       ("pair_comparison", "3_pair_comparison.md"),
                        ("cohort_synthesis", "4_cohort_synthesis.md")):
         prompts[pid] = (pilot / "prompts" / fname).read_text(encoding="utf-8")
         manifest.register_prompt(pid, prompts[pid])

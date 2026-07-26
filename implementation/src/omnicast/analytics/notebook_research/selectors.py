@@ -60,16 +60,21 @@ SELECTORS: dict[str, list[tuple[str, str]]] = {
         ("css", "input[aria-label*='title'], input[aria-label*='Title']"),
     ],
     "chat_input": [
-        # Calibrated from live DOM 2026-07-26: the REAL chat box is
-        # aria-label "Hộp truy vấn" / placeholder "Đặt câu hỏi hoặc tạo nội
-        # dung" (VI) or "Ask a question…" (EN). The sources panel has ANOTHER
-        # textarea (web-source discovery, aria "Khám phá nguồn…") that a bare
-        # `textarea` fallback matched first — run 5 typed the prompt in there.
-        ("role:textbox", r"(hộp truy vấn|query box|ask|question|câu hỏi)"),
-        ("css", "textarea[aria-label*='truy vấn'], textarea[aria-label*='uery']"),
-        ("css", "textarea[placeholder*='câu hỏi'], textarea[placeholder*='question'], "
-                "textarea[placeholder*='Ask']"),
-        ("css", "textarea:not([aria-label*='Khám phá']):not([aria-label*='iscover'])"),
+        # Calibrated across THREE live probes (2026-07-26). Two textareas
+        # exist and BOTH contain "query"/"truy vấn" in their aria labels:
+        #   chat      = aria "Query box"/"Hộp truy vấn",
+        #               placeholder "Ask a question…"/"Đặt câu hỏi…"
+        #   discovery = aria "Discover sources based on the inputted query"/
+        #               "Khám phá nguồn…", formcontrolname=discoverSourcesQuery
+        # A substring/first-match on "query" grabs the (often disabled)
+        # discovery box → run 5 typed into it, run 7 click-timed-out on it.
+        # Placeholder is the reliable discriminator; every fallback EXCLUDES
+        # the discovery control explicitly.
+        ("css", "textarea[placeholder*='Ask a question'], "
+                "textarea[placeholder*='Đặt câu hỏi']"),
+        ("role:textbox", r"^(query box|hộp truy vấn)$"),
+        ("css", "textarea:not([formcontrolname='discoverSourcesQuery'])"
+                ":not([aria-label*='Discover']):not([aria-label*='Khám phá'])"),
         ("css", "[contenteditable=true]"),
     ],
     "send_button": [
@@ -90,9 +95,11 @@ SELECTORS: dict[str, list[tuple[str, str]]] = {
         ("css", "[class*='citation']"),          # last resort only
     ],
     "response_container": [
-        ("css", "[data-testid*=response]"),
-        ("css", "[role=article]"),
-        ("css", "message-content, .message-content"),
+        # Live probe 2026-07-26: each Q/A exchange is a div.chat-message-pair
+        # inside .chat-panel-content — `.last` is the current answer.
+        ("css", ".chat-message-pair"),
+        ("css", ".chat-panel-content"),
+        ("css", "chat-panel"),
     ],
     "signed_out_marker": [
         ("text", r"(Sign in|Đăng nhập|Use another account)"),
