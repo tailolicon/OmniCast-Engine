@@ -305,6 +305,17 @@ class TestCodexAuditFixes:
         report = gate_fact_ledger(SCRIPT, ledger, current_year=2026)
         assert any("future" in v for v in report.invalid_entries)
 
+    def test_historical_self_consistent_claim_not_stale(self):
+        # "built in 1939" with as_of=1939 names its own year — history, not
+        # a stale current-rule figure (live false positive 27/07).
+        ledger = FactLedger(entries=[
+            _entry(claim="the earnings test was built in 1939",
+                   value="1939", year_sensitive=True, as_of="1939",
+                   source_name="Social Security Amendments of 1939")])
+        report = gate_fact_ledger("The earnings test was built in 1939.",
+                                  ledger, current_year=2026)
+        assert not report.stale_entries
+
     def test_year_sensitive_inferred_from_claim_text(self):
         # Model says year_sensitive=False, but "earnings limit" is a rule-year
         # figure — the heuristic must overrule the model.

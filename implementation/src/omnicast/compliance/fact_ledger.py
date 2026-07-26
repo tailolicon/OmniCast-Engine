@@ -317,7 +317,15 @@ def gate_fact_ledger(
                 if as_of_year > year:
                     report.invalid_entries.append(
                         f"{label} — as_of {as_of_year} is in the future (current year {year})")
-                elif _entry_year_sensitive(e) and as_of_year != year:
+                elif (_entry_year_sensitive(e) and as_of_year != year
+                      and str(as_of_year) not in e.claim):
+                    # A claim that NAMES its own as_of year ("the 2025 figures
+                    # won't match…", "built in 1939") is a self-consistent
+                    # historical reference, not a stale current-rule figure —
+                    # the keyword heuristic false-flagged exactly those two
+                    # (live 27/07). A current-rule figure quoted from an old
+                    # year still fails, because its claim names no year or a
+                    # different one.
                     report.stale_entries.append(
                         f"{label} — year-sensitive figure dated {as_of_year}, current rule "
                         f"year is {year} (must cite the CURRENT year's figure)")
