@@ -102,10 +102,28 @@ class FactLedgerAgent(BaseAgent):
             "confident exists, put the claim in needs_verification instead of "
             "inventing one.\n\n"
         )
+        # The client does NOT inject the schema — the model only knows the
+        # shape we show it (the critic's reliability comes from exactly this
+        # kind of embedded template; live 27/07 the ledger model produced 20k
+        # tokens of prose because no template was ever shown).
+        json_template = (
+            "═══ REQUIRED JSON OUTPUT — respond with ONLY this JSON object, "
+            "no prose before or after, no markdown fences ═══\n"
+            "{\n"
+            '  "entries": [\n'
+            '    {"claim": "<the claim as spoken>", "value": "<figure verbatim>", '
+            '"source_name": "<document + year>", "source_url": "", '
+            '"as_of": "<year>", "year_sensitive": false, "section": "<heading>"}\n'
+            "  ],\n"
+            '  "needs_verification": ["<claim you could not source>"]\n'
+            "}\n"
+            "One object in entries per claim. entries must NOT be empty.\n\n"
+        )
         prompt = (
             "Build the fact ledger for this script.\n\n" + base_rules +
             "The deterministic extractor found these numeric tokens — your entries "
             f"must cover ALL of them: {', '.join(numeric) if numeric else '(none)'}\n\n"
+            + json_template +
             "═══ SCRIPT ═══\n" + script_text
         )
         _, draft = await self.call_llm_structured(
@@ -132,7 +150,8 @@ class FactLedgerAgent(BaseAgent):
                 + "\n- ".join(report.uncovered[:30] or ["(none)"])
                 + "\n\nINVALID entries (fix these fields):\n- "
                 + "\n- ".join(report.invalid_entries[:30] or ["(none)"])
-                + "\n\n═══ SCRIPT ═══\n" + script_text
+                + "\n\n" + json_template
+                + "═══ SCRIPT ═══\n" + script_text
             )
             try:
                 _, draft2 = await self.call_llm_structured(
