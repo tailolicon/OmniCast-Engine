@@ -75,21 +75,31 @@ class FactLedgerAgent(BaseAgent):
     ) -> FactLedger:
         numeric = extract_numeric_claims(script_text)
         sources = ", ".join(proof_sources or []) or "SSA (ssa.gov), IRS (irs.gov), CFPB, FBI IC3"
-        prompt = (
-            "Build the fact ledger for this script.\n\n"
+        base_rules = (
             f"RULE YEAR: {current_year}. Preferred source families: {sources}.\n\n"
             "For EVERY load-bearing claim — every dollar amount, percentage, "
-            "threshold, rule age, deadline, and every stated rule/law — emit one "
-            "entry: {claim (as spoken), value (the figure verbatim), source_name "
-            "(the real document, with its year, e.g. 'SSA 2026 Fact Sheet'), "
-            "source_url (official page if known, else empty), as_of (the year the "
-            "figure is valid for), year_sensitive (true for anything that changes "
-            "by rule year: tax brackets, earnings limits, contribution limits, RMD "
-            "ages, premium amounts), section (the script heading it appears in)}.\n\n"
+            "threshold, rule age, deadline, historical year, and every stated "
+            "rule/law — emit one entry with ALL fields filled: {claim (as spoken), "
+            "value (the figure verbatim), source_name (the real document, with its "
+            "year, e.g. 'SSA 2026 Fact Sheet'), source_url (official page if known, "
+            "else empty), as_of (the year the figure is valid for — REQUIRED, never "
+            "empty), year_sensitive (true for anything that changes by rule year: "
+            "earnings limits, brackets, premiums), section (the script heading)}.\n\n"
+            "HYPOTHETICAL WORKED-EXAMPLE figures (an invented income, benefit "
+            "amount, or hourly wage used purely for illustration) get "
+            f"source_name='worked example (hypothetical)' and as_of='{current_year}' "
+            "with year_sensitive=false — they still need their own entries so the "
+            "human reviewer can tell example numbers from rule numbers.\n"
+            "HISTORICAL years (a law's year, an era) get the act/document as "
+            "source_name and that year as as_of.\n\n"
+            "If you cannot attribute a REAL figure to a real source you are "
+            "confident exists, put the claim in needs_verification instead of "
+            "inventing one.\n\n"
+        )
+        prompt = (
+            "Build the fact ledger for this script.\n\n" + base_rules +
             "The deterministic extractor found these numeric tokens — your entries "
             f"must cover ALL of them: {', '.join(numeric) if numeric else '(none)'}\n\n"
-            "If you cannot attribute a figure to a REAL source you are confident "
-            "exists, put the claim in needs_verification instead of inventing one.\n\n"
             "═══ SCRIPT ═══\n" + script_text
         )
         _, draft = await self.call_llm_structured(
@@ -99,6 +109,37 @@ class FactLedgerAgent(BaseAgent):
             max_tokens=16000,
             temperature=0.1,
         )
+
+        # ONE deterministic repair round: gate the draft locally and hand the
+        # model its exact gaps (live 27/07: first pass covered 7/19 tokens and
+        # left source/as_of empty — a generic "cover everything" ask was not
+        # enough; an itemised deficiency list is).
+        from omnicast.compliance.fact_ledger import gate_fact_ledger
+        probe = FactLedger(entries=list(draft.entries))
+        report = gate_fact_ledger(script_text, probe, current_year=current_year)
+        if not report.passed and (report.uncovered or report.invalid_entries):
+            gaps = (
+                "Your ledger draft has DEFICIENCIES. Return the COMPLETE corrected "
+                "ledger (all previous entries, fixed, plus the missing ones).\n\n"
+                + base_rules
+                + "UNCOVERED numeric tokens (each needs an entry):\n- "
+                + "\n- ".join(report.uncovered[:30] or ["(none)"])
+                + "\n\nINVALID entries (fix these fields):\n- "
+                + "\n- ".join(report.invalid_entries[:30] or ["(none)"])
+                + "\n\n═══ SCRIPT ═══\n" + script_text
+            )
+            try:
+                _, draft2 = await self.call_llm_structured(
+                    [{"role": "system", "content": self.system_prompt},
+                     {"role": "user", "content": gaps}],
+                    output_schema=_LedgerDraft,
+                    max_tokens=16000,
+                    temperature=0.1,
+                )
+                if draft2.entries:
+                    draft = draft2
+            except Exception as exc:  # noqa: BLE001 — keep round-1 draft
+                logger.warning("fact_ledger repair round failed", error=str(exc)[:150])
         if draft.needs_verification:
             logger.warning("fact_ledger: unattributable claims",
                            count=len(draft.needs_verification),
