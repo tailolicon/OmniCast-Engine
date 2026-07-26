@@ -349,11 +349,31 @@ class NotebookLMWorker:
             f"(last count {self._source_count_on_page()})")
 
     def run_prompt(self, prompt_text: str) -> str:
-        """Send one prompt; return the final response text once it stops
-        changing across RESPONSE_STABLE_CHECKS consecutive polls."""
+        """Send one prompt; return the final response.
+
+        Completion detection (run 8 post-mortem): text stability alone fires
+        early — Gemini pauses mid-generation (the "Thoughts" phase), the text
+        holds still for a few polls, and the next prompt then finds the chat
+        box DISABLED because the real answer is still streaming. The box's
+        editability IS the ground-truth generation signal, so the flow is:
+        wait box editable (previous turn may still run) → send → confirm
+        generation started → wait until box editable again AND text stable."""
         box = self.find("chat_input", timeout_s=30)
         if box is None:
             raise UiDeadline("run_prompt: chat input not found")
+
+        deadline = time.monotonic() + DEADLINE_RESPONSE
+        while time.monotonic() < deadline:
+            try:
+                if box.is_editable():
+                    break
+            except Exception:
+                pass
+            time.sleep(POLL_S)
+        else:
+            raise UiDeadline("run_prompt: chat box never became editable "
+                             "(previous generation still running?)")
+        baseline = self._latest_response_text()
         box.click()
         box.fill(prompt_text)
         # WRONG-BOX GUARD: run 5 filled the sources-panel discovery textarea
@@ -387,12 +407,35 @@ class NotebookLMWorker:
         if not clicked:
             box.press("Enter")
 
-        deadline = time.monotonic() + DEADLINE_RESPONSE
+        # Confirm generation actually STARTED (box disables or a new message
+        # pair appears) — otherwise "stable" would trivially pass on the old
+        # answer and the send failure would go unnoticed.
+        start_deadline = time.monotonic() + 45
+        started = False
+        while time.monotonic() < start_deadline:
+            try:
+                if not box.is_editable():
+                    started = True
+                    break
+            except Exception:
+                pass
+            text = self._latest_response_text()
+            if text != baseline:
+                started = True
+                break
+            time.sleep(1.0)
+        if not started:
+            raise UiDeadline("run_prompt: generation never started after send")
+
         last, stable = "", 0
         while time.monotonic() < deadline:
             time.sleep(POLL_S)
             text = self._latest_response_text()
-            if text and text == last:
+            try:
+                editable = box.is_editable()
+            except Exception:
+                editable = False
+            if editable and text and text == last:
                 stable += 1
                 if stable >= RESPONSE_STABLE_CHECKS:
                     return text

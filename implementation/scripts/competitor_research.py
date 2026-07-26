@@ -115,7 +115,9 @@ def run_notebooklm(channel_id: str, report: dict, headless: bool) -> None:
                        ("pair_comparison", "3_pair_comparison.md"),
                        ("cohort_synthesis", "4_cohort_synthesis.md")):
         prompts[pid] = (pilot / "prompts" / fname).read_text(encoding="utf-8")
-        manifest.register_prompt(pid, prompts[pid])
+        # v2: run-8's capture logic ended answers early (Thoughts-phase pause),
+        # so every v1 response on disk is suspect — version bump forces rerun.
+        manifest.register_prompt(pid, prompts[pid], version="v2")
     manifest.save(base)
 
     try:
