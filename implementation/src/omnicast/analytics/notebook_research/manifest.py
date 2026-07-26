@@ -31,8 +31,13 @@ def short_hash(text: str) -> str:
 class SourceEntry(BaseModel):
     video_id: str
     role: str = ""
+    # ONE kind per video, never both (duplicate content would inflate how
+    # common a pattern looks to NotebookLM): "packet" (Markdown upload) or
+    # "youtube_url" (NotebookLM pulls the transcript itself).
+    source_kind: str = "packet"
     packet_path: str = ""
-    source_hash: str = ""            # short hash of packet content
+    url: str = ""
+    source_hash: str = ""            # short hash of packet content (packet kind)
     remote_title: str = ""           # filename as it appears in the source list
     upload_status: str = "pending"   # pending | uploaded | indexed | failed
     attempts: int = 0
@@ -53,6 +58,9 @@ class PromptJob(BaseModel):
 class RunManifest(BaseModel):
     channel_id: str
     notebook_key: str
+    # The notebook's URL is its IDENTITY (titles are cosmetic; a failed rename
+    # must not make a resumed run create a second notebook).
+    notebook_url: str = ""
     state: RunState = RunState.START
     sources: list[SourceEntry] = Field(default_factory=list)
     prompts: list[PromptJob] = Field(default_factory=list)
@@ -115,13 +123,42 @@ class RunManifest(BaseModel):
             cur = by_id.get(video_id)
             if cur is None:
                 self.sources.append(SourceEntry(
-                    video_id=video_id, role=role, packet_path=str(path),
+                    video_id=video_id, role=role, source_kind="packet",
+                    packet_path=str(path),
                     source_hash=content_hash, remote_title=remote))
             elif cur.source_hash != content_hash:
                 cur.source_hash = content_hash
                 cur.remote_title = remote
                 cur.packet_path = str(path)
                 cur.upload_status = "pending"   # stale → re-upload; NEVER auto-delete old
+
+    def register_url_sources(self, videos: list[tuple[str, str, str]]) -> None:
+        """(video_id, role, url) — URL-first sources (NotebookLM pulls the
+        transcript itself). One kind per video: a video already registered as a
+        packet stays a packet; a URL entry that later fails import is flipped
+        to a packet by the fallback path, never duplicated."""
+        by_id = {s.video_id: s for s in self.sources}
+        for video_id, role, url in videos:
+            if video_id in by_id:
+                continue
+            self.sources.append(SourceEntry(
+                video_id=video_id, role=role, source_kind="youtube_url", url=url))
+
+    def flip_to_packet(self, video_id: str, packet_path: Path) -> None:
+        """URL import failed → this video becomes a packet source (ASR/caption
+        fallback). The old URL entry is REPLACED in the manifest; removing the
+        dead source in the notebook UI stays a manual decision (never
+        auto-delete)."""
+        for s in self.sources:
+            if s.video_id == video_id:
+                s.source_kind = "packet"
+                s.packet_path = str(packet_path)
+                s.source_hash = short_hash(
+                    Path(packet_path).read_text(encoding="utf-8"))
+                prefix = "WIN" if s.role == "winner" else "CTL"
+                s.remote_title = f"{prefix}_{video_id}_{s.source_hash}.md"
+                s.upload_status = "pending"
+                return
 
     def pending_uploads(self) -> list[SourceEntry]:
         return [s for s in self.sources if s.upload_status == "pending"]

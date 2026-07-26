@@ -104,8 +104,14 @@ class NotebookLMWorker:
 
     # ── element resolution (semantic first) ──────────────────────────────────
 
-    def find(self, key: str, *, timeout_s: float = 10.0):
-        """Resolve a semantic selector to the first visible match, or None."""
+    def find(self, key: str, *, timeout_s: float = 10.0,
+             require_visible: bool = True):
+        """Resolve a semantic selector to the first match, or None.
+
+        require_visible=False exists for file inputs: real uploaders keep
+        `input[type=file]` at display:none behind a styled button, and
+        Playwright can set files on a hidden input just fine — requiring
+        visibility was exactly why the first live run failed."""
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             for strategy, value in SELECTORS[key]:
@@ -118,7 +124,7 @@ class NotebookLMWorker:
                         loc = self.page.locator(f"text=/{value}/i")
                     else:
                         loc = self.page.locator(value)
-                    if loc.count() and loc.first.is_visible():
+                    if loc.count() and (not require_visible or loc.first.is_visible()):
                         return loc.first
                 except Exception:
                     continue
@@ -156,29 +162,46 @@ class NotebookLMWorker:
             time.sleep(POLL_S)
         raise UiDeadline("auth_check: neither sign-in page nor notebook UI appeared")
 
-    def resolve_notebook(self, notebook_key: str) -> None:
-        """Open the notebook titled `notebook_key`, creating it if missing."""
+    def resolve_notebook(self, notebook_key: str,
+                         notebook_url: str = "") -> str:
+        """Open the run's notebook and return its URL (the stable identity —
+        titles are cosmetic and renames can fail silently).
+
+        Priority: stored URL → title match on the home list → create new
+        (then best-effort rename via the 'Untitled notebook' header)."""
+        if notebook_url:
+            self.page.goto(notebook_url, wait_until="domcontentloaded",
+                           timeout=DEADLINE_NOTEBOOK * 1000)
+            if self._wait_notebook_open():
+                return self.page.url
+            raise UiDeadline("resolve_notebook: stored notebook URL did not open")
+
         existing = self.page.locator(f"text={notebook_key}")
         try:
             if existing.count() and existing.first.is_visible():
                 existing.first.click()
                 if self._wait_notebook_open():
-                    return
+                    return self.page.url
         except Exception:
             pass
+
         btn = self.find("create_notebook", timeout_s=15)
         if btn is None:
             raise UiDeadline("resolve_notebook: create button not found")
         btn.click()
-        title = self.find("notebook_title_input", timeout_s=20)
-        if title is not None:
-            try:
-                title.fill(notebook_key)
-                self.page.keyboard.press("Enter")
-            except Exception:
-                pass
         if not self._wait_notebook_open():
             raise UiDeadline("resolve_notebook: notebook page did not open")
+        # Best-effort rename: click the 'Untitled notebook' header, type key.
+        try:
+            header = self.find("notebook_title_header", timeout_s=8)
+            if header is not None:
+                header.click()
+                self.page.keyboard.press("Control+a")
+                self.page.keyboard.type(notebook_key)
+                self.page.keyboard.press("Enter")
+        except Exception:
+            logger.warning("notebook rename failed — URL remains the identity")
+        return self.page.url
 
     def _wait_notebook_open(self) -> bool:
         deadline = time.monotonic() + DEADLINE_NOTEBOOK
@@ -188,30 +211,85 @@ class NotebookLMWorker:
             time.sleep(POLL_S)
         return False
 
-    def upload_sources(self, manifest: RunManifest, base_dir: Path) -> None:
-        """Multi-select upload of all pending packets in ONE file-chooser shot,
-        then per-source status flip. Dedupe is the manifest's job."""
-        pending = manifest.pending_uploads()
-        if not pending:
+    def _open_sources_dialog(self) -> None:
+        """The add-sources dialog AUTO-OPENS on a fresh notebook (live
+        screenshot 2026-07-26); only click 'Add sources' when it isn't up."""
+        if self.find("sources_dialog_marker", timeout_s=3) is not None:
             return
         add = self.find("add_source", timeout_s=20)
         if add is None:
-            raise UiDeadline("upload_sources: Add source button not found")
+            raise UiDeadline("sources dialog: Add sources button not found")
         add.click()
-        file_input = self.find("file_input", timeout_s=20)
-        if file_input is None:
-            opt = self.find("upload_file_option", timeout_s=10)
-            if opt is not None:
-                opt.click()
-                file_input = self.find("file_input", timeout_s=15)
-        if file_input is None:
-            raise UiDeadline("upload_sources: file input not found")
+        if self.find("sources_dialog_marker", timeout_s=15) is None:
+            raise UiDeadline("sources dialog did not open")
+
+    def upload_sources(self, manifest: RunManifest, base_dir: Path) -> None:
+        """Multi-select upload of all pending PACKET sources in one shot.
+
+        Two mechanisms, in order: expect_file_chooser around the 'Upload
+        files' button (the real UI opens a native chooser), then a hidden
+        `input[type=file]` (visibility NOT required — that requirement was the
+        first live-run failure)."""
+        pending = [s for s in manifest.pending_uploads()
+                   if s.source_kind == "packet"]
+        if not pending:
+            return
+        self._open_sources_dialog()
         paths = [s.packet_path for s in pending]
-        file_input.set_input_files(paths)
+
+        done = False
+        opt = self.find("upload_file_option", timeout_s=10)
+        if opt is not None:
+            try:
+                with self.page.expect_file_chooser(timeout=15000) as fc:
+                    opt.click()
+                fc.value.set_files(paths)
+                done = True
+            except Exception:
+                pass
+        if not done:
+            file_input = self.find("file_input", timeout_s=15,
+                                   require_visible=False)
+            if file_input is None:
+                raise UiDeadline("upload_sources: no file chooser and no file input")
+            file_input.set_input_files(paths)
+
         for s in pending:
             s.upload_status = "uploaded"
             s.attempts += 1
         manifest.save(base_dir)
+
+    def add_url_sources(self, manifest: RunManifest, base_dir: Path,
+                        batch_limit: int = 40) -> None:
+        """URL-first ingestion: add pending youtube_url sources one by one via
+        the Websites option (NotebookLM pulls the transcript itself). Failures
+        are recorded per-source for the caption/ASR packet fallback — one bad
+        URL never stops the batch."""
+        pending = [s for s in manifest.pending_uploads()
+                   if s.source_kind == "youtube_url"][:batch_limit]
+        for s in pending:
+            try:
+                self._open_sources_dialog()
+                opt = self.find("website_source_option", timeout_s=10)
+                if opt is None:
+                    raise UiDeadline("url source: Websites option not found")
+                opt.click()
+                box = self.find("url_input", timeout_s=15)
+                if box is None:
+                    raise UiDeadline("url source: URL input not found")
+                box.fill(s.url)
+                confirm = self.find("url_submit", timeout_s=10)
+                if confirm is not None:
+                    confirm.click()
+                else:
+                    self.page.keyboard.press("Enter")
+                s.upload_status = "uploaded"
+            except Exception as exc:  # noqa: BLE001 — recorded, fallback later
+                s.upload_status = "failed"
+                s.last_error = str(exc)[:200]
+                self.save_failure_artifacts(reason=f"url source {s.video_id}")
+            s.attempts += 1
+            manifest.save(base_dir)
 
     def wait_for_indexing(self, manifest: RunManifest, base_dir: Path) -> None:
         """Condition wait: source count reaches expectation AND no processing
@@ -326,17 +404,29 @@ def run_notebook_stage(manifest: RunManifest, base_dir: Path,
     state = manifest.resume_state()
     if manifest.state == RunState.START:
         manifest.transition(RunState.AUTH_CHECK, base_dir)
+    elif manifest.state in (RunState.FAILED, RunState.AUTH_REQUIRED):
+        # Terminal states have no legal transitions — a resumed attempt resets
+        # to AUTH_CHECK explicitly, with the reset on the record. Source/prompt
+        # progress survives in the manifest, so nothing is redone.
+        manifest.state = RunState.AUTH_CHECK
+        manifest.history.append(
+            f"{datetime.now(timezone.utc).isoformat()} -> AUTH_CHECK (resume after "
+            "failure)")
+        manifest.save(base_dir)
+        state = RunState.AUTH_CHECK
     try:
         if state in (RunState.AUTH_CHECK,):
             worker.auth_check()
             manifest.transition(RunState.RESOLVE_NOTEBOOK, base_dir)
             state = RunState.RESOLVE_NOTEBOOK
         if state == RunState.RESOLVE_NOTEBOOK:
-            worker.resolve_notebook(manifest.notebook_key)
+            manifest.notebook_url = worker.resolve_notebook(
+                manifest.notebook_key, manifest.notebook_url)
             manifest.transition(RunState.UPLOAD_SOURCES, base_dir)
             state = RunState.UPLOAD_SOURCES
         if state == RunState.UPLOAD_SOURCES:
             worker.upload_sources(manifest, base_dir)
+            worker.add_url_sources(manifest, base_dir)
             manifest.transition(RunState.WAIT_FOR_INDEXING, base_dir)
             state = RunState.WAIT_FOR_INDEXING
         if state == RunState.WAIT_FOR_INDEXING:

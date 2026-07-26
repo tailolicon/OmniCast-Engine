@@ -32,8 +32,32 @@ SELECTORS: dict[str, list[tuple[str, str]]] = {
         ("css", "input[type=file]"),
     ],
     "upload_file_option": [
-        ("text", r"(Upload|choose file|Tải.*lên|chọn tệp)"),
-        ("role:button", r"(upload|tải lên)"),
+        # Real UI 2026-07 (calibrated from live screenshot): the add-sources
+        # dialog shows buttons "Upload files / Websites / Drive / Copied text".
+        ("role:button", r"upload files?"),
+        ("text", r"(Upload files|choose file|Tải.*lên|chọn tệp)"),
+    ],
+    "sources_dialog_marker": [
+        ("text", r"(or drop your files|Upload files|thả tệp)"),
+    ],
+    "website_source_option": [
+        # Dialog button "Websites" (carries the YouTube icon in the live UI).
+        ("role:button", r"(websites?|youtube)"),
+        ("text", r"(Websites|YouTube|Trang web)"),
+    ],
+    "url_input": [
+        ("css", "input[type=url]"),
+        ("role:textbox", r"(url|link|paste|dán)"),
+        ("css", "input[placeholder*='http'], textarea[placeholder*='http']"),
+        ("css", "textarea"),
+    ],
+    "url_submit": [
+        ("role:button", r"(insert|add|submit|chèn|thêm)"),
+        ("text", r"(Insert|Add|Chèn)"),
+    ],
+    "notebook_title_header": [
+        ("text", r"(Untitled notebook|Sổ tay chưa có tiêu đề)"),
+        ("css", "input[aria-label*='title'], input[aria-label*='Title']"),
     ],
     "chat_input": [
         ("role:textbox", r"(ask|question|nhập|hỏi)"),
