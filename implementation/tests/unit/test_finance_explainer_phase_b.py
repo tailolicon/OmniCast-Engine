@@ -99,6 +99,17 @@ class TestFinanceSlopSignals:
         flags, _ = fe.finance_slop_signals(text)
         assert not any("attribution tic" in f for f in flags)
 
+    def test_anecdote_evidence_flagged(self):
+        flags, caps = fe.finance_slop_signals(
+            "I've read Social Security's own community forums — this is a top complaint.")
+        assert any("anecdote" in f for f in flags)
+        assert caps.get("accuracy_trust", 99) <= 12
+
+    def test_reading_the_rules_is_fine(self):
+        flags, _ = fe.finance_slop_signals(
+            "I read these SSA rules closely every week so you don't have to.")
+        assert not any("anecdote" in f for f in flags)
+
     def test_nobody_scaffold_rationed(self):
         text = ("That's the part almost nobody explains. "
                 "This is what they don't tell you about the rule.")

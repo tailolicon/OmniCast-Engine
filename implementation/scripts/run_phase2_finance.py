@@ -35,7 +35,13 @@ async def main() -> int:
     parser.add_argument("--pain", default="")
     parser.add_argument("--audience", default="")
     parser.add_argument("--brief", default="", help="operator_desc steering text")
+    parser.add_argument("--brief-file", default="",
+                        help="path to a steering file (wins over --brief; the "
+                             "iteration loop accumulates directives there — a "
+                             "fresh gen has no memory of prior rounds)")
     args = parser.parse_args()
+    if args.brief_file:
+        args.brief = Path(args.brief_file).read_text(encoding="utf-8")
     if len(args.topic.split()) < 3:
         print(f"REJECTED/FAILED after 0.0s: topic too short: {args.topic!r}")
         return 1

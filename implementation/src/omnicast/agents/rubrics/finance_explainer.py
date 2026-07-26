@@ -112,6 +112,12 @@ _NOBODY_SCAFFOLD_RE = re.compile(
     re.IGNORECASE)
 MAX_ATTRIBUTION_TICS = 4
 MAX_NOBODY_SCAFFOLDS = 1
+# Autopsy v2: "I've read SSA's community forums — this is a top complaint" —
+# an unverifiable anecdote dressed as evidence. Reading the RULES is the
+# channel's premise; citing forums/comments as data is not.
+_ANECDOTE_EVIDENCE_RE = re.compile(
+    r"\bi'?ve (?:read|seen|browsed)\b[^.]{0,50}\b(?:forums?|comment section|"
+    r"comments|reddit|facebook)\b", re.IGNORECASE)
 
 
 def fatal_caps(caps: dict[str, int]) -> bool:
@@ -161,6 +167,10 @@ def finance_slop_signals(text: str) -> tuple[list[str], dict[str, int]]:
                      "(named document, 'SSA's published figures', 'the rule says') "
                      "and vary its position in the sentence")
         caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
+    if _ANECDOTE_EVIDENCE_RE.search(text):
+        flags.append("unverifiable anecdote as evidence (\"I've read the forums…\") — "
+                     "cite the document, not the comment section")
+        caps["accuracy_trust"] = min(caps.get("accuracy_trust", 99), 12)
     scaffolds = len(_NOBODY_SCAFFOLD_RE.findall(text))
     if scaffolds > MAX_NOBODY_SCAFFOLDS:
         flags.append(f"'nobody tells you' scaffold used {scaffolds}x (max "
