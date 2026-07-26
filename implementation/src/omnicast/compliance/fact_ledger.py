@@ -333,7 +333,11 @@ def gate_fact_ledger(
         # CONSISTENCY: the entry must be about THIS script. An entry whose value
         # never appears in the text is an orphan (stale ledger / hallucinated row).
         e_tokens = numeric_tokens(e.value) or numeric_tokens(e.claim)
-        if e_tokens:
+        # Rate-shorthand exemption: an entry describing "$1 per $2/$3" mechanics
+        # carries tiny money tokens the SPOKEN script renders as words ("one
+        # dollar per two") — for all-tiny-token entries the claim-text check is
+        # the meaningful one (live orphan class 27/07).
+        if e_tokens and not all(t.value <= 3 for t in e_tokens):
             if not any(_matches(t, script_keys) for t in e_tokens):
                 report.orphan_entries.append(
                     f"{label} — its figure never appears in the script")
