@@ -566,7 +566,22 @@ quốc gia + keywords + audience đã set qua Studio. Content engine:
 | Fact-citation ledger | `compliance/fact_ledger.py` + `agents/fact_ledger_agent.py` + caller trong `pipeline/steps.py` (sau approve, trước render) | ✅ LLM đề xuất binding, máy validate 4 chiều: coverage (mọi token số regex bắt được phải có entry — fail-closed khi ledger rỗng), completeness (source+as_of bắt buộc), recency (year_sensitive phải đúng năm rule hiện hành), consistency (entry mồ côi = chặn). Artifact `fact_ledger.json` + `.md` (bảng human-review) + SHA-256 script. **Ranh giới trung thực ghi trên artifact: gate chứng minh MỌI SỐ CÓ NGUỒN+NGÀY, không chứng minh số ĐÚNG — đó là việc của human YMYL review** |
 | Chart renderer thật | `production_router.py` (capability `chart_render` backed bởi matplotlib) + `render_real_video.py` (visual_type "chart" + `_render_chart_cell`) + `channel_styles.py` (chart miễn coercion) | ✅ `chart_gen.py` (viết sẵn, 0 caller) nay là renderer thật của INFOGRAPHIC khi kênh khai `supported_production: ["chart_render"]`; storyboard LLM được mở khoá #1c CHỈ cho visual_type "chart" với chart_spec; **audit fail-closed: giá trị chart không có trong fact_ledger.json → SystemExit chặn render**; chart fail → fallback stock B-roll, không bao giờ ảnh-AI-vẽ-biểu-đồ |
 | YMYL upload compliance finance | `upload/compliance.py`: check `ymyl_finance_safety` + `_check_ymyl_finance_text` | ✅ song song với health check (trước đây health-only): disclaimer bắt buộc, cấm guarantee/urgency, cấm advisor-persona trong metadata |
-| Tests | `tests/unit/test_finance_explainer_phase_b.py` (26 test) | ✅ rubric selection/weights/caps, extraction/gate 7 nhánh, upload compliance 6 nhánh, router chart 4 nhánh; suites ghim cũ (critic/router/styles/compliance) pass nguyên |
+| Tests | `tests/unit/test_finance_explainer_phase_b.py` (32 test) | ✅ rubric selection/weights/caps, extraction/gate 7 nhánh, upload compliance 6 nhánh, router chart 4 nhánh; full unit suite 2128 pass / 0 fail trên Windows 3.12 |
+
+**Vòng audit đối kháng (codex, cùng ngày):** REQUEST_CHANGES — 3 critical +
+6 major, tất cả đã sửa ở commit 68cfd2c (suite 2145 pass / 0 fail sau fix):
+
+| Finding codex | Fix |
+|---|---|
+| Render đường tắt/legacy/--all-stock bỏ qua ledger | `render_precheck` fail-closed ở ĐẦU render_real_video (trước mọi nhánh acquisition): ledger phải tồn tại + gate PASSED + SHA khớp đúng script |
+| Digit-core va chạm (6.2% ≡ tuổi 62; as_of 2026 che $2,026) | Token có KIỂU (money/percent/age/year/day/plain) + giá trị decimal; năm attribution chỉ cover token năm |
+| Recency do model tự khai; năm tương lai lọt | `year_sensitive` suy diễn deterministic từ text (limit/bracket/premium/RMD…); as_of tương lai = invalid; year-sensitive phải ĐÚNG năm hiện hành |
+| Cap "fatal" vẫn approved=True (54/70>53) | `fatal_caps()` → ép `approved=False` + route writer trong CriticAgent, độc lập điểm số |
+| Chart chỉ audit values | `audit_chart_spec` phủ values + labels + title + source, đòi gate.passed + SHA |
+| SystemExit bị retry --all-stock nuốt | `AUDIT_EXIT_CODE=86` riêng; `_step_render` gặp 86 = dừng cứng, không retry/degrade |
+| Regex lách ("I'm your CPA", "Guaranteed 8% returns") + oan ("Whether you should…", "As a CPA would…") | Nâng cả 2 chiều + lookbehind/lookahead loại trừ khung giáo dục |
+| "ira" substring bắt nhầm "Iraq"; promise lọt ngoài niche | Term theo word-boundary; fatal-promise scan chạy ĐỘC LẬP với phân loại niche; disclaimer phải là câu đầy đủ |
+| Extraction sót dạng số | Thêm decimal, ordinal-day (July 10th), word-percent (eight percent), age-range; giới hạn còn lại GHI RÕ trong docstring (spelled-out hiếm, ½, ngoại tệ) — lớp bù: critic accuracy_trust + human review |
 
 Còn lại của Phase B→C: chạy 1 script e2e thật qua rubric mới + ledger (cần quota
 LLM), Shorts system (Phase C), benchmark gate vs golden set.
