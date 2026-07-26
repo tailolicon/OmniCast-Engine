@@ -601,6 +601,24 @@ bắt buộc; (b) chưa có integration test mức subprocess cho FLOW_SKIP/exit
 _step_render (logic được ghim ở mức helper); (c) stat_number không chứa token
 trích xuất được ("60+ min") không bị audit — cùng giới hạn (a).
 
+### Competitor research 2 đường (26/07, commit 34abb6a + a703886)
+
+Kiến trúc (GPT proposal, user duyệt): **Native Learner = production, NotebookLM
+browser = challenger**, cả hai đổ về evidence validator → intel_gate.
+
+| Mảnh | Trạng thái |
+|---|---|
+| `analytics/competitor_evidence.py` — evidence validator (lớp GPT chỉ ra là thiếu; ≠ intel_gate: kiểm BẰNG CHỨNG trước biên dịch — pair thật, quote có trong transcript, frequency tính lại bằng code, chặn copy ≥8 từ nguyên văn, bắt provenance) | ✅ 12 test |
+| `notebook_research/` — state machine (resume đúng chỗ chết, không re-upload), manifest idempotent (dedupe video_id, hash đổi → stale, prompt hash đổi → re-run), selector ngữ nghĩa (role/text trước, CSS cuối, alias EN+VI), Playwright worker (chờ theo điều kiện + deadline, artifact screenshot/a11y/trace khi fail), allowlist supervisor enforce bằng-cách-không-có-code (không có hàm delete/share) | ✅ code + 13 test core; **CHƯA verify live** — cần `notebooklm_login.py` 1 lần (user đăng nhập, profile riêng `output/notebooklm_profile`, tách khỏi .flow_profile) rồi 1 run có giám sát để calibrate selector từ DOM dump |
+| `scripts/competitor_research.py` — 1 lệnh 2 provider, AUTH/UI lỗi ở NotebookLM KHÔNG giết native, run report JSON | ✅ (validate/promote nhánh structured-findings chờ parse step) |
+| Còn thiếu (ghi thật, không giấu) | reconciler finding-level; parse response→CohortFinding JSON; compiler promote findings đã validate vào playbook; login + first supervised run |
+
+**Playbook vault hiện tại:** `social_security_rules` + `retirement_taxes` = gate
+OK (coverage 1.0); channel-wide + `decision_numbers` = uncontrolled → TỪ CHỐI;
+scam/document = learner từ chối học (thiếu mẫu). ⇒ **video đầu phải thuộc 2
+pillar OK**; đề cử: "Working and Receiving Social Security (The New Rules for
+2026)" x61.
+
 Còn lại của Phase B→C: chạy 1 script e2e thật qua rubric mới + ledger (cần quota
 LLM), Shorts system (Phase C), benchmark gate vs golden set.
 
