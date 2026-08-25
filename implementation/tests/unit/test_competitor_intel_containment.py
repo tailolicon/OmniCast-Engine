@@ -57,7 +57,10 @@ async def test_transcript_fetch_does_not_block_the_event_loop(monkeypatch):
     monkeypatch.setattr(ci, "_fetch_transcript", _slow)
     result, ticks = await _loop_ticks_while(ci._fetch_transcript_async("v1", 10.0))
     assert result.source == "asr"
-    assert ticks > 10, "event loop was starved during the transcript fetch"
+    # Binary check: a BLOCKED loop yields ~0-1 ticks over the 150ms mock; a
+    # free loop yields dozens. >4 proves off-loading without flaking when the
+    # host is under render load (observed ticks==10 during a video render).
+    assert ticks > 4, "event loop was starved during the transcript fetch"
 
 
 async def test_thumbnail_learning_does_not_block_the_event_loop(monkeypatch):
@@ -68,7 +71,8 @@ async def test_thumbnail_learning_does_not_block_the_event_loop(monkeypatch):
     monkeypatch.setattr(ci, "_learn_thumbnails", _slow)
     result, ticks = await _loop_ticks_while(ci._learn_thumbnails_async(None, {}))
     assert result == "THUMB PLAYBOOK"
-    assert ticks > 10, "event loop was starved during thumbnail analysis"
+    # Same binary check as above — >4 proves off-loading, load-tolerant.
+    assert ticks > 4, "event loop was starved during thumbnail analysis"
 
 
 async def test_blocking_entry_points_are_documented_as_blocking():

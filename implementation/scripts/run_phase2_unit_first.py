@@ -25,6 +25,8 @@ os.environ.setdefault("OMNICAST_CLAUDE_BACKEND", "cli")
 
 async def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--stories", type=int, default=0,
+                        help="force N stories (0 = title/duration decides)")
     parser.add_argument("--channel", default="true_dread_files_us")
     parser.add_argument(
         "--topic",
@@ -38,6 +40,14 @@ async def main() -> int:
         print(f"REJECTED/FAILED after 0.0s: topic too short to be real: {args.topic!r} "
               "(check launcher quoting)")
         return 1
+
+    # The model tier is operational policy, not a per-launch choice. Running
+    # this script without it put planner and writer on Opus at max effort and
+    # burned a whole quota window on one unfinished compilation.
+    from omnicast.config.narrative_roles import apply_standard_roles
+    apply_standard_roles(os.environ)
+    if getattr(args, "stories", 0):
+        os.environ["OMNICAST_NARRATIVE_STORY_COUNT"] = str(args.stories)
 
     from omnicast.pipeline.steps import StepContext, _step_script
 

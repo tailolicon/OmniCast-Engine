@@ -68,6 +68,18 @@ def _get_chatterbox():
     from omnicast.media.providers.tts_chatterbox import ChatterboxTTSProvider
     return ChatterboxTTSProvider()
 
+def _get_vieneu():
+    from omnicast.media.providers.tts_vieneu import VieneuTTSProvider
+    return VieneuTTSProvider()
+
+def _get_volcengine():
+    from omnicast.media.providers.tts_volcengine import VolcengineTTSProvider
+    return VolcengineTTSProvider()
+
+def _get_capcut():
+    from omnicast.media.providers.tts_capcut import CapCutTTSProvider
+    return CapCutTTSProvider()
+
 # NOTE: pyttsx3/SAPI removed 2026-06-12 — neural-only policy. "piper" re-added
 # 2026-06-20 via sherpa-onnx (neural VITS, self-contained k2-fsa model tarballs).
 # "chatterbox" added 2026-07-13 (Resemble AI, MIT) — expressive emotion dial for
@@ -79,6 +91,15 @@ _TTS_PROVIDER_FACTORIES: dict[str, Callable[[], ITTSProvider]] = {
     "f5tts": _get_f5tts,
     "piper": _get_piper,
     "chatterbox": _get_chatterbox,
+    # "vieneu" added 2026-08-08 — local Vietnamese neural TTS, 14 preset voices
+    # plus reference cloning. Edge was the only Vietnamese option before.
+    "vieneu": _get_vieneu,
+    # "capcut" calls CapCut common_task TTS (vendored K07VN/capcut-tts-api) and
+    # falls back to Volcengine/Edge stand-ins when the API is off or fails.
+    "capcut": _get_capcut,
+    # ByteDance seed-tts-2.0 — the engine family behind CapCut's voices,
+    # via their documented endpoint. Needs the operator's own app keys.
+    "volcengine": _get_volcengine,
 }
 
 

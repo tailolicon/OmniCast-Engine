@@ -28,33 +28,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 RUNNER = ROOT / "scripts" / "run_phase2_unit_first.py"
 
-# The A/B-proven standard role config (2026-07-19): Sonnet planner + writer
-# (-36% cost, best campaign score). These overrides once lived only in the
-# launching shell's environment — one relaunch without them silently reverted
-# an entire batch to Opus roles (batch 20260719_1456) and nobody noticed until
-# the audit log was read. The runner owns operational policy, so it pins the
-# standard itself.
-_STANDARD_ROLE_ENV = {
-    "OMNICAST_NARRATIVE_PLANNER_MODEL": "claude-sonnet-5",
-    "OMNICAST_NARRATIVE_PLANNER_EFFORT": "high",
-    "OMNICAST_NARRATIVE_WRITER_MODEL": "claude-sonnet-5",
-    "OMNICAST_NARRATIVE_WRITER_EFFORT": "high",
-    # 2026-07-25 Phase 2 (operator-funded): judging moved BACK to
-    # DeepSeek-first (claude_only=0 in .env restores the original dual-provider
-    # routing: critic/plan-audit on v4-pro, compliance/annotation on flash,
-    # Sonnet as cross-provider fallback). The challenger therefore returns to
-    # Opus — with DeepSeek judges, an Anthropic challenger IS the cross-provider
-    # adversary. Do NOT pin CHALLENGER_PROVIDER=deepseek in this mode: a
-    # DeepSeek challenger over DeepSeek judges is not_independent by identity
-    # and can never approve a release. Net effect: ~40-50% of per-run
-    # Anthropic calls move to the funded DeepSeek balance.
-}
-
-
-def apply_standard_roles(environ) -> None:
-    """Pin the standard role config; an explicit operator export still wins."""
-    for key, value in _STANDARD_ROLE_ENV.items():
-        environ.setdefault(key, value)
+# The standard role table now lives in the package, because it was lost a
+# second time on 2026-08-03 through a launcher that did not have this fix.
+from omnicast.config.narrative_roles import (  # noqa: E402
+    STANDARD_ROLE_ENV as _STANDARD_ROLE_ENV,
+    apply_standard_roles,
+)
 
 
 def should_retry(returncode: int, terminal: str, wait: float | None, attempt: int) -> bool:

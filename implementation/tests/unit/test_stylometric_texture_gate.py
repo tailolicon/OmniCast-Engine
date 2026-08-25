@@ -550,7 +550,9 @@ def test_banned_phrase_failure_quotes_every_occurrence():
     only the first. The message must quote EVERY hit."""
     plan, stories = _compilation({
         "story_1": _clean("alpha")
-        + " I was telling myself I was overreacting, no, I wasn't telling myself anything.",
+        # 23/08: specific self-reassurance is the genre (two allowed); the EMPTY
+        # form is the slop and fails on sight, and every hit is still quoted.
+        + " I was telling myself it was nothing, no, I wasn't telling myself anything, it was fine.",
         "story_2": _clean("bravo"),
         "story_3": _clean("charlie"),
     })

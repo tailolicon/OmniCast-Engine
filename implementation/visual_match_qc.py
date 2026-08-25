@@ -40,20 +40,55 @@ _PROMPT = (
 )
 
 
+def _probe_clip_duration(path: Path) -> float:
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, creationflags=_NO_WINDOW, timeout=30)
+    try:
+        return max(0.0, float(probe.stdout.strip() or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _shot_timeline(product: Path) -> list[dict]:
-    """[{idx, start, mid, text}] from per-shot word timing sidecars."""
+    """[{idx, start, mid, text}] on the actual rendered-clip timeline.
+
+    Word sidecars describe speech only. Scene clips also include prosody pauses
+    and padding, so summing word durations drifts several shots by the outro.
+    The final video is a stream-copy concat of scene_NN.mp4; those durations are
+    therefore the timeline SSOT. Word timings are used only to choose a frame
+    in the middle of the spoken line.
+    """
     files = sorted((product / "_assets").glob("scene_*.words.json"),
                    key=lambda p: int(re.search(r"(\d+)", p.stem).group(1)))
     shots, t = [], 0.0
     for f in files:
+        match = re.search(r"(\d+)", f.stem)
+        idx = int(match.group(1)) if match else len(shots)
+        clip = product / "_assets" / f"scene_{idx:02d}.mp4"
         words = json.loads(f.read_text(encoding="utf-8"))
+        speech_end = max((float(w["end"]) for w in words), default=0.0)
+        clip_dur = _probe_clip_duration(clip) if clip.exists() else speech_end
+        clip_dur = clip_dur or speech_end
         if not words:
+            t += clip_dur
             continue
-        dur = max(w["end"] for w in words)
         text = " ".join(w["text"] for w in words)
-        shots.append({"idx": len(shots), "start": t, "mid": t + dur / 2.0,
-                      "dur": dur, "text": text})
-        t += dur
+        speech_start = float(words[0].get("start", 0.0))
+        local_mid = (speech_start + speech_end) / 2.0
+        local_mid = min(max(0.05, local_mid), max(0.05, clip_dur - 0.05))
+        timeline_end = t + clip_dur
+        shots.append({
+            "idx": idx,
+            "start": t,
+            "mid": t + local_mid,
+            "dur": clip_dur,
+            "speech_dur": max(0.0, speech_end - speech_start),
+            "timeline_end": timeline_end,
+            "text": text,
+        })
+        t = timeline_end
     return shots
 
 
@@ -113,7 +148,8 @@ async def run_qc(product: Path, threshold: int, limit: int | None) -> dict:
          "-of", "csv=p=0", str(video)],
         capture_output=True, text=True, creationflags=_NO_WINDOW)
     real_dur = float(probe.stdout.strip() or 0)
-    est_dur = shots[-1]["start"] + shots[-1]["dur"]
+    est_dur = shots[-1].get(
+        "timeline_end", shots[-1]["start"] + shots[-1]["dur"])
     scale = real_dur / est_dur if est_dur and real_dur else 1.0
 
     fdir = product / "_qc_frames"
@@ -135,13 +171,23 @@ async def run_qc(product: Path, threshold: int, limit: int | None) -> dict:
     avg = sum(r["score"] for r in scored) / max(1, len(scored))
     low = sorted([r for r in scored if r["score"] < threshold],
                  key=lambda r: r["score"])
+    # Bind the report to the exact file it scored — "one render behind" is
+    # invisible from a path alone (codex verify).
+    import hashlib as _hashlib
+    _h = _hashlib.sha256()
+    with open(video, "rb") as _vf:
+        for _chunk in iter(lambda: _vf.read(1 << 22), b""):
+            _h.update(_chunk)
     report = {
-        "video": str(video), "shots_scored": len(scored),
+        "video": str(video), "video_sha256": _h.hexdigest(),
+        "shots_scored": len(scored),
         "avg_score": round(avg, 2),
         "below_threshold": len(low), "threshold": threshold,
         "timeline_scale": round(scale, 4),
+        # EVERY below-threshold shot — a truncated report once hid 2 failures
+        # from an external audit (codex render audit finding 2).
         "worst": [{k: r[k] for k in ("idx", "score", "reason", "text", "frame")}
-                  for r in low[:20]],
+                  for r in low],
         "errors": len(results) - len(scored),
     }
     (product / "_visual_match_qc.json").write_text(

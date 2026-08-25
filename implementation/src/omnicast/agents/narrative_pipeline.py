@@ -1,4 +1,4 @@
-"""Unit-first pipeline for allegedly true first-person horror compilations.
+"""Unit-first pipeline for first-person horror recollections.
 
 Narration is planned and written as independent stories, audited as one compilation,
 repaired at story granularity, then locked before production metadata is generated.
@@ -12,10 +12,14 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import re
 import time
 from typing import Literal
 
+from pathlib import Path
+
+import structlog
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -24,6 +28,13 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+# This module records its diagnostics into narrative_failure_audit.json, which
+# is the right home for anything an operator reviews later. The logger exists
+# for the failures that never reach an audit record because a retry papered
+# over them — a first-attempt schema rejection is overwritten the moment the
+# second attempt succeeds, and the only trace left is a call counter.
+logger = structlog.get_logger()
 
 from omnicast.models.script import (
     ScriptDraft,
@@ -62,15 +73,21 @@ class NamedChannelStrategy(_StrictModel):
     continuity_min: int = Field(default=22, ge=22, le=25)
     voice_min: int = Field(default=12, ge=12, le=20)
     dread_min: int = Field(default=12, ge=12, le=20)
+    # Run 15 accepted a plan with NO escalation ladder: the fear gate skips
+    # ladders under four rungs, so an empty one was never judged. Profiles
+    # that plan by ladder turn this on; hand-built test strategies do not.
+    require_ladder: bool = False
     plausible_response_min: int = Field(default=6, ge=6, le=10)
     structural_variety_min: int = Field(default=6, ge=6, le=10)
     originality_min: int = Field(default=6, ge=6, le=10)
     ending_min: int = Field(default=3, ge=3, le=5)
-    numeric_anchor_limit: int = Field(default=4, ge=0, le=4)
+    numeric_anchor_limit: int = Field(default=6, ge=0, le=6)
     evidence_beat_limit: int = Field(default=1, ge=0, le=1)
     human_threat_fraction_min: float = Field(default=2 / 3, ge=2 / 3, le=1.0)
     evidence_free_story_min: int = Field(default=1, ge=1, le=5)
-    precise_clock_limit: int = Field(default=1, ge=0, le=1)
+    # The corpus's most-watched story gives 8:45, 9:00 p.m., 2:01 a.m. and
+    # 11:30 in one account; exact hours are how these narrators sound true.
+    precise_clock_limit: int = Field(default=4, ge=0, le=4)
     selector_confidence_min: float = Field(default=0.65, ge=0.5, le=1.0)
     max_plan_attempts: int = Field(default=3, ge=2, le=4)
     max_plan_repairs: int = Field(default=2, ge=0, le=3)
@@ -104,10 +121,18 @@ class NamedChannelStrategy(_StrictModel):
         # Planning rules are planner-side only: compilation-level constraints in
         # the story prompt are attention noise the writer cannot act on.
         planner_sections = (*profile.planning_rules, *writer_sections)
+        # THE STANCE GOES TO EVERY ROLE THAT SHAPES THE STORY. channel_promise
+        # used to reach only the critic, so the planner invented premises and the
+        # writer drafted prose without ever being told where this channel
+        # stands between "this really happened" and "this is made up". The
+        # promise is now the first line of the planner's and writer's rules as
+        # well — it is the frame everything else hangs on.
+        stance = profile.channel_promise.strip()
         return cls(
             strategy_id=profile.profile_id,
-            writer_rules="\n".join(f"- {item}" for item in writer_sections),
-            planner_rules="\n".join(f"- {item}" for item in planner_sections),
+            require_ladder=True,
+            writer_rules=stance + "\n" + "\n".join(f"- {item}" for item in writer_sections),
+            planner_rules=stance + "\n" + "\n".join(f"- {item}" for item in planner_sections),
             plan_self_audit="\n".join(
                 f"- {item}" for item in profile.plan_self_audit_rules
             ),
@@ -250,6 +275,39 @@ class NarrativeStoryPlan(_Model):
     # invariant scaffolding). Optional so pre-seed plans keep validating; when
     # present it is deterministically gated in validate_plan_preflight.
     voice_seed: str = Field(default="")
+    # HOW MUCH ROOM THIS PREMISE NEEDS, decided by the planner that invented it.
+    # The compilation budget used to be divided equally and enforced at ±15%,
+    # so three stories were required to come out the same size whatever they
+    # were about. A premise that needs a long, patient setup to pay off cannot
+    # get it in an equal third, and a tight one gets padded to fill its share.
+    # 0 means unassigned: older plans and pre-seeded fixtures fall back to the
+    # equal split.
+    target_words: int = Field(default=0, ge=0, le=6000)
+    # HOW THE NIGHT GETS WORSE, in stages. The plan used to carry exactly one
+    # "and then": setup -> threat -> escape -> ending, which is a single scene.
+    # Measured across the twelve highest-viewed competitor stories, the median
+    # account turns TWENTY-ONE times, the first turn landing by 5% and the last
+    # past 50% — three days in the woods, not thirty seconds at a gate. With no
+    # field for the middle, every premise collapsed to its scariest sentence
+    # ("he knew my plate number") and the auditor filed it as stock, because a
+    # single-moment premise has nowhere to be anything else.
+    #
+    # Each rung is one concrete change the narrator can perceive, in order,
+    # each worse than the last and none explaining the one before. Empty on
+    # older plans and fixtures; gated when present.
+    escalation_ladder: list[str] = Field(default_factory=list, max_length=8)
+    # WHAT STAYS. Read in the corpus's most-watched stories, every one:
+    # a fact learned too late ('I likely looked right at this guy ... and
+    # didn't even know it'; 'they were both my items'); the exit gone ('no
+    # phone in the house', 'seventy feet up, the only way down blocked');
+    # the narrator inferring the threat's mind ('maybe they wanted me to
+    # STAY inside'); and one thing never explained, said last ('maybe it's
+    # in my head, or maybe it isn't'). Empty on legacy plans; required by
+    # ladder-planning profiles.
+    already_line: str = ""
+    no_way_out: str = ""
+    threat_mind: str = ""
+    remainder: str = ""
     continuity_ledger: list[str] = Field(min_length=5, max_length=5)
 
     # Typed concept axes; see _MECHANISM_AXES.
@@ -293,6 +351,25 @@ class NarrativeStoryPlan(_Model):
         ):
             raise ValueError("narrator_age_band must agree with narrator_age_years")
         return self
+
+    @field_validator("voice_rules", mode="before")
+    @classmethod
+    def _accept_listed_voice_rules(cls, value):
+        """A list of markers is the same thing as a line of them.
+
+        The prompt asks for "voice_rules LISTING 2-3 measurable idiolect
+        markers" and shows three comma-separated examples, so the planner
+        returns a JSON array — reasonably. The field was typed `str`, so the
+        whole plan was rejected before anything read it, the concept was
+        thrown away, and the contract retry regenerated it as a string. Half of
+        every planner call on this channel was being spent on that disagreement
+        (planner=4 / schema_retry=4 in the counters for weeks).
+        Nothing downstream cares: the only consumer joins these fields into one
+        block of text anyway. So accept both and stop paying for the argument.
+        """
+        if isinstance(value, (list, tuple)):
+            return "; ".join(str(item).strip() for item in value if str(item).strip())
+        return value
 
     @field_validator("continuity_ledger")
     @classmethod
@@ -401,6 +478,19 @@ class PlanIssue(_Model):
         # whether a declared mechanism label honestly describes the prose fields,
         # and whether a story actually delivers the compilation's subject.
         "mechanism_mismatch", "topic_alignment",
+        # Found by an operator read-through of the first plan to pass every
+        # gate: a threat that knew a private fact with no moment it could have
+        # learned it, and a voice rule that forbade the number the premise
+        # hinged on. Neither is a regex.
+        "knowledge_path", "voice_vs_premise",
+        # A deterministic gate error handed to repair as an issue. Its own
+        # category, so clearing it is visible as progress against whatever
+        # the re-audit raises next.
+        "gate",
+        # Codex round 2: the cold open gave away the window-and-nickname beat.
+        "cold_open",
+        # What stays: the already_line must be learned late and re-read the night.
+        "haunting",
     ] = "physical"
     severity: Literal["critical", "major", "minor"]
     problem: str
@@ -455,11 +545,19 @@ def _format_plan_issue(issue: PlanIssue) -> str:
 
 def plan_story_text(item: NarrativeStoryPlan) -> str:
     """The plan's own words for one story — what an objection must quote."""
+    # THE LADDER IS PART OF THE PLAN'S OWN WORDS. Every auditor objection must
+    # quote a unique substring of this text; an objection quoting a rung that
+    # was not listed here failed the quote contract, voided the audit verdict,
+    # and cost one of two attempts — i.e. the auditor was penalised for
+    # reading the one field that makes a premise more than a single scene.
     return "\n".join((
         item.title, item.narrator_profile, item.setting, item.setup_requirement,
         item.threat, item.escape_action, item.ending_shape, item.voice_rules,
         item.topic_promise, item.distinguishing_turn, item.safety_omission_reason,
         *item.continuity_ledger,
+        *(getattr(item, "escalation_ladder", None) or []),
+        getattr(item, "already_line", "") or "", getattr(item, "no_way_out", "") or "",
+        getattr(item, "threat_mind", "") or "", getattr(item, "remainder", "") or "",
     ))
 
 
@@ -492,6 +590,11 @@ def validate_plan_audit_issues(
             )
             continue
         text = plan_story_text(by_id[issue.story_id])
+        # A cold_open objection quotes the compilation's cold open, which is
+        # not story text. Live: the first cold_open issue the auditor raised
+        # failed this check and the whole audit was thrown away as unusable.
+        if issue.category == "cold_open":
+            text = text + "\n" + (plan.cold_open or "")
         if text.count(issue.evidence_quote) != 1:
             errors.append(
                 f"{label}: evidence_quote must be one exact, unique substring of that "
@@ -754,6 +857,22 @@ class PlannerUnavailable(NarrativeRunAborted):
         self.rejections = rejections or []
 
 
+class PlanOnlyComplete(NarrativeRunAborted):
+    """A plan survived preflight and the audit, and the caller asked to stop.
+
+    Not a failure. Raised only under OMNICAST_NARRATIVE_PLAN_ONLY so a premise
+    can be judged for one planner call and one audit instead of a full
+    twenty-five-minute run — the difference between seeing three premises in a
+    quota window and seeing thirty.
+    """
+
+    def __init__(self, plan: "CompilationPlan", audit: "PlanAuditResult") -> None:
+        super().__init__("plan accepted; stopping before story drafting "
+                         "(OMNICAST_NARRATIVE_PLAN_ONLY)")
+        self.plan = plan
+        self.audit = audit
+
+
 class PlanNotPlausible(NarrativeRunAborted):
     """Every bounded planner attempt produced a plan the audit blocked."""
 
@@ -824,6 +943,9 @@ class PlanRepairOutput(_Model):
     """Replacement plans for ONLY the stories the audit blocked."""
 
     stories: list[NarrativeStoryPlan] = Field(min_length=1, max_length=5)
+    # Only when an objection is category cold_open: a replacement line that
+    # sells the night, not the payoff. None otherwise.
+    cold_open: str | None = None
 
 
 class ChallengeVerdict(_StrictModel):
@@ -1251,6 +1373,15 @@ _BANNED_RE = re.compile(
     r"you tell yourself|i almost had myself convinced|telling myself)\b",
     re.IGNORECASE,
 )
+# EMPTY reassurance is the slop: the narrator waves the sign away with nothing.
+# 'I told myself it was just a small company delivery' names an alternative
+# and is the genre's denial-that-fails beat (Knock at the Door, twice).
+_BANNED_EMPTY_RE = re.compile(
+    r"\b(?:i told myself|i convinced myself|i reassured myself|telling myself|you tell yourself|"
+    r"i (?:figure|figured))\b[^.;!?]{0,40}?\b(?:nothing|fine|okay|ok|all right|alright|"
+    r"my imagination|imagining (?:it|things)|no big deal|nothing to worry about)\b",
+    re.IGNORECASE,
+)
 _CTA_RE = re.compile(
     r"\b(?:subscribe|like and comment|hit the bell|this channel|in today'?s video|"
     r"our next story|dear viewers?|submitted to us|the following account)\b",
@@ -1487,7 +1618,7 @@ def _paragraphs(narration: str) -> list[str]:
 # is deliberately left to the critic — it is not locally fixable and would
 # deadlock the repair loop.
 
-# Fully banned (0 allowed): trailer/soma clichés a real submitter would not write.
+# Fully banned (0 allowed): trailer/soma clichés a person recounting a night would not write.
 _CLICHE_TELLS = (
     ("dramatic_irony", re.compile(r"\blittle did i know\b|\bif only i(?:'d| had) known\b", re.I)),
     ("soma_heart", re.compile(r"\b(?:my |his |her )?heart (?:pounded|hammered|raced|thudded|leapt|slammed)\b", re.I)),
@@ -1653,7 +1784,7 @@ def _stylometric_texture_findings(
                 failures.append(_failure(
                     "stylometric_cliche",
                     f"{story.story_id} uses a stock cliché ({match.group(0)!r}); real "
-                    "submitters name feeling plainly rather than reaching for stock imagery",
+                    "people recounting something name feeling plainly, not in stock imagery",
                     story.story_id,
                 ))
                 break  # one per story is enough to send it back
@@ -1668,38 +1799,46 @@ def _stylometric_texture_findings(
                         "stylometric_rationed_tic",
                         f"{story.story_id} repeats the compilation tic {label!r} already "
                         f"used in {seen_story}; vary it — a habit shared across narrators "
-                        "reads as one author, not three submitters",
+                        "reads as one author, not three different people",
                         story.story_id,
                     ))
                     break
                 seen_story = story.story_id
 
-    # 3. "the way you/he/she..." comparison — at most one per story.
+    # THE CAPS WERE SET FOR ~750-WORD COMPILATION STORIES. A single 1,800-2,600
+    # word account is held to the same 'one per story' and fails three times
+    # as easily for the same texture density. Allowances scale with length:
+    # the base cap per 800 spoken words. Cross-story rules are unchanged.
+    def _allow(story, base: int) -> int:
+        words = len(_words(story.narration))
+        return base * max(1, round(words / 800))
+
+    # 3. "the way you/he/she..." comparison — at most one per ~800 words.
     for story in stories:
         hits = _THE_WAY_COMPARISON_RE.findall(story.narration)
-        if len(hits) > 1:
+        if len(hits) > _allow(story, 1):
             failures.append(_failure(
                 "stylometric_the_way",
                 f"{story.story_id} leans on the 'the way you...' comparison "
-                f"{len(hits)} times; keep at most one",
+                f"{len(hits)} times; keep at most {_allow(story, 1)} for its length",
                 story.story_id,
             ))
 
     # 4. One-word beat sentences — a couple is fine, a spray is the tic.
     for story in stories:
         beats = _oneword_beats(story.narration)
-        if len(beats) > 2:
+        if len(beats) > _allow(story, 2):
             failures.append(_failure(
                 "stylometric_oneword_beat",
                 f"{story.story_id} sprays {len(beats)} one-word beat sentences "
-                f"({', '.join(repr(b) for b in beats[:4])}); keep at most two",
+                f"({', '.join(repr(b) for b in beats[:4])}); keep at most {_allow(story, 2)} for its length",
                 story.story_id,
             ))
 
     # 4b. Negation-reversal rhythm — at most one per story.
     for story in stories:
         hits = _NEGATION_REVERSAL_RE.findall(story.narration)
-        if len(hits) > 1:
+        if len(hits) > _allow(story, 1):
             failures.append(_failure(
                 "stylometric_negation_reversal",
                 f"{story.story_id} uses the 'it was no X, it was Y / not just X but Y' "
@@ -1715,7 +1854,7 @@ def _stylometric_texture_findings(
     triad_seen: tuple[str, str] | None = None  # (story_id, quoted text)
     for story in stories:
         matches = [m.group(0).strip() for m in _NEGATION_TRIAD_RE.finditer(story.narration)]
-        if len(matches) > 1:
+        if len(matches) > _allow(story, 1):
             failures.append(_failure(
                 "stylometric_negation_triad",
                 f"{story.story_id} drums the negation triad {len(matches)} times "
@@ -1745,7 +1884,7 @@ def _stylometric_texture_findings(
             flags.append(_failure(
                 "stylometric_simile_density",
                 f"{story.story_id} uses {len(similes)} similes (soft budget {budget}); "
-                "real submissions rarely reach for this many",
+                "someone recounting a night rarely reaches for this many",
                 story.story_id,
             ))
 
@@ -2167,7 +2306,7 @@ def gate_compilation(
     per_target = target_total / max(1, len(plan.stories))
     story_words = {story.story_id: len(_words(story.narration)) for story in stories}
     total_words = sum(story_words.values())
-    if total_words < math.floor(target_total * 0.90) or total_words > math.ceil(target_total * 1.12):
+    if total_words < GENRE_FLOOR_TOTAL_WORDS:
         length_target = (
             min(stories, key=lambda item: story_words[item.story_id]).story_id
             if stories and total_words < target_total
@@ -2176,8 +2315,9 @@ def gate_compilation(
         )
         failures.append(_failure(
             "total_length",
-            f"Compilation has {total_words} words; expected {math.floor(target_total * .90)}-"
-            f"{math.ceil(target_total * 1.12)}",
+            f"Compilation has {total_words} words; under the genre floor of "
+            f"{GENRE_FLOOR_TOTAL_WORDS} (about eight minutes spoken). Length is the "
+            f"account's to decide above that; this is not a video yet.",
             *([length_target] if length_target else []),
         ))
 
@@ -2251,16 +2391,31 @@ def gate_compilation(
                     "neighbour, or witness) is told in the aftermath",
                     sid,
                 ))
-        if count < math.floor(per_target * 0.85) or count > math.ceil(per_target * 1.25):
+        # AGAINST ITS OWN BUDGET. This used to compare every story to an equal
+        # share of the compilation, which is a uniformity rule wearing a length
+        # rule's clothes: a 900-word premise and a 2,200-word premise both
+        # failed for being what they are. The compilation total is still
+        # checked above — that is the constraint that actually matters, because
+        # it is the one the viewer experiences as video length.
+        own_target = float(getattr(story_plan, "target_words", 0) or 0) or per_target
+        if count < GENRE_FLOOR_STORY_WORDS:
             failures.append(_failure(
-                "story_length", f"{sid} has {count} words around a {per_target:.0f}-word target", sid
+                "story_length",
+                f"{sid} has {count} words; under the genre floor of {GENRE_FLOOR_STORY_WORDS}. "
+                f"(The plan estimated {own_target:.0f}; that is a shape, not a law.)",
+                sid,
             ))
         # EVERY match is quoted, not just the first: a repair that fixes one
         # occurrence while a second survives fails the trial gate and gets
         # thrown away looking "unfixable" (live 2026-07-18: one sentence held
         # 'telling myself' twice; three repairs and a rewrite all died blind).
         banned_hits = [m.group(0) for m in _BANNED_RE.finditer(story.narration)]
-        if banned_hits:
+        # 'I told myself it was just a small company delivery' — the genre's
+        # denial-that-fails beat, in the corpus's most-watched story twice.
+        # Two per story is the account reasoning; three or more is a tic.
+        empty_hits = [m.group(0) for m in _BANNED_EMPTY_RE.finditer(story.narration)]
+        if empty_hits or len(banned_hits) > 2:
+            banned_hits = empty_hits or banned_hits
             failures.append(_failure(
                 "banned_self_reassurance",
                 f"{sid} uses stock self-reassurance {len(banned_hits)} time(s): "
@@ -2389,6 +2544,22 @@ def gate_compilation(
         failures.extend(tex_failures)
         editorial_flags.extend(tex_flags)
 
+    # MEASURED AGAINST REAL COMPETITOR SCRIPTS, which no other gate here does.
+    # Everything above compares the compilation to rules this team wrote; this
+    # compares it to 147 captions from the channels it competes with. The first
+    # build put through it read at 24 words a sentence against a genre whose
+    # whole distribution runs 10-15, opened with no concrete anchor where the
+    # genre anchors in line one, and never once used three short sentences in a
+    # row. Every internal gate passed it at 89/100.
+    _sk_channel = getattr(strategy, "skeleton_bounds_channel", "") or ""
+    if _sk_channel and actual_ids == expected_ids:
+        from omnicast.analytics.skeleton import skeleton_problems
+
+        narration = "\n\n".join(s.narration for s in stories if s.narration)
+        for problem in skeleton_problems(narration, _sk_channel):
+            failures.append(_failure(
+                "skeleton_out_of_bounds", problem, *actual_ids))
+
     # De-duplicate identical diagnostics without hiding which stories failed.
     unique: list[GateFailure] = []
     seen: set[tuple[str, tuple[str, ...]]] = set()
@@ -2458,6 +2629,80 @@ def promote_miscalibrated_issues(
     return score.model_copy(update={"story_issues": promoted})
 
 
+_TIME_SKIP_RE = re.compile(
+    r"\b(the next (morning|day|night|evening|afternoon)|next (morning|day|night)|"
+    r"(two|three|four|five|a few|several|some) (nights?|days?|evenings?|mornings?) (later|after)|"
+    r"the (night|day|evening|morning) after|(a|one) week (later|after)|days later|"
+    r"the (second|third|fourth|fifth|sixth) (night|day|evening)|that (same )?(night|evening) after|"
+    r"later that (week|night)|by (the )?(next|second|third) (night|day)|"
+    r"(when|after) (I|she|he) (came|got) back from|the following (night|day|morning))\b", re.I)
+
+
+def _demote_cross_night_contradictions(score: "NarrativeScorecard",
+                                       stories: list) -> "NarrativeScorecard":
+    """A major 'contradiction' whose two quotes sit on either side of a time
+    skip is the judge reading two nights as one scene. Demoted to minor so
+    it cannot block a release; the note survives for the editor."""
+    by_id = {st.story_id: st.narration for st in stories}
+    changed = False
+    out = []
+    for issue in score.story_issues:
+        text = by_id.get(issue.story_id, "")
+        if (issue.severity in {"critical", "major"} and issue.issue_kind == "contradiction"
+                and issue.evidence_quote and issue.anchor_quote and text):
+            a = text.find(issue.anchor_quote)
+            b = text.find(issue.evidence_quote)
+            if a >= 0 and b >= 0 and a != b:
+                between = text[min(a, b):max(a, b)]
+                if _TIME_SKIP_RE.search(between):
+                    issue = issue.model_copy(update={
+                        "severity": "minor",
+                        "problem": issue.problem + " [demoted: the two quotes are separated by a "
+                                                   "time skip; different scenes are not a contradiction]"})
+                    changed = True
+        out.append(issue)
+    if not changed:
+        return score
+    return score.model_copy(update={"story_issues": out})
+
+
+_SELF_NEGATING_RE = re.compile(
+    r"(no contradiction (was )?found|matches (this|the plan|the locked plan)( exactly)?|"
+    r"within the allowed limit|not a (plot|logic|continuity) (break|defect|issue)|"
+    r"is not egregious|this is consistent|no issue here|resolves the previous)", re.I)
+_NO_CALL_OBJECTION_RE = re.compile(
+    r"(fails? to (contact|call)|does not (call|contact)|never (calls?|contacts?)|without calling|"
+    r"no (call|report) (is|was) made|did not call)", re.I)
+_CALL_ON_PAGE_RE = re.compile(
+    r"\b(call(ed|ing)?|dial(ed|ing)?|phon(ed|ing)|rang|reported?( it)?( to)?)\b[^.]{0,80}"
+    r"\b(sheriff|911|non-?emergency|police|deput(y|ies)|dispatch(er)?|substation)\b", re.I)
+
+
+def _demote_unfounded_editor_issues(issues: list, stories: list) -> list:
+    """Live 02:25, 88/100: a 'major' that ended 'No contradiction found', and a
+    'major' that she never called the sheriff, filed against a page on which
+    she calls the sheriff's non-emergency line before the climax. Self-
+    negating text, or a no-call objection when a call is on the page before
+    the last third, is demoted to minor. Everything else stands."""
+    by_id = {st.story_id: st.narration for st in stories}
+    out = []
+    for issue in issues:
+        text = (issue.problem or "")
+        sev = issue.severity
+        if sev in {"critical", "major"}:
+            if _SELF_NEGATING_RE.search(text):
+                issue = issue.model_copy(update={"severity": "minor",
+                    "problem": text + " [demoted: the objection negates itself]"})
+            elif _NO_CALL_OBJECTION_RE.search(text):
+                narr = by_id.get(issue.story_id, "")
+                cut = int(len(narr) * 0.67)
+                if narr and _CALL_ON_PAGE_RE.search(narr[:cut]):
+                    issue = issue.model_copy(update={"severity": "minor",
+                        "problem": text + " [demoted: a report beat is on the page before the climax]"})
+        out.append(issue)
+    return out
+
+
 def content_can_lock(
     score: NarrativeScorecard,
     gate: GateReport,
@@ -2514,11 +2759,27 @@ def _narration_sha256(story: StoryDraft) -> str:
 
 
 def _canonical_quote(narration: str, quote: str) -> str | None:
-    """Return the exact source bytes for a quote that differs only in whitespace."""
+    """Return the exact source bytes for a quote that differs only in
+    whitespace or typography. Live 00:41: three judges in a row quoted
+    \"the sheriff's substation\" with a straight apostrophe against a
+    narration holding a curly one; 'found 0 times' voided the review and
+    the attempt scored 0/100 on a text every judge had approved before."""
     parts = re.split(r"\s+", (quote or "").strip())
     if not parts or not all(parts):
         return None
-    pattern = r"\s+".join(re.escape(part) for part in parts)
+    def _part_pattern(part: str) -> str:
+        out = []
+        for ch in part:
+            if ch in "'\u2018\u2019":
+                out.append("['\u2018\u2019]")
+            elif ch in '"\u201c\u201d':
+                out.append('["\u201c\u201d]')
+            elif ch in "-\u2013\u2014":
+                out.append("[-\u2013\u2014]")
+            else:
+                out.append(re.escape(ch))
+        return "".join(out)
+    pattern = r"\s+".join(_part_pattern(part) for part in parts)
     matches = list(re.finditer(pattern, narration))
     if len(matches) != 1:
         return None
@@ -2618,7 +2879,8 @@ def validate_story_compliance(
         count = story.narration.count(quote)
         if count != 1:
             errors.append(
-                f"{item.beat_id} quote must be exact and unique in the named story"
+                f"{item.beat_id} quote must be exact and unique in the named story "
+                f"(found {count} times): {quote[:120]!r}"
             )
             continue
         if len(_words(quote)) < 4:
@@ -2693,7 +2955,7 @@ def story_compliance_issues(
             problem=f"Evidence allowance is violated: {review.evidence_explanation}",
             repair_instruction="Remove only unplanned aftermath corroboration.",
             issue_kind="style", evidence_quote=review.evidence_quote,
-            viewer_impact="Extra proof makes the allegedly true account feel manufactured.",
+            viewer_impact="Extra proof makes the account feel manufactured.",
             issue_id=f"{review.story_id}:evidence_budget",
         ))
     return issues
@@ -2719,6 +2981,14 @@ _UNRECOVERABLE_GATE_CODES = frozenset({
 # The compilation total names one story for targeting, but is not attributable to
 # that story alone: it triggers a recovery yet is excluded from the acceptance
 # count, so a total-length-only story ties at zero and must win on length instead.
+# LENGTH IS WHAT THE ACCOUNT NEEDS. The operator's standing rule: never force a
+# word count; a premise that needs setup is ruined by a cap and a thin one is
+# ruined by padding. The plan's target is the planner's estimate and the
+# writer's shape. The only length gates are floors that decide whether it is
+# a video at all: about eight minutes spoken in total, and no story so short
+# it cannot hold a ladder.
+GENRE_FLOOR_TOTAL_WORDS = 1200
+GENRE_FLOOR_STORY_WORDS = 600
 _COMPILATION_LEVEL_GATE_CODES = frozenset({"total_length"})
 
 
@@ -2741,6 +3011,588 @@ def _story_attributable_failures(gate: GateReport, story_id: str) -> int:
     )
 
 
+def _story_count_for(brief) -> int:
+    """How many stories a topic with no number in its title should carry.
+
+    Scaled to the room available rather than fixed, so the same engine can make
+    one long account or four short ones. The bands are the genre's own: 86
+    competitor compilations that state a count give each story a median 1,492
+    words, so this asks for roughly that much per story and lets a very short
+    brief be a single account rather than a set of fragments.
+    """
+    words = spoken_word_floor(getattr(brief, "target_duration_min", 0))
+    return max(1, min(5, round(words / 1500)))
+
+
+# WHAT MAKES A RUNG FRIGHTENING, measured rather than assumed. Across 2,320
+# escalation sentences in 147 competitor scripts, 36% have the threat ACTING
+# while the narrator is present (a tap on the glass, a handle turning, a
+# figure that stays) and 3% are traces found afterwards (a woodpile
+# restacked, a key missing). The first two accepted plans on this channel
+# were 0/7 and 1/7 present-tense and 3/7 trace: detective stories, not
+# horror. The auditor judged plausibility and freshness and was never asked
+# about fear, so it passed them.
+# A rung is a TRACE when the narrator arrives and sees a state. The frame
+# decides, not the vocabulary: "its hook-and-eye unlatched, swings inward
+# and his voice calls out" is the threat arriving.
+_RUNG_TRACE_STRONG_RE = re.compile(
+    r"\b(had been|was gone|were gone|gone from|goes missing|"
+    r"the (next|following) (morning|afternoon|evening|day)|(next|following) (morning|afternoon)|"
+    r"one morning|when (s?he|they|I) (arrives?|returns?|comes? back|gets? (back|home)|wakes?)|"
+    r"on (arriving|returning)|(comes?|came|gets?|got) (back|home) (from|to)|"
+    r"already (at|on|in|up|off|lit|glowing|open|standing)|though (s?he|they|I) (never|remembers?|swears?|is sure|had|locked|latched|left)|despite|"
+    r"sits? (a few|an? inch)|off its (usual )?mark|cushion flattened|"
+    r"that wasn'?t there|different(ly)? than|(isn'?t|aren'?t|wasn'?t|weren'?t) where|"
+    r"(when|as) (s?he|they|I) (gets?|got) (back|home)|the kind of thing a \w+ could explain|"
+    r"(listing|lists) the exact|a note (on|listing|taped|under))\b", re.I)
+_RUNG_TRACE_WEAK_RE = re.compile(
+    r"\b(found|finds?|discover\w*|missing|re-?arranged|restacked|unlatched|unlocked|propped|wedged|prints?|tracks? in|tread|"
+    r"out of order|rubber band off|unscrewed|out of place|moved|shifted|wrong way)\b", re.I)
+# An actor the narrator can see or hear ...
+_RUNG_AGENT_RE = re.compile(
+    r"\b(he|him|his|she|her|they|it|someone|somebody|nobody|"
+    r"an? (man|woman|figure|shape|hand|face|voice|person|stranger|calm voice|knuckle-knock|knock|tap|sedan|car|truck|pickup)|"
+    r"the (man|woman|figure|shape|hand|face|voice|stranger|person|driver|thing|same car|car|truck|pickup)|"
+    r"(man|woman|figure|shape|hand|face|voice|stranger)'?s|headlights|[A-Z][a-z]+)\b")
+# ... doing something, now.
+_RUNG_ACTION_RE = re.compile(
+    r"\b(steps?|stepping|stepped|crosses|crossing|comes?|coming|arrives?|walks?|walking|moves?|moving|"
+    r"pushes|pushing|pulls?|pulling|grips?|gripping|grabs?|jiggles?|jiggling|rattles?|rattling|wrenches|"
+    r"turns?|turning|twists?|slides?|sliding|eases?|opens?|opening|gives?|cracks?|knocks?|knocking|raps?|"
+    r"taps?|tapping|scratches|scrapes?|says?|saying|states?|recites?|asks?|calls?|calling|whispers?|speaks?|"
+    r"tells?|mentions?|insist\w*|names?|stands?|standing|stops?|waits?|stays?|watches|watching|staring|"
+    r"stares?|looks? (in|at|through)|linger\w*|leans?|reaches|blocks?|climbs?|forces?|breaks?|kicks?|"
+    r"bangs?|pounds?|presses|holds?|follows?|crouches|gets?|puts?|plants?|swings?|idles?|idling|"
+    r"circl\w*|returns?|keys? in|appears?|emerges?|does not (stop|leave|move)|doesn'?t (stop|leave|move)|"
+    r"won'?t (stop|leave)|lurches|closes over|works into|lifts|begins|tests?|testing)\b", re.I)
+_RUNG_PERCEIVE_RE = re.compile(
+    r"\b(hears?|hearing|heard|sees?|seeing|feels?|watches|smells?|footsteps?|breathing|"
+    r"gravel crunch\w*|crunch(es|ing)|"
+    r"(handle|knob|latch|sash|door|window|slider|frame|chair|curtain).{0,30}(turns?|rattles?|rattling|jiggles?|"
+    r"moves?|slides?|gives?|wrenched|forced|creaks?|whines?|cracks?|eases? open|swings? (inward|open)|"
+    r"lurches|scrapes?|takes? a|begins|lifts)|beam (crosses|sweeps)|"
+    r"(while|as) (s?he|they|I) (stands?|sits?|lies?|is|am|are|carr\w+|glance\w*)|"
+    r"(knock|tap|rap)s? (lands?|raps?|comes?|against|on|at) )", re.I)
+
+
+def rung_kind(rung: str) -> str:
+    """'trace' when the narrator arrives and sees a state (or a state word
+    with nothing happening); 'present' when an actor does something now or
+    the narrator perceives it happening; else 'other'."""
+    text = rung or ""
+    if _RUNG_TRACE_STRONG_RE.search(text):
+        return "trace"
+    happening = bool(_RUNG_PERCEIVE_RE.search(text)) or (
+        bool(_RUNG_AGENT_RE.search(text)) and bool(_RUNG_ACTION_RE.search(text)))
+    if happening:
+        return "present"
+    if _RUNG_TRACE_WEAK_RE.search(text):
+        return "trace"
+    return "other"
+
+
+def ladder_fear_problems(plan) -> list[str]:
+    """Ladders that cannot frighten, caught before any paid call.
+
+    A rung the narrator is not present for costs nothing and scares no one.
+    Traces are allowed early — that is how a real account starts — but the
+    back half of the ladder has to be happening TO the narrator, and the last
+    three rungs must be, without exception.
+    """
+    out: list[str] = []
+    for item in getattr(plan, "stories", ()) or ():
+        rungs = [r for r in (getattr(item, "escalation_ladder", None) or []) if str(r).strip()]
+        if len(rungs) < 4:
+            continue
+        kinds = [rung_kind(r) for r in rungs]
+        present = sum(k == "present" for k in kinds)
+        last3 = kinds[-3:]
+        sid = getattr(item, "story_id", "?")
+        if present * 2 < len(rungs):
+            out.append(
+                f"{sid}: only {present} of {len(rungs)} rungs have the threat acting "
+                "while the narrator is present; competitors run ~36% present-tense "
+                "and ~3% trace. Traces found afterwards are a detective story. Make "
+                "the back half of the ladder happen TO the narrator, closer each time.")
+        elif any(k == "trace" for k in last3):
+            out.append(
+                f"{sid}: a trace (found afterwards) sits in the last three rungs. The "
+                "end of the ladder must be present tense: the threat acting, the "
+                "narrator there, the distance closing.")
+    return out
+
+
+# DISTANCE CLOSES IN STEPS NOBODY CAN SKIP. Plan v1 of "The Man Who Knew
+# Her Medicine" went from a polite daytime question at the door straight to
+# the handle being wrenched that night: present tense both, so the fear gate
+# passed it, and it read as a jump cut. The genre's ladders approach
+# (heard or seen near, stopping outside), then contact (a hand on the
+# structure), then breach (forcing in). The first breach must be preceded
+# by an approach.
+_RUNG_BREACH_RE = re.compile(
+    r"\b(wrench|forc(e|ed|ing)|pr(y|ied|ying)|kick(s|ed)? (the|at)|"
+    r"(handle|knob|door|sash|window).{0,30}\b(turn|rattl|wrench|shak|jerk|forc|pull|pr[iy])\w*|"
+    r"(inside|in) the (house|room|hall|kitchen|cabin|trailer)|climb(s|ed|ing)? (in|through)|"
+    r"com(es|ing) through|breaks? (the )?(glass|window|door))",
+    re.I)
+_RUNG_APPROACH_RE = re.compile(
+    r"\b(footsteps?|gravel|crunch\w*|stops? (outside|at|just|right|by)|stand(s|ing)? (outside|at|by|under|beneath)|"
+    r"outside the (door|window|glass)|(pauses?|waits?) (outside|at|by)|circl(es|ing)|"
+    r"walk(s|ing) (along|around|past|up)|com(es|ing) (up|along|around|closer)|"
+    r"(tap|knock)(s|ed|ing)? (on|at) the (glass|window)|breath\w* (at|against|outside)|"
+    r"shadow (crosses|passes|moves)|silhouette)\b",
+    re.I)
+
+
+def ladder_order_problems(plan) -> list[str]:
+    """The first rung that forces the structure must follow a rung that
+    brings the threat near and lets it wait there. Without that step the
+    ladder is a jump cut, and a jump cut is not fear."""
+    out: list[str] = []
+    for item in getattr(plan, "stories", ()) or ():
+        rungs = [str(r) for r in (getattr(item, "escalation_ladder", None) or []) if str(r).strip()]
+        if len(rungs) < 4:
+            continue
+        sid = getattr(item, "story_id", "?")
+        first_breach = next((i for i, r in enumerate(rungs) if _RUNG_BREACH_RE.search(r)), None)
+        if first_breach is None:
+            continue
+        if not any(_RUNG_APPROACH_RE.search(r) for r in rungs[:first_breach]):
+            out.append(
+                f"{sid}: rung {first_breach + 1} forces the structure with no earlier rung "
+                "bringing the threat NEAR and letting it wait there (footsteps that stop "
+                "outside the door, a shape standing at the glass). Distance closes in "
+                "steps nobody can skip: approach, then contact, then breach.")
+    return out
+
+
+# THE ESCAPE IS SOMETHING THE NARRATOR DID. Plan v1's threat stopped when a
+# neighbour's headlights happened to sweep the drive. A rescue that arrives
+# on its own is a coincidence; the genre's escapes are an action taken
+# (lights thrown, a door locked, a call made, a run to the truck) and help
+# that the narrator CALLED arriving.
+_ESCAPE_COINCIDENCE_RE = re.compile(
+    r"\b(happens? to|happened to|just then|luckily|by (sheer )?(luck|chance)|"
+    r"neighbou?r'?s? (headlights|car|truck|lights)|someone (pulls|drives|comes) (up|in|by)|"
+    r"a (car|truck|vehicle) (pulls|drives|turns) (in|up|into)|passer-?by|"
+    r"(headlights|lights) (sweep|hit|come|appear)|out of nowhere|for no reason|"
+    r"(gives|gave) up|loses? interest|wanders? (off|away)|simply (leaves|stops)|"
+    # Codex on the run-15 plan: "the prying stops as gravel crunches away" —
+    # nothing the narrator did made him leave.
+    r"(stops?|stopped|ceases?|quits?) (as|when|while|and) .{0,40}\b(away|leaves?|gone|crunch\w*|fades?|retreats?)|"
+    r"(footsteps?|gravel|engine|truck|car) .{0,20}\b(away|fad\w+|recedes?))\b",
+    re.I)
+_ESCAPE_CALLED_HELP_RE = re.compile(
+    r"\b(deput(y|ies)|police|officers?|sheriff|troopers?|cruiser|squad car|911|dispatcher|dispatch)\b", re.I)
+_ESCAPE_DISENGAGE_RE = re.compile(
+    r"\b(happens? to|happened to|just then|luckily|by (sheer )?(luck|chance)|out of nowhere|for no reason|"
+    r"(gives|gave) up|loses? interest|wanders? (off|away)|simply (leaves|stops)|"
+    r"neighbou?r'?s? (headlights|car|truck|lights)|passer-?by|someone (pulls|drives|comes) (up|in|by)|"
+    r"(stops?|stopped|ceases?|quits?) (as|when|while|and) .{0,40}\b(away|leaves?|gone|crunch\w*|fades?|retreats?))\b", re.I)
+_ESCAPE_AGENCY_RE = re.compile(
+    r"\b(lock|bolt|throw|flip|switch|shout|yell|scream|call|dial|run|sprint|climb|drive|floor|slam|block|"
+    r"wedge|barricade|jam|drag|shove|grab|flee|revers|back|pull|pedal|walk|leave|hang|honk|flash|"
+    r"swerv|accelerat|turn|cross|hide|crawl|duck|wait|stay|hold|press|push|kick|swing|jump|vault)\w*",
+    re.I)
+
+
+def escape_agency_problems(plan) -> list[str]:
+    out: list[str] = []
+    for item in getattr(plan, "stories", ()) or ():
+        text = str(getattr(item, "escape_action", "") or "")
+        if len(text.split()) < 5:  # placeholders and fragments are not judged on agency
+            continue
+        sid = getattr(item, "story_id", "?")
+        hit = _ESCAPE_COINCIDENCE_RE.search(text)
+        # Help the narrator CALLED arriving is the gate's own definition of an
+        # earned escape. Run 15, repair round 2: 'headlights sweep up the drive,
+        # the prying stops, and a deputy arrives nine minutes after the call'
+        # was thrown away as a coincidence. Arrival words are exempt when the
+        # called help is named; disengagement words never are.
+        if hit and _ESCAPE_CALLED_HELP_RE.search(text) and not _ESCAPE_DISENGAGE_RE.search(text):
+            hit = None
+        if hit:
+            out.append(
+                f"{sid}: escape_action ends on a coincidence ({hit.group(0)!r}). The threat "
+                "stops because of something the narrator DID, or because help the narrator "
+                "CALLED arrives. Name the action and, if help comes, who called it and how long "
+                "it took.")
+        elif not _ESCAPE_AGENCY_RE.search(text):
+            out.append(
+                f"{sid}: escape_action names no action by the narrator. Locks, lights, a call, "
+                "a run to the truck: the narrator must DO something that changes the geometry.")
+    return out
+
+
+_NUM_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+              "eight": 8, "nine": 9, "ten": 10, "a": 1, "an": 1}
+_SPAN_RE = re.compile(r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(days?|nights?|weeks?)\b", re.I)
+
+
+def _span_nights(text: str) -> int:
+    total = 0
+    for num, unit in _SPAN_RE.findall(text or ""):
+        n = int(num) if num.isdigit() else _NUM_WORDS.get(num.lower(), 0)
+        total += n * (7 if unit.lower().startswith("week") else 1)
+    return total
+
+
+def night_arithmetic_problems(plan) -> list[str]:
+    """Codex, twice: 'mailbox left unlocked three days' then 'two nights later'
+    inside a four-night stay. The auditor was told to count and did not.
+    Conservative: only the stay length stated in hook_timeline, against the
+    sum of explicit spans in the ladder."""
+    out: list[str] = []
+    for item in getattr(plan, "stories", ()) or ():
+        ledger = getattr(item, "continuity_ledger", None) or []
+        hook = next((l for l in ledger if str(l).lower().startswith("hook_timeline")), "")
+        stay = _span_nights(hook)
+        if not stay:
+            continue
+        used = sum(_span_nights(r) for r in (getattr(item, "escalation_ladder", None) or []))
+        if used > stay:
+            out.append(
+                f"{getattr(item, 'story_id', '?')}: the ladder spends {used} days/nights "
+                f"('{_SPAN_RE.search(hook).group(0) if _SPAN_RE.search(hook) else hook[:40]}' is the "
+                "whole stay). Count the nights: shorten the spans or lengthen the stay in hook_timeline.")
+    return out
+
+
+_GENERIC_SCENE = {
+    "door", "window", "house", "room", "night", "kitchen", "porch", "yard", "drive", "driveway",
+    "hall", "hallway", "bedroom", "bathroom", "uncle", "aunt", "mother", "father", "home", "place",
+    "time", "week", "morning", "evening", "something", "someone", "outside", "inside", "never",
+    "still", "remember", "anymore", "since", "that", "this", "with", "from", "there", "where",
+    "when", "what", "then", "than", "just", "back", "front", "side", "after", "before", "while",
+    "first", "last", "into", "onto", "over", "under", "through", "across", "around", "again",
+    "behind", "beside", "above", "below", "toward", "towards", "against", "between", "along",
+    "until", "every", "about", "being", "there", "their", "them", "they", "have", "were", "been",
+    "would", "could", "should", "once", "hard", "slow", "slowly", "loud", "quiet", "dark", "light",
+    "hour", "minute", "second", "year", "summer", "winter", "spring", "autumn", "october",
+    "start", "started", "starts", "begin", "began", "stop", "stopped", "turn", "turned", "look", "looked",
+    "hear", "heard", "sound", "sounds", "thing", "things", "come", "came", "going", "went", "made", "make",
+    "mudroom", "attic", "cellar", "basement", "garage", "barn", "shed", "closet", "laundry",
+    "stairs", "stair", "staircase", "landing", "pantry", "trailer", "cabin", "farmhouse",
+    "apartment", "upstairs", "downstairs", "nights", "night", "days", "week", "weeks", "alone",
+    "someone", "knock", "knocked", "name", "nickname", "uncle", "aunt",
+}
+
+
+def _stem(word: str) -> str:
+    w = re.sub(r"'s$", "", word.lower()).strip("'")
+    for suf in ("ing", "ed", "es", "s"):
+        if suf == "s" and w.endswith("ss"):
+            continue
+        if len(w) > len(suf) + 3 and w.endswith(suf):
+            return w[:-len(suf)]
+    return {"said": "say", "says": "say", "saying": "say"}.get(w, w)
+
+
+_COLD_OPEN_HOOK_RE = re.compile(
+    r"\b(never|anymore|still|can'?t|won'?t|haven'?t|don'?t|to this day|"            # a lasting change
+    r"(19|20)\d\d|\d{1,2}\s*(a\.?m\.?|p\.?m\.?|o'clock)|midnight|\d{1,2} years old|when i was \w+|"  # an anchor
+    r"i was (\d{1,2}|(twenty|thirty|forty|fifty|sixty)(-\w+)?|nineteen|eighteen|seventeen|sixteen)\b|"
+    r"stopped|started|quit|kept|keep|sleep\w* with|ever since|now|"                 # a habit that changed
+    r"man|woman|someone|somebody|stranger|figure|shape|voice|knock\w*|footsteps?|handle|"
+    r"tap(ped|ping)?|scratch\w*|breath\w*|whisper\w*|watch\w*|follow\w*|stood|standing|"
+    r"screen|glass|lock\w*|bolt\w*|deadbolt|latch\w*|police|deputy|911|sheriff|"
+    r"hanging open|swinging|wide open|(was|were) gone|had been moved|wasn'?t where|"   # an object that changed
+    r"padlock|chain|inside with me|in the house|in the room)\b", re.I)
+
+
+_VOICE_TIC_RE = re.compile(
+    r"(repeats? (the|a|his|her) (hedge|phrase|word|line|saying)|repeats? ['\"\u2018\u2019]|catchphrase|verbal tic|\btic\b|"
+    r"always (says|calls|refers to)|instead of (a |his |her |their )?name|by comparison to (his|her|their)|"
+    r"compar\w+ (everything|people and things|people|things) to)", re.I)
+
+
+def voice_tic_problems(plan) -> list[str]:
+    """Nobody in the corpus performs a character. Voice rules that install a
+    catchphrase, a repeated hedge, or a comparison habit read as a writer
+    doing a voice; the genre's voice is plain, dated, reasoning out loud."""
+    out = []
+    for item in getattr(plan, "stories", ()) or ():
+        rules = str(getattr(item, "voice_rules", "") or "")
+        hit = _VOICE_TIC_RE.search(rules)
+        if hit:
+            out.append(f"{getattr(item, 'story_id', '?')}: voice_rules installs a performed tic "
+                       f"({hit.group(0)!r}). The corpus voice is plain: exact times, reasoning out "
+                       "loud, at most one image. Replace with rules about WHAT the narrator notices "
+                       "and how they reason, not a catchphrase.")
+    return out
+
+
+def cold_open_hook_problems(plan) -> list[str]:
+    """The spoiler gate alone produced 'That week I house-sat my uncle's
+    farmhouse, I learned our mailbox had been sitting unlocked for days':
+    no payoff given away, and no reason to keep watching. A cold open
+    carries a lasting change, an anchor in time, or a sign that someone
+    came."""
+    cold = (getattr(plan, "cold_open", "") or "").strip()
+    if not cold:
+        return []
+    if _COLD_OPEN_HOOK_RE.search(cold):
+        return []
+    return ["story_1: cold_open has no hook: no lasting change ('I never ... anymore', 'I still'), "
+            "no anchor (a year, an hour, an age) and no sign that someone came (a man, a voice, a "
+            "knock, a handle, a lock). It sells nothing. Keep the payoff hidden, but give the "
+            "viewer the fear."]
+
+
+def cold_open_spoiler_problems(plan) -> list[str]:
+    """Codex, twice: the cold open gave away 'his nickname through the glass',
+    the rung-five payoff. A cold open that repeats a three-word run from the
+    last two rungs is telling the ending first."""
+    cold = re.findall(r"[a-z']+", (getattr(plan, "cold_open", "") or "").lower())
+    if len(cold) < 3:
+        return []
+    cold_tri = {tuple(cold[i:i + 3]) for i in range(len(cold) - 2)}
+    out: list[str] = []
+    for item in getattr(plan, "stories", ()) or ():
+        rungs = [str(r) for r in (getattr(item, "escalation_ladder", None) or []) if str(r).strip()]
+        if len(rungs) < 4:
+            continue
+        tail = " ".join(rungs[-2:]).lower()
+        words = re.findall(r"[a-z']+", tail)
+        tail_tri = {tuple(words[i:i + 3]) for i in range(len(words) - 2)}
+        shared = [" ".join(t) for t in cold_tri & tail_tri
+                  if not all(w in {"the", "a", "an", "of", "in", "on", "at", "to", "and", "his", "her", "my", "it", "that"} for w in t)]
+        # Paraphrase: Codex three times on 'said his nickname through the glass'
+        # vs the rung 'a voice says Boot ... rap the glass'. Content words that
+        # live ONLY in the last two rungs (not the setup half) and recur in
+        # the cold open are the payoff being told first. Generic location
+        # nouns do not count; two such words do.
+        head = " ".join(rungs[:-2]).lower()
+        head_stems = {_stem(w) for w in re.findall(r"[a-z']+", head)}
+        tail_stems = {_stem(w) for w in words if len(w) >= 4} - head_stems - _GENERIC_SCENE
+        # The object that changed belongs to the ending; naming it is the rule,
+        # not the spoiler ('I still check that mudroom latch').
+        ending = (getattr(item, "ending_shape", "") or "").lower()
+        ending_stems = {_stem(w) for w in re.findall(r"[a-z']+", ending)}
+        cold_stems = {_stem(w) for w in cold if len(w) >= 4} - _GENERIC_SCENE - ending_stems
+        payoff = sorted(cold_stems & tail_stems)
+        strong = [w for w in payoff if len(w) >= 5]
+        if not shared and (len(payoff) >= 2 or strong):
+            shared = [" + ".join(payoff[:3])]
+        if shared:
+            out.append(
+                f"{getattr(item, 'story_id', '?')}: cold_open repeats the last rungs "
+                f"({shared[0]!r}). The cold open sells the night, not the payoff: name the "
+                "place, the fear or the object that changed, never the last rung's action.")
+    return out
+
+
+def narrator_pronoun_conflicts(plan) -> list[str]:
+    """Stories whose narrator changes gender between plan fields.
+
+    Live 2026-08-04: a plan described its narrator as "He drives … I've hauled"
+    and then wrote "She backs" into escape_action. plan_audit caught it, but
+    that spent a paid audit call and one of only two attempts on a
+    contradiction nobody needed judgement to see.
+
+    Deliberately narrow. escape_action legitimately mentions the threat, who in
+    this genre is usually a man, so this fires only when each side is
+    internally unambiguous and the two disagree. A false positive here blocks
+    generation outright, which is worse than the bug it would catch.
+    """
+    # Word boundaries are load-bearing: without them "he" matches inside
+    # "the", every field reads as both genders, and the check silently
+    # never fires. A shell heredoc once replaced these two escapes with
+    # literal 0x08 bytes, which looked fine and disabled the check.
+    def _gender(text: str, subject_only: bool = False) -> set[str]:
+        low = f" {(text or '').lower()} "
+        found = set()
+        # escape_action is judged on SUBJECT pronouns only. Run 15's repaired
+        # plan read 'the man hears her say deputies are close' — 'her' was the
+        # dispatcher — and the gate threw away the best plan of the day.
+        male = r"\b(he)\b" if subject_only else r"\b(he|him|his)\b"
+        female = r"\b(she)\b" if subject_only else r"\b(she|her|hers)\b"
+        if re.search(male, low):
+            found.add("male")
+        if re.search(female, low):
+            found.add("female")
+        return found
+
+    out: list[str] = []
+    for item in getattr(plan, "stories", ()) or ():
+        who = _gender(getattr(item, "narrator_profile", "")) | _gender(
+            getattr(item, "voice_seed", ""))
+        act = _gender(getattr(item, "escape_action", ""), subject_only=True)
+        if len(who) == 1 and len(act) == 1 and who != act:
+            out.append(
+                f"{getattr(item, 'story_id', '?')}: narrator is described as "
+                f"{next(iter(who))} but escape_action uses "
+                f"{next(iter(act))} pronouns; one narrator, one gender")
+    return out
+
+
+def _gate_errors_as_issues(errors: list[str]) -> list["PlanIssue"]:
+    """Deterministic gate errors ('story_1: escape_action ends on a coincidence
+    ...') as typed, story-scoped MAJOR issues, so _repair_plan — which repairs
+    only what audit.issues names — can act on them. Errors without a story
+    prefix are compilation-level and are left out (repair will decline)."""
+    out = []
+    for err in errors:
+        m = re.match(r"^(story_\d+):\s*(.*)$", err.strip(), re.S)
+        if not m:
+            continue
+        out.append(PlanIssue(
+            story_id=m.group(1),
+            category="cold_open" if "cold_open" in m.group(2) else "gate", severity="major",
+            problem=m.group(2).strip(), plan_fix=m.group(2).strip(),
+            knowledge_scope="universal", confidence=1.0))
+    return out
+
+
+def _changed_fields(before: "CompilationPlan", after: "CompilationPlan") -> dict[str, list[str]]:
+    """Per story, the plan fields a repair actually changed."""
+    out: dict[str, list[str]] = {}
+    prev = {item.story_id: item.model_dump() for item in before.stories}
+    for item in after.stories:
+        old = prev.get(item.story_id)
+        if old is None:
+            out[item.story_id] = ["(new story)"]
+            continue
+        new = item.model_dump()
+        changed = [k for k in new if new.get(k) != old.get(k)]
+        if changed:
+            out[item.story_id] = changed
+    return out
+
+
+def _issue_sig(issue: "PlanIssue") -> str:
+    return " ".join((issue.evidence_quote or issue.problem or "").split()).lower()[:80]
+
+
+def _demote_goalpost_moves(audit: "PlanAuditResult", raised_keys: set,
+                           changed: dict[str, list[str]],
+                           candidate: "CompilationPlan | None" = None) -> "PlanAuditResult":
+    """A NEW major complaint, in a category already answered, that quotes the
+    text the repair just wrote is a moved goalpost: demoted to minor. A new
+    complaint about an unchanged field is a real objection and stands. If
+    nothing major is left, the audit is valid."""
+    changed_text: dict[str, str] = {}
+    if candidate is not None:
+        for item in candidate.stories:
+            fields = changed.get(item.story_id) or []
+            data = item.model_dump()
+            changed_text[item.story_id] = " ".join(
+                " ".join(map(str, v)) if isinstance(v, list) else str(v)
+                for k, v in data.items() if k in fields).lower()
+    kept, demoted = [], []
+    for issue in audit.issues:
+        key = (issue.story_id, issue.category)
+        # The SAME complaint again means unresolved: still blocking. A NEW
+        # complaint in an already-answered category is the moved goalpost.
+        seen = raised_keys.get(key) if isinstance(raised_keys, dict) else (set() if key in raised_keys else None)
+        quote = " ".join((issue.evidence_quote or "").split()).lower()
+        about_repaired_text = (
+            bool(quote) and quote in changed_text.get(issue.story_id, "")
+            if candidate is not None else bool(changed.get(issue.story_id)))
+        if (issue.severity in {"critical", "major"} and issue.category != "gate"
+                and seen is not None and _issue_sig(issue) not in seen
+                and about_repaired_text):
+            demoted.append(issue.model_copy(update={"severity": "minor"}))
+        else:
+            kept.append(issue)
+    if not demoted:
+        return audit
+    blocking = [i for i in kept if i.severity in {"critical", "major"}]
+    if blocking:
+        return audit.model_copy(update={"issues": kept + demoted,
+                                        "blockers": [_format_plan_issue(i) for i in blocking]})
+    return audit.model_copy(update={"status": "valid", "blockers": [], "issues": kept + demoted,
+                                    "summary": audit.summary + " (repeat objections demoted)"})
+
+
+def _reaudit_contract(before: "CompilationPlan", after: "CompilationPlan",
+                      audit: "PlanAuditResult") -> str:
+    """A re-audit judges the repair. Three rounds on one plan each cleared
+    every objection they were given and each re-audit raised three or four
+    new ones on fields that had already passed. The contract: say whether
+    each listed objection is resolved; a NEW major issue is allowed only if
+    the changed fields caused it."""
+    # A synthetic gate audit never read the plan. After a gate repair the
+    # re-audit must be the FULL audit, or the scope rule hides every field the
+    # real auditor has not yet judged (live: a plan accepted in 32 seconds with
+    # the knowledge-path hole untouched).
+    if getattr(audit, "verdict_source", "") == "none" or not audit.issues:
+        return ""
+    objections = [
+        {"story_id": i.story_id, "category": i.category, "problem": i.problem}
+        for i in audit.issues if i.severity in {"critical", "major"}
+    ]
+    changed = _changed_fields(before, after)
+    return (
+        "\n\nRE-AUDIT CONTRACT. This plan was already audited and the ONLY blocking "
+        "objections were the ones below. The author has repaired them; the fields that "
+        "changed are listed per story. Your job now:\n"
+        "1. For each objection below, decide whether the repaired plan resolves it. If it "
+        "does not, raise it again (same category) quoting the text that still fails.\n"
+        "2. You may raise a NEW critical/major issue ONLY if it is caused by text in the "
+        "changed fields, and an informed viewer would reject the video for it. Fields that "
+        "did not change already passed: do not re-open them, and do not raise issues the "
+        "previous audit chose not to raise.\n"
+        "3. Minor notes on anything are welcome; they do not block.\n"
+        "PREVIOUS OBJECTIONS:\n" + json.dumps(objections, ensure_ascii=False, indent=1) +
+        "\nCHANGED FIELDS:\n" + json.dumps(changed, ensure_ascii=False, indent=1) + "\n"
+    )
+
+
+def load_draft_file(path: str | Path, item: "NarrativeStoryPlan") -> "StoryDraft":
+    """A needs_edit.txt / draft file: optional cold-open line, optional
+    '[Title]' line, then the narration. Hook candidates come from the plan
+    title; the narration is the file's prose."""
+    text = Path(path).read_text(encoding="utf-8").strip()
+    lines = text.split("\n")
+    title = item.title
+    body_start = 0
+    # drop a leading cold-open line if it is followed by a '[Title]' marker
+    for i, ln in enumerate(lines[:4]):
+        if ln.strip().startswith("[") and ln.strip().endswith("]"):
+            title = ln.strip()[1:-1] or title
+            body_start = i + 1
+            break
+    narration = "\n".join(lines[body_start:]).strip()
+    if not narration:
+        raise ValueError(f"{path}: no narration found")
+    return StoryDraft(story_id=item.story_id, title=title,
+                      hook_candidates=[title], narration=narration)
+
+
+def load_approved_plan(path: str | Path, index: int = 0) -> "CompilationPlan":
+    """A plan the operator read and approved, from a plan_only.py save file.
+
+    The file holds a list; each entry is either a bare plan dump (older
+    saves) or {"plan": ..., "audit": ...}. Only the plan is trusted from the
+    file: preflight re-runs on it in run(), because the gates may have
+    tightened since it was saved.
+    """
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    entries = raw if isinstance(raw, list) else [raw]
+    if not entries:
+        raise ValueError(f"{path}: no plans in file")
+    entry = entries[index]
+    if isinstance(entry, dict) and "plan" in entry and "stories" not in entry:
+        entry = entry["plan"]
+    return CompilationPlan.model_validate(entry)
+
+
+def load_approved_audit(path: str | Path, index: int = 0) -> "PlanAuditResult | None":
+    """The audit plan_only saved beside the plan, if any and if valid."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    entries = raw if isinstance(raw, list) else [raw]
+    entry = entries[index] if entries else None
+    audit = entry.get("audit") if isinstance(entry, dict) else None
+    if not isinstance(audit, dict):
+        return None
+    try:
+        parsed = PlanAuditResult.model_validate(audit)
+    except Exception:
+        return None
+    return parsed if parsed.status == "valid" else None
+
+
 def validate_plan_preflight(
     plan: CompilationPlan,
     story_count: int,
@@ -2754,6 +3606,82 @@ def validate_plan_preflight(
         errors.append(f"story IDs/order must be {expected}; received {actual}")
     if len(plan.stories) != story_count:
         errors.append(f"expected {story_count} stories; received {len(plan.stories)}")
+
+    errors.extend(narrator_pronoun_conflicts(plan))
+    # Run 15 accepted a plan with NO ladder: the fear gate skips ladders under
+    # four rungs, so an empty one was never judged. The ladder is the plan.
+    for _item in (plan.stories if getattr(strategy, "require_ladder", False) else ()):
+        for _f, _what in (("already_line", "a fact learned too late that re-reads the whole night"),
+                          ("no_way_out", "the named reason the easy exit is gone"),
+                          ("threat_mind", "what the narrator infers the threat wants, and from what"),
+                          ("remainder", "the one thing never explained, said last")):
+            if len(str(getattr(_item, _f, "") or "").split()) < 6:
+                errors.append(f"{_item.story_id}: {_f} is missing: {_what}. Without it the story "
+                              "is a crime report, not something that stays.")
+        _rungs = [r for r in (getattr(_item, 'escalation_ladder', None) or []) if str(r).strip()]
+        if len(_rungs) < 4:
+            errors.append(
+                f"{_item.story_id}: escalation_ladder has {len(_rungs)} rungs; a story needs "
+                "at least four, each nearer than the last, the back half present tense.")
+    errors.extend(ladder_fear_problems(plan))
+    # ladder_order_problems is NOT a hard gate: on 2026-08-22 it rejected five
+    # of five ladders it saw, every one a real approach the regex missed
+    # (a truck parked across the road, boots crossing the porch, a latch
+    # lifting under a hand). The planner rule and the auditor carry it.
+    errors.extend(escape_agency_problems(plan))
+    errors.extend(night_arithmetic_problems(plan))
+    errors.extend(cold_open_spoiler_problems(plan))
+    if getattr(strategy, "require_ladder", False):
+        errors.extend(cold_open_hook_problems(plan))
+        errors.extend(voice_tic_problems(plan))
+    # A LADDER WITH ONE RUNG IS A SCENE. Enforced only when the planner used the
+    # field, so older plans and fixtures still validate; when it did, fewer
+    # than four rungs means the premise will collapse to its scariest sentence
+    # and be rejected as stock two paid calls from now.
+    for item in plan.stories:
+        rungs = [r for r in (getattr(item, "escalation_ladder", None) or []) if str(r).strip()]
+        if rungs and len(rungs) < 4:
+            errors.append(
+                f"{item.story_id}: escalation_ladder has {len(rungs)} rung(s); a "
+                "story needs at least four distinct things that get worse, or it "
+                "is one scene")
+        seen = set()
+        for r in rungs:
+            key = " ".join(str(r).lower().split())[:60]
+            if key in seen:
+                errors.append(f"{item.story_id}: escalation_ladder repeats a rung")
+                break
+            seen.add(key)
+
+    # PER-STORY BUDGETS ARE FREE TO DIFFER, NOT FREE TO BE ANYTHING. Letting the
+    # planner size each premise is the point; letting it hand one story 90% of
+    # the compilation, or hand out budgets that do not add up to the video we
+    # agreed to make, is not. Checked here because a bad allocation is cheap to
+    # reject before drafting and expensive to discover after three writer calls.
+    budgets = [int(getattr(item, "target_words", 0) or 0) for item in plan.stories]
+    if any(budgets):
+        if not all(budgets):
+            errors.append("target_words must be set on every story or none")
+        else:
+            total = int(plan.target_word_count)
+            equal = total / max(1, len(budgets))
+            if abs(sum(budgets) - total) > math.ceil(total * 0.02):
+                errors.append(
+                    f"story target_words sum to {sum(budgets)}; the compilation "
+                    f"target is {total}")
+            # ONLY A FLOOR. An earlier version of this also capped a story at
+            # double the equal share, "so no story swallows the compilation" —
+            # but if one premise deserves the whole video then the answer is a
+            # one-story video, not three stories filed down to the same size.
+            # The floor is the real protection: below roughly a third of a
+            # normal story there is no room to set anything up, and what ships
+            # is a fragment padding out someone else's video.
+            for item, budget in zip(plan.stories, budgets):
+                if budget < max(400, equal * 0.4):
+                    errors.append(
+                        f"{item.story_id} is budgeted {budget} words, too few to "
+                        f"set anything up; give it room or drop it and write "
+                        f"fewer, longer stories")
     for item in plan.stories:
         # A human threat that walks away uncontested leaves an unresolved danger;
         # the plan must declare what the narrator does about it afterwards.
@@ -2901,6 +3829,43 @@ def _mechanism_vocabulary() -> str:
     )
 
 
+def _premise_shapes(channel_id: str, limit: int = 6) -> str:
+    """Real competitor openings, offered as SHAPES the planner may study.
+
+    Across 48 saved plans the auditor issued 108 trope rejections — more than
+    every other category combined. The plans were not repetitive on the
+    surface: they carried 132 distinct threat sentences. What repeated was
+    STRUCTURE ("a man recites her plate number" / "her patient's name" / "the
+    name on her folder" are one premise in three coats), and the only guidance
+    the planner had was a list of things to avoid. Nothing had ever shown it
+    what a fresh premise looks like in this genre.
+
+    Returns "" when no bank has been built, so a channel without a measured
+    corpus plans exactly as before.
+    """
+    bank_file = (Path(__file__).resolve().parents[3] / "output" / "research"
+                 / channel_id / "premise_bank.json")
+    try:
+        bank = json.loads(bank_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    picked = [row for row in bank if row.get("opening")][:limit]
+    if not picked:
+        return ""
+    lines = []
+    for row in picked:
+        opening = " ".join(str(row["opening"]).split())[:260]
+        lines.append(f"  - {opening}")
+    return (
+        "\nHOW REAL ACCOUNTS IN THIS GENRE BEGIN (study the SHAPE, never the "
+        "words):\n" + "\n".join(lines) +
+        "\nNotice what these establish first: a person, a time, and why they "
+        "were there. The danger arrives into a life that is already specific. "
+        "Do NOT reuse a phrase, a job, a place or a detail from these — they "
+        "are other people's accounts, and copying one would fail the same "
+        "freshness gate it is meant to help you pass.\n")
+
+
 def _plan_prompt(brief: TopicBrief, story_count: int, target_words: int,
                  brand: dict | None, recent_avoid: str,
                  strategy: NamedChannelStrategy,
@@ -2913,24 +3878,35 @@ def _plan_prompt(brief: TopicBrief, story_count: int, target_words: int,
         "same beats.\n"
         if forbidden_fingerprints else ""
     )
-    return f"""Create a locked plan for an allegedly true first-person horror compilation.
+    return f"""Create a locked plan for a first-person horror recollection.
 TOPIC: {brief.title}
 STORIES: exactly {story_count}
 TOTAL NARRATION TARGET: {target_words} words
+SPLIT THAT TOTAL BETWEEN THE STORIES AS EACH PREMISE ACTUALLY NEEDS, in each
+story's target_words. They must sum to the total, and no story may take less
+than half or more than double an equal share. Do NOT divide it evenly out of
+caution: a premise that needs a long patient setup should be given the room,
+and one that lands quickly should be allowed to end.
 CHANNEL VOICE: {json.dumps(brand or {}, ensure_ascii=False)}
 RECENT MATERIAL TO AVOID: {recent_avoid or 'none supplied'}
+{_premise_shapes(getattr(brief, 'channel_id', '') or '')}
 CHANNEL QUALITY STRATEGY ({strategy.strategy_id}):
 {strategy.planner_rules or strategy.writer_rules}
 {spent}
 Return exactly one compact JSON object and no commentary. Top-level keys are:
 topic (string), cold_open (string), target_word_count (integer), stories (array).
+target_word_count is YOUR ESTIMATE of what these accounts need, spoken: count the rungs,
+the setup each premise needs, the worst rung slowed down. Single accounts in this genre run
+anywhere from 1,800 to 4,500 words; compilations 3,500-6,000. The number you give is handed
+to the writer as a shape, never enforced as a quota, so estimate honestly rather than
+rounding to the duration you were given.
 Every stories item has exactly these keys: story_id, title, narrator_profile, setting,
 setup_requirement, threat, threat_type (human or ambiguous), escape_action, ending_shape,
 evidence_allowance (MUST be exactly one enum string: none, camera, official, physical,
 witness, or recurrence; put any description in continuity_ledger instead), voice_rules,
 voice_seed, threat_mechanism, progression_mechanism, escape_mechanism,
 aftermath_mechanism, threat_identity, topic_promise, distinguishing_turn,
-narrator_age_band,
+narrator_age_band, target_words, escalation_ladder, already_line, no_way_out, threat_mind, remainder,
 narrator_age_years, safety_obligation, safety_omission_reason, continuity_ledger
 (array of exactly 5 unique short strings in this exact order and with these exact
 prefixes: "hook_timeline:", "people_objects:", "locations_exits:",
@@ -2938,6 +3914,89 @@ prefixes: "hook_timeline:", "people_objects:", "locations_exits:",
 locked facts after its prefix and stay at or under 24 words. Keep every other scalar
 under 35 words — EXCEPT voice_seed, which is a 2-3 sentence sample and is exempt from
 that cap.
+
+EVIDENCE BUDGET FOR THIS PLAN: with {story_count} stor{'y' if story_count == 1 else 'ies'}, at most {max(0, min(1, story_count - 1))} may carry evidence_allowance other than "none"{' — so this story MUST be "none"' if story_count == 1 else ''}. At least one story always ends with nothing corroborated; the fear is not allowed to be proven.
+
+WHAT STAYS. The most-watched accounts in this genre are not remembered for the knock;
+they are remembered for one sentence learned too late. Every story needs all four:
+- already_line (<=35 words): a fact the narrator learns AFTER the worst of it that makes the
+  listener re-read the whole night. 'I likely looked right at this guy when he first
+  knocked on the window and didn't even know it.' 'They were both my items.' 'Someone had
+  taken apart a section of staircase while we sat directly above them.' 'If the lights
+  were on one night and off the next, he assumed the house was empty.' It must be a fact
+  the ladder quietly set up and the listener could not have known. It is about PRESENCE,
+  never identity: 'he had been in the house', 'I read the card aloud at the lit window',
+  'the chair in the loft faced my window' — never 'it turned out to be the fired hand'.
+- no_way_out (<=35 words): the named reason the easy exit is gone that night. No phone in
+  the house. Seventy feet up with the only way down blocked. Police an hour out. The car
+  keys in the room he is in. A working phone and a nine-minute deputy is a safe story.
+- threat_mind (<=35 words): the moment the narrator reasons out what the threat WANTS from
+  what it does. 'Why knock four nights and never come in? He was checking whether the
+  pattern changed.' 'Nothing was stopping him. Maybe he wanted me to stay inside.' The
+  inference is the fear; the threat must visibly think (a schedule, a sequence, patience).
+- remainder (<=35 words): the one thing never explained, and it is the LAST thing said.
+  Never caught. Denied the knocking. No fire pit where the fire was. 'Maybe it's in my
+  head, or maybe it isn't.' 'Deputies found nothing' is a shrug, not a remainder.
+THE REPORT BEAT. After the first sign that cannot be explained away (a print under the
+window, prints circling the house, a stranger reciting a private fact), the account
+either shows the narrator reporting it — and receiving the genre's half-answer: 'sounds
+like someone checking whether the house is occupied; install a camera; call 911 if he
+comes back' — or states plainly why no report was possible (no phone, no signal, the
+office closed, nobody to call at that hour). A narrator with a working phone who says
+nothing for days is a human-safety failure, and the listener stops believing her.
+VOICE IS PLAIN. Exact clock times, the narrator reasoning out loud, at most one image in
+the whole account. No verbal tics, no catchphrases, no comparing everything to a relative:
+nobody in the corpus does that, and it reads as a writer performing a character.
+THE LADDER. escalation_ladder is an array of 4-7 strings: the sequence of concrete
+things that get worse, in order. Rung one is small and deniable — the kind of thing a
+person explains away. Each later rung is worse than the last, is something the narrator
+could actually perceive at that distance and light, and does NOT explain the earlier
+rungs. The threat field is the rung where denial runs out; the escape follows the last
+rung. The LAST rung must leave no room to keep watching: it is the moment a person
+has to move, not a thing they notice from a window. If your final rung ends with the
+narrator observing, you have written rung N-1 — add the one that forces the escape.
+FEAR IS PRESENT TENSE AND DISTANCE. A rung the narrator is not there for — a woodpile
+restacked, a key gone, a note found in the morning — is a clue, and clues frighten no
+one. In the accounts this genre rewards, the threat is ACTING while the narrator is
+present and each rung is nearer than the last: a tap on the glass, then a tap closer to
+the centre, then the bathroom window starting to move. Use at most two trace rungs, and
+only at the start. At least half the rungs, and ALL of the last three, must be things
+happening to the narrator right now, with the distance between them closing.
+DISTANCE CLOSES IN STEPS NOBODY CAN SKIP: approach (heard or seen near, stopping
+outside), then contact (a hand on the structure), then breach (forcing in). A polite
+question at the door in daylight followed by the handle wrenched that night is a jump
+cut; put the footsteps that stop outside the kitchen door between them.
+WHAT THE THREAT KNOWS, IT GOT SOMEWHERE. If the threat recites a private fact — a
+prescription, a name, a schedule — the plan must contain the moment it could have been
+taken (a bag on a car seat, mail in an unlocked box, a form read over a shoulder). Plant
+it so the narrator only understands it afterwards; never explain it aloud.
+THE COLD OPEN SELLS THE NIGHT, NOT THE PAYOFF. It may name the place, the fear, the
+object that changed — never the last rung's action. 'Something said his nickname through
+the glass' gives away the best beat; 'I never leave a window unlatched anymore' does not.
+THE ESCAPE IS GEOMETRY, NOT A MOOD. The threat stops because of something the narrator DID, or because
+help the narrator CALLED arrives after a stated wait. Never a neighbour's headlights,
+never a threat that simply loses interest. Before writing escape_action, place two things on
+the floor plan from your own ledger: where the narrator stands at the last rung, and
+where the threat stands. The escape must move AWAY from the threat through an exit in
+locations_exits without crossing the threat's position, and it must begin the moment
+the last rung lands — a narrator who watches an intruder pocket her phone, or who has
+to walk past him to reach the door, has been given no escape at all. If the only exit
+is past him, change the rung or the room, not the person. A story whose ladder has one rung is a single scene, and a single scene is what
+the trope auditor keeps rejecting — not because the moment is stock, but because a
+premise with nowhere to go has nothing to be except its own scariest line. The top
+accounts in this genre turn twenty times across several days; give yours at least four.
+
+WHO THIS PERSON IS, BEFORE ANYTHING THREATENS THEM. narrator_profile is not a job
+title. Write the LIFE: roughly how old they were, what stage they were at, and the
+specific reason they were in that place on that night — a shift they had swapped, a
+thing they were saving for, someone they were avoiding, a habit they had kept for
+years. Then derive the threat from that life.
+This order is not a preference. Across 147 competitor captions in this genre, 98% open
+on a person and a reason; two open on the threat, and those two are the lowest-viewed
+scripts in the corpus. It is also the difference this channel keeps failing on: this
+plan format gives the danger eight typed fields and the person one, so premises come
+out built threat-first, and threat-first lands in the small stock catalogue every
+viewer already knows. A life is specific by construction and cannot be stock.
 
 VOICE DIFFERENTIATION (the axis most often faked with adjectives): for each story emit
 (a) voice_seed — a 2-3 sentence sample paragraph WRITTEN IN that narrator's exact
@@ -3129,8 +4188,90 @@ Check each story for exactly these categories:
 - geography: the escape route must actually work — exits, floors, sightlines, distances.
 - human_behavior: a reasonable person's response — fight, flight, or a deliberate
   defensive decision while the threat disengages on its own; no one preserves mystery
-  over safety.
+  over safety. Judge WHETHER they act, not whether they picked the best available
+  action. A frightened person takes the exit they see, not the optimal one, and 125
+  of 147 scripts in this genre contain a choice the narrator second-guesses later
+  ("I don't know why I did it", "I should have known better"). Reject passivity,
+  curiosity that outranks safety, and choices no frightened person would make —
+  never a real escape for being tactically imperfect.
+  STAYING AFTER A DENIABLE SIGN IS NOT A DEFECT. Every one of the twenty most-watched
+  accounts in this genre has the narrator notice something, explain it away, and stay -
+  a median of five times; the first time anyone leaves or calls is a third of the way in,
+  and 59 of 147 never do. A lock found open, a light found on, a sound under the floor:
+  a person explains these and goes back to bed, and that is the genre, not a failure of
+  the person. Object to staying ONLY after a sign that cannot be explained away - a
+  stranger reciting private information, a hand on the door, a figure inside - or to
+  passivity AT the final rung. Do not run the ladder backwards and declare that rung two
+  should have ended the story.
+  THE PLAN MUST CARRY THE REPORT BEAT: after the rung that cannot be explained away, a
+  later rung (or no_way_out) must show the report and its half-answer, or why none was
+  possible. A ladder that goes print -> prints -> footsteps -> knock with no call and no
+  reason is MAJOR (human_behavior): the final editor will block the page for it anyway.
+  STAYING AFTER A SIGN THAT CANNOT BE EXPLAINED AWAY is still the genre when the plan
+  names BOTH a reason leaving is not available (the animals, no car, the relative asked,
+  nowhere to go at that hour) AND a precaution taken (reported to police, told someone,
+  locked up, phone kept in hand). Object only when neither is named. 'A reasonable person
+  would leave' is not an objection to a house-sitter with a cat and a reported stranger.
+- human_behavior also covers the THREAT, at ONE point only: the moment he finally stops —
+  stops prying, walks away, drives off — needs a cause the plan names (a light thrown, a
+  shout that police are on the line, a siren, a dog). A threat that simply leaves at the
+  end is a coincidence; raise it as MAJOR and name the missing cause. Moving between
+  rungs (door to window, yard to porch) needs no cause: that is the ladder. Knowing which
+  window to try needs no path: he can see the lit one.
+- haunting: already_line must be a fact the narrator could only learn AFTER the worst of
+  it, set up by an earlier rung the listener passed over, and it must change what the
+  night meant (he had been inside; I looked right at him; they were my items). A fact
+  known from rung one, or a restatement of the threat, is not an already_line: MAJOR.
+  NEITHER IS AN EXPLANATION. 'Weeks later my uncle confirmed it was a fired hand' tells
+  the listener who; it RELIEVES. An already_line is about PRESENCE and PROXIMITY that had
+  already happened while the narrator felt safe: he had been in the house; the chair in
+  the loft faced my window; I had read the card aloud at the lit window; the bowl had been
+  moved nights before. If the line answers 'who' or 'why', it is the wrong line: MAJOR.
+  remainder must be about the threat's presence or intent, never logistics ('how he knew
+  which window' is a logistics nit, not a remainder): MAJOR.
+  remainder must be something nobody explains, not something police merely failed to
+  find. no_way_out must be structurally true of the plan (a dead spot in the kitchen
+  while the phone works in the bathroom is not no way out). threat_mind must be an
+  inference from the threat's behaviour, not a label.
+- cold_open: the compilation's cold_open must not reveal the last rung's action (the
+  nickname said through the glass, the hand through the screen). It may name the place,
+  the fear, the object that changed. A spoiled payoff is MAJOR; file it against story_1.
 - prop_staging: every object used during threat/escape must exist in the setup or ledger first.
+  AN OBJECT WHOSE CHANGE IS THE ENDING (a bent screen, a moved chair, a missing key) must
+  be staged before the threat touches it, or the ending is a prop appearing from nowhere:
+  MAJOR, name the object and the missing setup clause.
+  STAGED MEANS NAMED WITH A CONDITION. If setup_requirement or the ledger names the object
+  and its state ('the mudroom screen, patched last summer', 'the screen checked snug each
+  night'), it is staged. Do not ask for it to be more specific or more memorable; that is
+  the writer's job, not the plan's.
+  COUNT THE NIGHTS: every 'three days', 'two nights later', 'the fourth night' must fit
+  inside hook_timeline's stay. A mailbox neglected three days inside a four-night stay
+  whose threat arrives 'two nights later' does not add up: MAJOR, show the arithmetic.
+  A SHOUT THAT 911 IS ON THE LINE is either true — the call connected, the dispatcher
+  speaking — or declared a bluff in the plan. 'dials 911 already ringing' and then shouts
+  deputies are on the line is neither: MAJOR, say which it is.
+  THE ORDINARY CONTENTS OF A NAMED ROOM COME WITH THE ROOM: a dresser in a bedroom, a
+  knife in a kitchen, a broom in a mudroom, a phone in a house need no ledger line. Object
+  only to load-bearing or unusual props (a gun, a specific key, a vehicle, a second exit)
+  and to objects whose POSITION the escape depends on (a phone that must be in hand in
+  the hallway). Run 14 lost two repair rounds to a dresser.
+- knowledge_path: every private fact the threat uses (a prescription, a name, a schedule,
+  which room the narrator sleeps in) must have a moment in the plan where it could have
+  been taken: a bag on a car seat, mail in an unlocked box, a form read over a shoulder.
+  A missing pill the narrator carried from the hospital himself has no such moment and
+  reads as a hole, not a mystery. Quote the fact and name the missing moment.
+  EVERY fact the threat says aloud is load-bearing, and each one needs its own path: a
+  card that shows a nickname does not show that the uncle is in the hospital. A missing
+  path for a spoken fact is MAJOR, not minor — it is the thing the viewer will say in the
+  comments.
+  A PLANTED MOMENT IS ENOUGH. If the plan contains a moment where the fact could have
+  been taken (a get-well card in an unlocked mailbox, a thumbprint on it), do not demand
+  proof that the threat took it — the viewer infers, and the genre never explains. Object
+  only when NO such moment exists, or when the moment cannot yield the fact spoken.
+- voice_vs_premise: voice_rules must not forbid what the ladder needs. A rule of 'never
+  exact numbers' in a story that turns on a stranger reciting an exact dosage, or 'never
+  describes faces' where the turn is a face at the glass, will break the draft. Quote
+  the rule and the rung it collides with.
 - trope: the premise is a recognizable AI-horror trope (tall-still figure, smiling stranger
   at the door, knocking that stops when observed) without a fresh angle. This applies to
   HUMAN threats too, and that is where it is most often missed: a tailgating vehicle, a
@@ -3141,10 +4282,16 @@ Check each story for exactly these categories:
   clear the trope — quote it and raise the issue.
   ANTI-ANCHORING DISCIPLINE: the distinguishing_turn is the planner's CLAIM, never your
   evidence. Judge freshness from the LOCKED FIELDS ALONE (threat, escape_action,
-  ending_shape, ledger) as if the turn sentence were deleted: if what remains reads as
-  the stock version, the premise IS stock no matter how novel the claim sounds. A turn
-  whose named mechanism does not appear in any locked field is marketing — quote the
-  turn AND name the missing mechanism.
+  ending_shape, ledger, escalation_ladder) as if the turn sentence were deleted: if
+  what remains reads as the stock version, the premise IS stock no matter how novel
+  the claim sounds. A turn whose named mechanism does not appear in any locked field
+  is marketing — quote the turn AND name the missing mechanism.
+  THE LADDER IS WHERE FRESHNESS USUALLY LIVES. A premise is not its scariest
+  sentence; it is the sequence of things that get worse. Two stories can share a
+  threat line and be different stories if their ladders diverge. Read the rungs in
+  order and ask whether THAT sequence — not the threat alone — is one you have seen.
+  A ladder of four or more perceivable, non-explaining, escalating rungs is evidence
+  of a worked premise; quote the rung that breaks the stock pattern if one does.
 
 severity: critical = the premise cannot survive an informed viewer; major = a knowledgeable
 viewer would flinch but the story could limp through; minor = worth noting, not blocking.
@@ -3188,7 +4335,7 @@ LOCKED PLAN:
 {payload}
 
 Return valid JSON only:
-{{"issues": [{{"story_id": "story_N", "category": "physical|professional|geography|human_behavior|prop_staging|trope|mechanism_mismatch|topic_alignment", "severity": "critical|major|minor", "knowledge_scope": "universal|site_specific", "confidence": 0.0-1.0, "evidence_quote": "exact substring of that story's plan text", "problem": "concrete objection", "plan_fix": "instruction to the planner"}}], "summary": "one line"}}
+{{"issues": [{{"story_id": "story_N", "category": "physical|professional|geography|human_behavior|prop_staging|trope|mechanism_mismatch|topic_alignment|knowledge_path|voice_vs_premise|cold_open|haunting", "severity": "critical|major|minor", "knowledge_scope": "universal|site_specific", "confidence": 0.0-1.0, "evidence_quote": "exact substring of that story's plan text", "problem": "concrete objection", "plan_fix": "instruction to the planner"}}], "summary": "one line"}}
 Return an empty issues array if the plan is sound."""
 
 
@@ -3236,12 +4383,58 @@ def _spoken_obligations(plan: NarrativeStoryPlan, topic: str = "") -> str:
     return "\n".join(lines)
 
 
+def _writer_max_tokens(target_words: int) -> int:
+    """Live 2026-08-23: every writer-path call was capped at 2,600 tokens
+    (~1,900 words) while asking for 2,600 words; two attempts came back 46%
+    short and the rewrite fallback could not help. Room for the envelope's
+    top, the JSON wrapper and hook candidates."""
+    return int(max(2600, int(target_words) * 1.7 + 1200))
+
+
 def _story_prompt(plan: NarrativeStoryPlan, target_words: int, cold_open: str,
                   strategy: NamedChannelStrategy, repair: str = "", original: str = "",
                   topic: str = "") -> str:
     mode = "REPAIR ONLY THIS STORY" if repair else "WRITE THIS STORY FROM SCRATCH"
+    # The planner sized this premise; the caller's number is only the equal
+    # share, used when a plan predates per-story budgets. Enforcing the equal
+    # share made three unrelated stories come out the same length whatever they
+    # were about — a premise needing a patient setup could not get it, and a
+    # tight one was padded to fill its third.
+    # The envelope stays ±10% as it was; the freedom comes from the planner
+    # choosing the number it is drawn around, not from loosening the band.
+    target_words = int(getattr(plan, "target_words", 0) or target_words)
     length_low = math.floor(target_words * 0.9)
     length_high = math.ceil(target_words * 1.1)
+    # HOW THE MOST-WATCHED ACCOUNTS SPEND THEIR WORDS. Read in the corpus: a long
+    # calm setup (who I am, the routine, the house), then every sign gets its
+    # own stretch - the hour, what I was doing, what I heard or saw, what I
+    # told myself, what I did, what I noticed after - and the worst rung gets
+    # the most. A draft that gives each rung one paragraph comes in 46% short
+    # and reads as a summary of a frightening night.
+    _rungs = [r for r in (getattr(plan, "escalation_ladder", None) or []) if str(r).strip()]
+    if _rungs:
+        # The corpus's most-watched stories land the first wrongness at 130-300
+        # words (median ~220, about ninety seconds spoken). Our first draft took
+        # 470 and the operator called it: three minutes is too long to wait.
+        _setup = min(300, int(target_words * 0.18))
+        _after = int(target_words * 0.12)
+        _worst = int(target_words * 0.22)
+        _each = int((target_words - _setup - _after - _worst) / max(1, len(_rungs) - 1))
+        dwell_block = (
+            "SHAPE OF THE ACCOUNT (how the most-watched accounts spend their words; a shape, not a law):\n"
+            f"  setup, before anything is wrong: at most {_setup} words - who you are, why you are there, the\n"
+            "    routine, the house; the listener must be able to draw the floor plan, and every sentence\n"
+            "    must load something that fires later. The FIRST WRONGNESS lands inside the first 300 words:\n"
+            "    the most-watched accounts land it at ninety seconds. No mood paragraphs before it; anything\n"
+            "    the floor plan does not need can arrive later, between signs.\n"            f"  each rung except the worst: about {_each} words - the exact hour, what you were doing, what you\n"
+            "    heard or saw, what you did next, what you noticed afterwards. The denial-that-fails ('I\n"
+            "    figured it was X, until...') is allowed TWICE in the whole account, early; every other rung is\n"
+            "    a reaction - a lock checked, a light left on, a call made - not an explanation.\n"
+            f"  the worst rung: about {_worst} words - slow it down; the body; the reasoning; the distances.\n"
+            f"  after: about {_after} words - what was found, the line learned too late, what it cost, the remainder.\n"
+        )
+    else:
+        dwell_block = ""
     obligations = _spoken_obligations(plan, topic)
     # Demonstrated voice beats described voice: the sample leads the prompt so
     # the writer CONTINUES a specific person instead of adopting adjectives.
@@ -3260,9 +4453,13 @@ TITLE: {plan.title}
 {voice_block}
 {('SPOKEN OBLIGATIONS (each one is a hard release gate):' + chr(10) + obligations)
  if obligations else ''}
-TARGET: {target_words} words. HARD LENGTH ENVELOPE: {length_low}-{length_high} words
-inclusive. Silently count the narration words and stay inside that envelope before
-returning.
+LENGTH: the plan estimates about {target_words} words. That is a shape, not a law. Write
+what this account needs: every rung its own stretch of the night, the worst one slowest,
+and stop when the remainder has been said. Never pad to reach a number; never summarise
+a rung to stay under one. A draft that gives each rung a single paragraph is a summary of
+a frightening night, not the night.
+{dwell_block}THE EXAMPLE LINES IN THIS BRIEF ARE EXAMPLES. Never reuse their wording. Write the same
+kind of sentence in this narrator's own words.
 NARRATOR: {plan.narrator_profile}
 SETTING/GEOGRAPHY: {plan.setting}
 SPOKEN SETUP REQUIREMENT (must be established on the page before danger):
@@ -3270,7 +4467,18 @@ SPOKEN SETUP REQUIREMENT (must be established on the page before danger):
 The SETTING/GEOGRAPHY and CONTINUITY LEDGER below are private continuity constraints:
 never contradict them, but do not recite unit numbers, exits, or props that do not
 affect the threat, a choice, the escape, or the ending.
-THREAT: {plan.threat}
+{('ESCALATION LADDER (write it in THIS order; each rung is its own stretch of the night, '
+   'and the narrator reacts to every rung before the next arrives):' + chr(10)
+   + chr(10).join(f'  {i+1}. {r}' for i, r in enumerate(plan.escalation_ladder)) + chr(10))
+  if getattr(plan, 'escalation_ladder', None) else ''}{(
+  'WHAT STAYS (the page must deliver all four, in the narrator\'s plain words):' + chr(10)
+  + (f'  NO WAY OUT, said plainly before the worst of it: {plan.no_way_out}' + chr(10) if getattr(plan, 'no_way_out', '') else '')
+  + (f'  THE THREAT\'S MIND, reasoned out by the narrator during the night: {plan.threat_mind}' + chr(10) if getattr(plan, 'threat_mind', '') else '')
+  + (f'  THE ALREADY LINE, learned after, one sentence, no build-up: {plan.already_line}' + chr(10) if getattr(plan, 'already_line', '') else '')
+  + (f'  THE REMAINDER, the last thing said: {plan.remainder}' + chr(10) if getattr(plan, 'remainder', '') else '')
+  + 'THE REPORT BEAT: after the first sign that cannot be explained away, the narrator either reports it and gets the half-answer (sounds like someone checking the house is occupied; install a camera; call 911 if he comes back) or says plainly why no report was possible. Days of silence with a working phone are not believed.' + chr(10)
+  + 'THE BODY: at the worst rung the narrator goes still and says so in their own plain words - what they were holding, where their eyes went, what their hands did - and the denial fails out loud: the ordinary explanation is offered and then taken apart by the next thing heard. Do not reuse any phrasing from this brief.' + chr(10)
+  ) if any(getattr(plan, k, '') for k in ('no_way_out', 'threat_mind', 'already_line', 'remainder')) else ''}THREAT: {plan.threat}
 THREAT TYPE: {plan.threat_type}{f'''
 WHAT MAKES THIS ONE NOT THE STOCK VERSION: {plan.distinguishing_turn}
 This is the story's reason to exist. It must be legible on the page as something that
@@ -3305,7 +4513,7 @@ NARRATION:
 the complete narration with natural paragraph breaks
 
 The narration must be
-natural spoken English in the submitter's first person, with paragraph breaks. Start in
+natural spoken English in the narrator's first person, with paragraph breaks. Start in
 an ordinary concrete situation; escalate through readable physical geography; make the
 protagonist notice, choose, act, and adapt. Dialogue must sound incidental, not cinematic.
 End within two beats of the strongest action or image.
@@ -3416,6 +4624,19 @@ def _plan_repair_prompt(
         for item in issues
     ]
     keep = [item.story_id for item in plan.stories if item.story_id not in failed_ids]
+    # The repairer never saw the cold open (the payload is stories only), so a
+    # cold_open objection came back as the identical plan. Show it, and make
+    # the replacement a stated requirement at the top.
+    cold_open_block = ""
+    if any(item.category == "cold_open" for item in issues):
+        cold_open_block = (
+            "\nTHIS REPAIR MUST ALSO RETURN A NEW COLD OPEN. An objection below is category\n"
+            "cold_open: the current cold open gives away the last rung. Return a top-level key\n"
+            "\"cold_open\" (<=28 spoken words) that names the place, the fear or the object that\n"
+            "changed — never the last rung's action. Returning the stories without it is the\n"
+            "identical plan, and it will be rejected.\n"
+            f"CURRENT COLD OPEN: {plan.cold_open}\n"
+        )
     return f"""Repair ONLY the blocked stories in this locked plan. Do not redesign the
 compilation; the other stories are already approved and are not yours to touch.
 
@@ -3423,6 +4644,7 @@ A skeptical domain auditor blocked these stories. Every objection is grounded in
 exact quote from the story's own plan text. Apply the plan_fix, or a better fix that
 resolves the same objection.
 
+{cold_open_block}
 BLOCKED STORIES TO REPAIR: {failed_ids}
 STORIES THAT MUST NOT CHANGE (do not return them): {keep}
 
@@ -3445,7 +4667,31 @@ setting, setup_requirement, threat, threat_type, escape_action, ending_shape,
 evidence_allowance, voice_rules, voice_seed, threat_mechanism,
 progression_mechanism, escape_mechanism, aftermath_mechanism, threat_identity,
 topic_promise, distinguishing_turn, narrator_age_band, narrator_age_years,
-safety_obligation, safety_omission_reason, continuity_ledger.
+safety_obligation, safety_omission_reason, continuity_ledger, escalation_ladder,
+already_line, no_way_out, threat_mind, remainder.
+
+WHERE EACH KIND OF OBJECTION IS FIXED. Three repair rounds on one plan each fixed
+the escape and left the same knowledge_path hole standing, because the fix lived in
+fields nobody told you to touch:
+- knowledge_path: in the LADDER or the setup_requirement — plant the moment the fact
+  could be taken (the card says get-well; the bag sat on a car seat; the form was read
+  over a shoulder), one rung or one setup clause, never an explanation aloud.
+- human_behavior about the narrator's response: in the LADDER rung where the sign
+  happens — the call, the lock, the retreat go INTO that rung — and in escape_action.
+- human_behavior about the threat stopping: in escape_action — the cause (lights,
+  a shouted '911 is on the line', a siren, a dog) and the wait, in minutes.
+- prop_staging: in setup_requirement or the props ledger line — one clause.
+- ANY NEW FACT A REPAIR INTRODUCES (a dead line, a missing key, a dog that barks) must be planted
+  in a rung or in setup_requirement in the same repair. Live: a repair declared 'the line still
+  dead in her hand' at the climax while rung one had her calling the hospital on that phone.
+- a missing already_line / no_way_out / threat_mind / remainder: write the field, AND plant
+  what it needs in the ladder (the already_line must be set up by an early rung the
+  listener passed over; no_way_out must be true of the house/night as planned).
+Rungs you do not need to change stay word-for-word.
+- cold_open: return an extra top-level key "cold_open" (<=28 spoken words). It must still
+  SELL THE FEAR: a habit the night changed for good ('I never leave a window unlatched
+  anymore'), an hour or a year, or the sign that someone came — without the last rung's
+  action. 'That week I learned the mailbox was unlocked' is exposition, not a cold open.
 
 HARD CONSTRAINTS the validator enforces before anyone reads your fix:
 - continuity_ledger: exactly 5 entries, in this order and with these exact prefixes:
@@ -3752,6 +4998,31 @@ suitability, formatting, or production readiness.
 RUBRIC: continuity_believability /25; distinct_authentic_voices /20;
 dread_escalation /20; plausible_response /10; structural_variety /10;
 originality /10; ending_discipline /5.
+TIMESTAMP THE FIRST SIGN. Count the words before the first wrongness (the first ladder
+rung reaching the page). More than 300 is a MAJOR pacing issue: the most-watched accounts
+land it by ~220 words; three minutes of routine loses the viewer before the first sign.
+Quote the sentence where the first sign lands and state the word count.
+EVERY LADDER RUNG ON THE PAGE. For each escalation_ladder rung in the locked plan, the
+page must contain the event (not a summary of it). A missing rung is a MAJOR omission —
+especially a rung that plants the knowledge path (the fact read aloud, the bag left in
+the car): without it the threat knows things by magic. Name the missing rung.
+COUNT THE DENIAL BEATS. The denial-that-fails ('I figured it was the wind, until...') is
+the genre's move and it is allowed TWICE in one account. Count every instance, in any
+phrasing — a harmless reading offered for a sign and then taken apart. Three or more is a
+MAJOR style issue: quote each one so the repair can cut the extras, and say which two to
+keep (the earliest). Five of them flattens the ladder into one repeated move.
+AFTERMATH FACTS MUST BE KNOWABLE. What the police or a relative reports afterwards has to
+be something a person could actually find: prints in raked dirt, pry marks, a company with
+no driver on that route, a man's own admission. A deputy cannot tell from a crease that a
+note was 'refolded from the outside'. An unknowable aftermath fact is a major continuity
+issue: the listener's re-read of the night rests on it.
+IF THE COMPILATION HAS ONE STORY, there is no lineup to compare. Score
+distinct_authentic_voices on that one voice alone: is it a specific person with a
+trade, a cadence and a way of reasoning, held for the whole account without slipping
+into a generic narrator? Score structural_variety on the account's internal shape: does
+the pace change between the routine, the signs, the worst stretch and the after, or is
+every paragraph the same size and speed? Never cap either dimension for 'lack of
+comparative material' — a single account that earns 20 and 10 must receive them.
 
 CHANNEL STANDARD ({strategy.strategy_id}):
 {strategy.critic_rules}
@@ -3764,7 +5035,7 @@ minimal actionable repair; do not request a whole-compilation rewrite. Scores mu
 earned: polished grammar is not authenticity, action is not automatically dread, and
 unexplained evidence is often cliché rather than mystery.
 
-EMOTION NAMING IS NOT A DEFECT: a real submitter often names a feeling plainly in their
+EMOTION NAMING IS NOT A DEFECT: a person recounting a night often names a feeling plainly in their
 own register ("honestly it just pissed me off", "I was scared, plain and simple"). Do
 not penalize that; engineered bodily show-don't-tell (pounding heart, cold blood, spine
 chills) repeated in every story is the machine's fingerprint, and THAT is the defect.
@@ -3773,7 +5044,7 @@ an observation that never pays off is an authenticity feature, not a plot hole.
 
 A narrator whose register turns LITERARY — elegiac similes, poetic cadence ("the way
 something leaves a room it was never in any hurry to enter"), nineteenth-century
-rhythm — breaks the ordinary-submitter frame even when every fact is clean. File it
+rhythm — breaks the ordinary-person frame even when every fact is clean. File it
 as a style issue against that story; a forum post is not a short story.
 
 VOICE DEFECTS (score under distinct_authentic_voices): a voice defect exists when two
@@ -3805,6 +5076,10 @@ a narrator who fails or delays urgent help after trapping or escaping an active
 human threat without a concrete stated reason; a narrator who chooses to re-enter the
 danger without necessity; or an action that contradicts a safety decision the character
 just stated with no forcing reason on the page.
+Also major: days of silence after a sign that cannot be explained away (prints under the
+window, prints circling the house) with a working phone and no stated reason. The genre's
+own narrators report it and get a half-answer; that beat, or the reason it was impossible,
+must be on the page.
 
 The plan's setting and continuity_ledger are private continuity constraints. Only each
 story's setup_requirement must be spoken on the page before danger. Never raise an
@@ -3935,6 +5210,22 @@ Obvious human-safety failures are at least major: refusing an easy identity/safe
 verification only to preserve mystery, failing or delaying urgent help after trapping or
 escaping an active human threat without a concrete stated reason, or a narrator who
 chooses to re-enter the danger without necessity.
+Days of silence after a sign that cannot be explained away, with a working phone and no
+stated reason, are the same failure. The repair is a report beat (the call, the
+half-answer) or one plain sentence on why none was possible — not a rewrite.
+TIMESTAMP THE FIRST SIGN. Count the words before the first wrongness (the first ladder
+rung reaching the page). More than 300 is a MAJOR pacing issue: the most-watched accounts
+land it by ~220 words; three minutes of routine loses the viewer before the first sign.
+Quote the sentence where the first sign lands and state the word count.
+EVERY LADDER RUNG ON THE PAGE. For each escalation_ladder rung in the locked plan, the
+page must contain the event (not a summary of it). A missing rung is a MAJOR omission —
+especially a rung that plants the knowledge path (the fact read aloud, the bag left in
+the car): without it the threat knows things by magic. Name the missing rung.
+COUNT THE DENIAL BEATS. The denial-that-fails ('I figured it was the wind, until...') is
+the genre's move and it is allowed TWICE in one account. Count every instance, in any
+phrasing — a harmless reading offered for a sign and then taken apart. Three or more is a
+MAJOR style issue: quote each one so the repair can cut the extras, and say which two to
+keep (the earliest). Five of them flattens the ladder into one repeated move.
 Lexical sanity: flag invented objects, garments, or nonsense bigrams that a TTS voice
 would read aloud verbatim (e.g. "gate pants") — the narration is spoken, not skimmed.
 {contract_retry}
@@ -4000,11 +5291,14 @@ _CHALLENGE_AXES: tuple[tuple[str, str], ...] = (
         "out who he was') or with explanation after the locked ending state."
     )),
     ("self_reassurance", (
-        "The narrator does not propose an innocent explanation and then dismiss it, in "
-        "ANY phrasing. 'I told myself it was nothing' is the stock form, but the paraphrase "
-        "counts too: talking yourself into a harmless reading of an escalating threat and "
-        "then walking it back is the same manufactured beat and is a fail. Entertaining an "
-        "innocent reading in a genuinely ambiguous-threat story is NOT a fail."
+        "EMPTY self-reassurance is the fail: 'I told myself it was nothing / fine / my "
+        "imagination' and its paraphrases — waving a sign away with no alternative. The "
+        "denial-that-fails with a SPECIFIC alternative is the genre itself, read in its "
+        "most-watched accounts: 'I told myself it was just a small company delivery', "
+        "'I figured it was another camper who had gone to sleep', 'a branch, maybe, except "
+        "there was no wind' — an ordinary reading offered, then taken apart by the next thing "
+        "seen or heard. That is the narrator reasoning out loud and it PASSES. Fail only the "
+        "empty form, or a specific form used three or more times in one account."
     )),
 )
 
@@ -4154,7 +5448,32 @@ def _salvage_cold_open(plan: CompilationPlan) -> CompilationPlan:
     first = re.split(r"(?<=[.!?])\s+", plan.cold_open.strip())[0].strip()
     if first and len(_words(first)) <= 28:
         return plan.model_copy(update={"cold_open": first})
-    return plan
+    # A single sentence over the cap used to fall through and fail preflight,
+    # throwing away a plan whose six-rung ladder the auditor never saw (live
+    # 2026-08-22, run 8 attempt 2). The cold open is a hook line, not the
+    # premise: cut it at the last clause boundary inside 28 words. If there is
+    # no boundary, cut at 28 — a truncated hook costs nothing the writer cannot
+    # rebuild from the ladder, while a rejected plan costs the whole attempt.
+    # Work on the ORIGINAL text, not on _words(): that tokeniser strips
+    # punctuation, so rebuilding from it lost every comma in the kept half.
+    source = (first or plan.cold_open).strip()
+    spans = [m.span() for m in re.finditer(r"\S+", source)]
+    head = source[: spans[27][1]] if len(spans) > 28 else source
+    # Keep the full 28 words. An earlier version also backed up to the last
+    # clause boundary, which on "my home address, not until his truck..."
+    # found the comma after "address" and returned half a sentence. Twenty-
+    # eight words with the tail removed reads fine; twelve words does not.
+    if not head.endswith((".", "!", "?")):
+        # Live: '... I check any lock twice before I.' — the 28th word was a
+        # pronoun. Drop trailing function words before closing the sentence.
+        _dangling = {"i", "a", "an", "the", "and", "or", "but", "before", "after", "to", "of",
+                     "in", "on", "at", "for", "with", "that", "which", "who", "when", "while",
+                     "until", "if", "as", "than", "so", "my", "his", "her", "their", "our", "its"}
+        toks = head.rstrip(",;— -").split()
+        while len(toks) > 8 and toks[-1].strip(",;:'\"").lower() in _dangling:
+            toks.pop()
+        head = " ".join(toks).rstrip(",;— -") + "."
+    return plan.model_copy(update={"cold_open": head})
 
 
 def _llm_identity_of(llm) -> tuple:
@@ -4300,6 +5619,78 @@ def _plan_repeat_errors(candidate: CompilationPlan, rejected_digests: set[str]) 
             "rejection feedback and alter the plan materially rather than resending it"
         ]
     return []
+
+
+_PRONOUN_SWAP = {
+    "he": "she", "him": "her", "his": "her",
+    "she": "he", "her": "him", "hers": "his",
+}
+
+
+def _salvage_narrator_pronouns(plan: CompilationPlan) -> CompilationPlan:
+    """Make escape_action agree with the narrator the plan already described.
+
+    The planner keeps writing "He drives … I've hauled" into narrator_profile
+    and then "She backs" into escape_action. plan_audit catches it and proposes
+    the obvious fix — "change 'She' to 'He'" — but only after a paid audit call
+    has been spent and one of two attempts is gone.
+
+    Nothing creative is at stake: the narrator's gender is settled by
+    narrator_profile and voice_seed, and escape_action is that same person
+    acting. Rewriting the pronoun is the fix the auditor would have asked for.
+
+    Applied ONLY when escape_action is unambiguously one gender, so a sentence
+    that also names the threat ("She reverses while he walks toward the cab")
+    is left for a human or the auditor to read. Same precision rule as
+    narrator_pronoun_conflicts, which stays as the backstop for what this
+    cannot safely touch.
+    """
+    def _one(text: str) -> str | None:
+        low = f" {(text or '').lower()} "
+        male = re.search(r"\b(he|him|his)\b", low) is not None
+        female = re.search(r"\b(she|her|hers)\b", low) is not None
+        if male and not female:
+            return "male"
+        if female and not male:
+            return "female"
+        return None
+
+    changed = False
+    stories = []
+    for item in plan.stories:
+        who = _one(f"{item.narrator_profile} {item.voice_seed}")
+        act = _one(item.escape_action)
+        # ENGLISH HAS TWO PRONOUNS THAT DO NOT MAP ONE-TO-ONE. "her" is both an
+        # object ("follows her") and a possessive ("her hands"), so it becomes
+        # "him" or "his" depending on grammar this cannot see; "his" has the
+        # mirror problem. A first pass turned "Her hands shake" into "Him hands
+        # shake". Deciding by heuristic would just move the error somewhere
+        # less visible, so a text containing either form is left for the
+        # auditor — narrator_pronoun_conflicts still reports it, and a reported
+        # slip costs one audit call, while a corrupted one ships.
+        ambiguous = re.search(r"\bher\b", item.escape_action, re.I) if who == "male" \
+            else re.search(r"\bhis\b", item.escape_action, re.I)
+        if who and act and who != act and not ambiguous:
+            fixed = re.sub(
+                r"\b(he|him|his|she|her|hers)\b",
+                lambda m: _match_case(m.group(0), _PRONOUN_SWAP[m.group(0).lower()]),
+                item.escape_action, flags=re.I)
+            stories.append(item.model_copy(update={"escape_action": fixed}))
+            changed = True
+            logger.info("narrator pronoun realigned in escape_action",
+                        story_id=item.story_id, narrator=who)
+            continue
+        stories.append(item)
+    return plan.model_copy(update={"stories": stories}) if changed else plan
+
+
+def _match_case(original: str, replacement: str) -> str:
+    """Keep 'She' capitalised as 'He', not 'he', when a sentence starts on it."""
+    if original.isupper():
+        return replacement.upper()
+    if original[:1].isupper():
+        return replacement.capitalize()
+    return replacement
 
 
 def _salvage_voice_seeds(plan: CompilationPlan) -> CompilationPlan:
@@ -4481,9 +5872,43 @@ class NarrativeUnitPipeline:
         self._last_compliance_errors = {}
         # Refuse before the expensive call, not after it.
         self._preflight_quality_path(strategy)
+        # A COUNT IN THE TITLE IS A PROMISE TO THE VIEWER; anything else is the
+        # material's decision. "3 True Encounters" must contain three. A title
+        # that names no number used to be silently forced to three anyway,
+        # which is structure standing in for judgement: a premise deep enough
+        # to carry a whole video was cut into thirds, and a thin one was padded
+        # out to fill a slot it did not deserve.
+        #
+        # The corpus gives no cover for the old default either. Raw numbers say
+        # compilations beat single stories 4.7x, but that is channel size:
+        # @mrnightmare is huge and makes almost only compilations, @DarkSomnium
+        # makes only singles. In @Unit522 — the one channel doing both in
+        # volume — singles are AHEAD (35.8k vs 22.6k median). Story count is a
+        # channel's identity, not a performance rule.
         match = re.match(r"^\s*(\d+)\b", brief.title)
-        story_count = max(1, min(5, int(match.group(1)) if match else 3))
+        # An explicit operator override wins over both. Every trope verdict is
+        # per STORY, and at roughly one-in-two per story a three-story plan has
+        # to win the same bet three times — sixteen runs produced no clean
+        # plan. One long account needs one fresh premise. The corpus supports
+        # it: in @Unit522, the one channel doing both formats in volume, single
+        # stories out-perform compilations.
+        _count_override = os.environ.get(
+            "OMNICAST_NARRATIVE_STORY_COUNT", "").strip()
+        story_count = (
+            max(1, min(5, int(_count_override))) if _count_override.isdigit()
+            else max(1, min(5, int(match.group(1)))) if match
+            else _story_count_for(brief))
         target_words = spoken_word_floor(brief.target_duration_min)
+        # ONE STORY IS NOT A COMPILATION MINUS TWO. With story_count forced to
+        # 1 the whole 30-minute budget (4,500 words, ±10% enforced on the
+        # writer) landed on a single premise, so a seven-rung ladder had to be
+        # padded to 4,050+ words. Competitor single-story videos run long, but
+        # they run long because the account has that much in it. Give one
+        # story the room of the genre's longest compilation stories (~2,500,
+        # the 2.1M-view "Deep Woods" entry) and let the band breathe.
+        # The number from the brief's duration is a STARTING ESTIMATE handed to
+        # the planner; the planner returns its own, and that one is kept (see
+        # the model_copy below). Operator rule: never force a word count.
 
         forbidden = set(forbidden_plan_fingerprints or ())
         spent_concepts = list(forbidden_plans or [])
@@ -4534,6 +5959,25 @@ class NarrativeUnitPipeline:
                 rejection_reasons.append(list(errors))
                 rejected_digests.add(_plan_material_digest(candidate))
 
+        # AN APPROVED PLAN IS THE PLANNER'S FIRST CANDIDATE. The operator reads
+        # plans from plan_only.py and approves one; a full run used to re-plan
+        # from the topic and write a different story. The loaded plan takes
+        # attempt 1 and gets exactly the preflight, audit and repair a planned
+        # candidate gets (run 14: all three loaded plans were blocked on prop
+        # staging a single repair call fixes, and a bypass path aborted instead).
+        approved_path = os.environ.get("OMNICAST_NARRATIVE_PLAN_FILE", "").strip()
+        approved_plan = None
+        approved_audit = None
+        if approved_path:
+            approved_index = int(os.environ.get("OMNICAST_NARRATIVE_PLAN_INDEX", "0") or 0)
+            approved_plan = load_approved_plan(approved_path, approved_index)
+            approved_audit = (
+                None if os.environ.get("OMNICAST_NARRATIVE_PLAN_FILE_REAUDIT", "").strip().lower()
+                in {"1", "true", "yes", "on"}
+                else load_approved_audit(approved_path, approved_index))
+            logger.info("narrative.approved_plan_loaded", path=approved_path,
+                        index=approved_index, topic=approved_plan.topic)
+
         for planner_attempt in range(1, strategy.max_plan_attempts + 1):
             attempt_started = time.monotonic()
             retry = (
@@ -4557,7 +6001,10 @@ class NarrativeUnitPipeline:
             # resent the identical over-long entry and burned both tries
             # (planner=4/planner_schema_retry=4, zero writer calls). Length and
             # format violations need naming too; plan_repair already learned this.
-            for schema_try in range(2):
+            use_approved = approved_plan is not None and planner_attempt == 1
+            if use_approved:
+                candidate_plan = approved_plan
+            for schema_try in (() if use_approved else range(2)):
                 if schema_try:
                     self._record_call("planner_schema_retry")
                 else:
@@ -4590,7 +6037,7 @@ class NarrativeUnitPipeline:
                     response, plan_obj = await self.planner_llm.complete_structured(
                         system=(
                             "You are a continuity-focused commissioning editor for "
-                            "restrained, allegedly true first-person horror. Return "
+                            "restrained first-person horror recollection. Return "
                             "valid JSON only."
                         ),
                         messages=[{
@@ -4602,15 +6049,45 @@ class NarrativeUnitPipeline:
                         temperature=0.3,
                     )
                     self._record_cost(response)
-                    candidate_plan = CompilationPlan.model_validate(plan_obj).model_copy(
-                        update={"topic": brief.title, "target_word_count": target_words}
+                    _parsed = CompilationPlan.model_validate(plan_obj)
+                    # THE PLANNER'S ESTIMATE IS KEPT. This used to overwrite it with
+                    # the brief's duration arithmetic, which the writer then had to
+                    # hit inside a band. Length is the account's; the planner, who
+                    # knows the ladder, estimates it; only a sanity clamp applies.
+                    _est = int(getattr(_parsed, "target_word_count", 0) or 0)
+                    _kept = min(6000, max(GENRE_FLOOR_TOTAL_WORDS, _est)) if _est else target_words
+                    candidate_plan = _parsed.model_copy(
+                        update={"topic": brief.title, "target_word_count": _kept}
                     )
+                    target_words = _kept
                     candidate_plan = _salvage_cold_open(candidate_plan)
                     candidate_plan = _salvage_voice_seeds(candidate_plan)
+                    candidate_plan = _salvage_narrator_pronouns(candidate_plan)
+                    # A one-story plan cannot carry evidence (one story must
+                    # stay uncorroborated). Forcing the enum to "none" keeps
+                    # every other locked field; rejecting the plan threw away a
+                    # six-rung premise for a one-word field (live 2026-08-22).
+                    if story_count == 1 and candidate_plan.stories and \
+                            candidate_plan.stories[0].evidence_allowance != "none":
+                        candidate_plan = candidate_plan.model_copy(update={"stories": [
+                            candidate_plan.stories[0].model_copy(
+                                update={"evidence_allowance": "none"})]})
+                        logger.info("evidence_allowance forced to none for a one-story plan")
                     break
                 except Exception as exc:
                     schema_error = f"schema or provider error: {_redact(exc, 600)}"
                     candidate_plan = None
+                    # SAY WHY, EVERY TIME. When the retry succeeds this error is
+                    # overwritten and nothing survives, so the call counters have
+                    # read planner=4 / planner_schema_retry=4 for weeks — every
+                    # first attempt failing, planner quota spent twice per plan —
+                    # with no record of what the validator objected to. A failure
+                    # that leaves no trace cannot be fixed, and quota is now the
+                    # binding constraint on this channel.
+                    logger.warning(
+                        "planner plan rejected before it was read",
+                        attempt=schema_try, story_count=story_count,
+                        error=_redact(exc, 400))
             if candidate_plan is None:
                 plan_errors = [schema_error]
                 _reject(
@@ -4631,6 +6108,27 @@ class NarrativeUnitPipeline:
                     plan_errors, planner_attempt=planner_attempt,
                     started=attempt_started, candidate=candidate_plan,
                 )
+                # A LOADED PLAN THAT FAILS A GATE IS REPAIRED, NOT REPLANNED. The
+                # gates tighten between the save and the write (Codex's review of
+                # the run-15 plan became a coincidence pattern the plan now trips);
+                # a replan would throw the approved premise away over one escape
+                # sentence. The gate errors are handed to the repair call as
+                # blockers; the repaired plan re-runs every gate and the real audit.
+                if use_approved and preflight and not freshness:
+                    gate_audit = PlanAuditResult(
+                        status="blocked", blockers=list(preflight),
+                        issues=_gate_errors_as_issues(preflight),
+                        summary="loaded plan failed a deterministic gate",
+                        verdict_source="none")
+                    repaired, repaired_audit = await self._repair_plan(
+                        candidate_plan, gate_audit, story_count, strategy,
+                        forbidden, spent_concepts, rejected_digests,
+                        attempt_index=attempt_index, planner_attempt=planner_attempt,
+                        reject=_reject,
+                    )
+                    if repaired is not None and repaired_audit is not None:
+                        plan, plan_audit = repaired, repaired_audit
+                        break
                 continue
 
             # Semantic plausibility audit BEFORE any paid drafting: a bad premise
@@ -4640,7 +6138,16 @@ class NarrativeUnitPipeline:
             # costs a replan and, at worst, an aborted attempt the outer loop can
             # retry with a fresh concept — a premise an informed viewer rejects
             # costs a whole shot video.
-            plan_audit = await self._audit_plan(candidate_plan, strategy)
+            # AN APPROVED PLAN IS WRITTEN AS APPROVED. Live 22:03: a plan that
+            # plan_only had audited valid was re-audited at write time by a
+            # non-deterministic judge, repaired into a new escape, and the
+            # writer was scored against the mutated plan (two majors, 83/100).
+            # The saved valid audit is trusted; preflight already ran above.
+            if use_approved and approved_audit is not None:
+                plan_audit = approved_audit.model_copy(update={
+                    "summary": (approved_audit.summary or "") + " (saved audit, trusted at write time)"})
+            else:
+                plan_audit = await self._audit_plan(candidate_plan, strategy)
             if plan_audit.status in {"infra_failed", "contract_failed"}:
                 _reject(
                     "audit",
@@ -4724,13 +6231,28 @@ class NarrativeUnitPipeline:
         # about whether the judges of the prose are alive. Escalation may have
         # supplied the verdict; it cannot supply their health.
         self._assert_post_writer_path_healthy(plan_audit)
+
+        # PLAN-ONLY DIAGNOSTIC MODE. Nine live runs reached this line without a
+        # releasable compilation, and the last four died on the QUALITY of the
+        # premise rather than on any plumbing. Judging that costs one planner
+        # call and one audit; judging it by running the whole pipeline costs
+        # twenty-five minutes and most of a quota window, which is why only
+        # nine premises have been seen at all.
+        #
+        # Reads an env var rather than a parameter so the production call path
+        # is byte-identical when it is unset, and raises rather than returning
+        # a half-built result so nothing downstream can mistake this for a run.
+        if os.environ.get("OMNICAST_NARRATIVE_PLAN_ONLY", "").strip().lower() in {
+                "1", "true", "yes", "on"}:
+            raise PlanOnlyComplete(plan, plan_audit)
+
         per_story = round(target_words / story_count)
 
         async def write_one(item: NarrativeStoryPlan) -> StoryDraft:
             self._record_call("story_writer")
             response = await self.writer_llm.complete(
                 system=(
-                    "You write restrained, plausible first-person horror submissions and "
+                    "You write restrained, plausible first-person horror recollections and "
                     "obey the locked plan."
                 ),
                 messages=[{"role": "user", "content": _story_prompt(
@@ -4739,14 +6261,25 @@ class NarrativeUnitPipeline:
                         else "Not assigned to this story. Do not quote the compilation cold open."
                     ), strategy, topic=plan.topic,
                 )}],
-                max_tokens=2600,
+                max_tokens=_writer_max_tokens(getattr(item, 'target_words', 0) or per_story),
                 temperature=0.75,
             )
             self._record_cost(response)
             output = _parse_story_output(response.content, item)
             return StoryDraft(story_id=item.story_id, **output.model_dump())
 
-        stories = list(await asyncio.gather(*(write_one(item) for item in plan.stories)))
+        # A DRAFT ON DISK IS JUDGED, NOT REWRITTEN. Eight live builds of one
+        # approved plan produced eight rewrites at 83-89, each felled by a
+        # different judge's coin flip. With a draft file set, the writer call
+        # is skipped for story_1 and every judge still runs.
+        _draft_path = os.environ.get("OMNICAST_NARRATIVE_DRAFT_FILE", "").strip()
+        if _draft_path and len(plan.stories) == 1:
+            _loaded = load_draft_file(_draft_path, plan.stories[0])
+            logger.info("narrative.draft_loaded", path=_draft_path,
+                        words=len(_words(_loaded.narration)))
+            stories = [_loaded]
+        else:
+            stories = list(await asyncio.gather(*(write_one(item) for item in plan.stories)))
         gate = gate_compilation(plan, stories, strategy)
         # Local deterministic recovery runs before any semantic audit so bad-length
         # or banned-phrase prose is not needlessly audited. Clean first drafts are
@@ -4955,6 +6488,58 @@ class NarrativeUnitPipeline:
             challenge, challenge_passed, challenge_issues = await self._release_challenge(
                 plan, stories, strategy
             )
+            # A LOCAL challenger fail earns one repair and one re-challenge.
+            # Live 23:26: 87/100, every judge approved, and the skeptic found
+            # she walked out the front door still holding a corded wall-phone
+            # receiver - a one-sentence physical slip that abandoned a 20-minute
+            # build. Premise-level axes (topic, plan fidelity, ending, safety)
+            # still abandon: those are the concept, not the sentence.
+            _local_axes = {"physical_possibility", "timeline_consistency", "semantic_repetition", "self_reassurance"}
+            _local_fail = (
+                challenge is not None and challenge.status == "failed" and challenge_issues
+                and all(
+                    any(f"/{axis}]" in (i.problem or "") for axis in _local_axes)
+                    and i.story_id in expected_ids and (i.evidence_quote or "").strip()
+                    for i in challenge_issues)
+            )
+            if _local_fail and repair_waves < 3:
+                challenge_score = score.model_copy(update={"story_issues": list(challenge_issues)})
+                challenge_ids = {i.story_id for i in challenge_issues}
+                candidate_list, decisions = await self._repair_wave(
+                    plan, stories, challenge_score, gate, challenge_ids, per_story, strategy
+                )
+                repair_waves += 1
+                patch_decisions.extend(decisions)
+                if self._stories_changed(stories, candidate_list):
+                    candidate_gate = gate_compilation(plan, candidate_list, strategy)
+                    changed_ids = {
+                        b.story_id for b, a in zip(stories, candidate_list, strict=True)
+                        if b.narration != a.narration
+                    }
+                    candidate_reviews, candidate_compliance_valid = await self._audit_stories(
+                        plan, candidate_list, strategy, only_ids=changed_ids, prior=compliance_reviews,
+                    )
+                    if candidate_compliance_valid:
+                        candidate_score, candidate_valid, _ = await self._score_validated(
+                            plan, candidate_list, candidate_gate, strategy,
+                            compliance_reviews=candidate_reviews,
+                        )
+                        candidate_score = self._with_compliance_issues(candidate_score, candidate_reviews)
+                        if candidate_valid and self._repair_is_monotonic(
+                                challenge_score, gate, candidate_score, candidate_gate, strategy):
+                            c_final_review, c_final_approved = await self._final_review(
+                                plan, candidate_list, strategy)
+                            if c_final_approved and content_can_lock(
+                                    candidate_score, candidate_gate, strategy,
+                                    critic_contract_valid=candidate_valid,
+                                    story_compliance_valid=self._compliance_set_approved(plan, candidate_reviews),
+                                    final_editor_approved=c_final_approved):
+                                stories, gate, score, critic_valid = (
+                                    candidate_list, candidate_gate, candidate_score, candidate_valid)
+                                compliance_reviews, compliance_valid = candidate_reviews, candidate_compliance_valid
+                                final_review, final_approved = c_final_review, c_final_approved
+                                challenge, challenge_passed, challenge_issues = await self._release_challenge(
+                                    plan, stories, strategy)
             if challenge_issues:
                 score = score.model_copy(update={
                     "story_issues": [*score.story_issues, *challenge_issues],
@@ -5119,6 +6704,13 @@ class NarrativeUnitPipeline:
                     forbidden_plans=spent_concepts, attempt_index=attempt,
                     inherit_health_context=True,
                 )).model_copy(update={"attempt": attempt})
+            except PlanOnlyComplete:
+                # Not an abort: the plan passed and the caller asked to stop
+                # here. Run 11 (2026-08-22) had BOTH plans accepted — the first
+                # in twenty-one runs — and this handler filed them as "aborted",
+                # retried, and the driver printed REJECTED; neither plan was
+                # saved. The whole point of plan-only is the plan; let it out.
+                raise
             except Exception as exc:
                 # An aborted attempt (planner preflight, provider outage) must not
                 # kill the loop — the next attempt is a fresh roll. What it must
@@ -5240,7 +6832,8 @@ class NarrativeUnitPipeline:
         )
 
     async def _audit_plan(
-        self, plan: CompilationPlan, strategy: NamedChannelStrategy
+        self, plan: CompilationPlan, strategy: NamedChannelStrategy,
+        reaudit: str = "",
     ) -> PlanAuditResult:
         """Audit the locked plan before prose exists, and never guess the verdict.
 
@@ -5305,12 +6898,12 @@ class NarrativeUnitPipeline:
                 try:
                     response, review_obj = await llm.complete_structured(
                         system=(
-                            "You are a skeptical plausibility auditor for allegedly true "
+                            "You are a skeptical plausibility auditor for first-person "
                             "first-person stories. Return valid JSON only."
                         ),
                         messages=[{
                             "role": "user",
-                            "content": _plan_audit_prompt(plan, strategy) + retry,
+                            "content": _plan_audit_prompt(plan, strategy) + reaudit + retry,
                         }],
                         output_schema=PlanPlausibilityReview,
                         max_tokens=2400,
@@ -5406,11 +6999,31 @@ class NarrativeUnitPipeline:
         ordered_failed = [
             item.story_id for item in plan.stories if item.story_id in set(failed_ids)
         ]
-        if len(ordered_failed) >= len(plan.stories):
+        # "Every story objected to" means the premise is the defect — when there
+        # are several stories. With ONE story, any objection at all satisfied
+        # this test, so single-story plans could never be repaired: the best
+        # plan this channel had produced (seven rungs, a dog, a bulb unscrewed
+        # and set upright, a private nickname) was discarded for a fix the
+        # auditor itself spelled out in one sentence — "have him test the knob
+        # while she is already moving away". A local objection with a concrete
+        # FIX is local regardless of how many stories exist. Only a plan with
+        # two or more stories can have "all of them" mean "the concept".
+        if len(plan.stories) > 1 and len(ordered_failed) >= len(plan.stories):
             return None, None  # every story objected to: the premise itself is the defect
 
         current_plan = plan
         current_audit = audit
+        # ONE OBJECTION PER CATEGORY PER STORY. Across five live passes the
+        # auditor re-raised prop_staging on the same screen with a new
+        # complaint each round ('not specific enough', 'frame condition that
+        # could be further bent') and human_behavior on the same shout
+        # ('bluff?', 'dispatched yet?', 'on the line is ambiguous'). A repair
+        # that changed the story is the answer to that category; a re-audit
+        # that moves the goalposts on it is demoted to a note.
+        raised_keys: dict = {}
+        for _i in audit.issues:
+            if _i.severity in {"critical", "major"} and _i.category != "gate":
+                raised_keys.setdefault((_i.story_id, _i.category), set()).add(_issue_sig(_i))
         clean_ids = [
             item.story_id for item in plan.stories if item.story_id not in set(failed_ids)
         ]
@@ -5498,9 +7111,33 @@ class NarrativeUnitPipeline:
                 return None, None
 
             replacements = {item.story_id: item for item in repair.stories}
-            candidate = current_plan.model_copy(update={"stories": [
+            _update = {"stories": [
                 replacements.get(item.story_id, item) for item in current_plan.stories
-            ]})
+            ]}
+            if (repair.cold_open or "").strip() and any(
+                    i.category == "cold_open" for i in current_audit.issues):
+                _update["cold_open"] = repair.cold_open.strip()
+            candidate = current_plan.model_copy(update=_update)
+            candidate = _salvage_cold_open(candidate)
+            # A cold_open-only objection is an objection to ONE LINE. Live: asked
+            # to replace the cold open, the repairer returned a different story
+            # (a new narrator, a new house) and the drift check, which guards
+            # only the clean stories, let it through.
+            _round_blocking = [i for i in current_audit.issues if i.severity in {"critical", "major"}]
+            if _round_blocking and all(i.category == "cold_open" for i in _round_blocking):
+                rewritten = [
+                    sid for sid in targets
+                    if next(i for i in candidate.stories if i.story_id == sid).model_dump(mode="json")
+                    != next(i for i in current_plan.stories if i.story_id == sid).model_dump(mode="json")
+                ]
+                if rewritten:
+                    reject(
+                        "repair",
+                        [f"only the cold open was objected to, but the repair rewrote {rewritten}; "
+                         "return the stories byte-identical and a new cold_open"],
+                        planner_attempt=planner_attempt, started=started, candidate=candidate,
+                    )
+                    return None, None
             # The promise of a targeted repair: untouched stories are untouched.
             drifted = [
                 sid for sid, before in clean_before.items()
@@ -5528,7 +7165,15 @@ class NarrativeUnitPipeline:
                 )
                 return None, None
 
-            repaired_audit = await self._audit_plan(candidate, strategy)
+            repaired_audit = await self._audit_plan(
+                candidate, strategy,
+                reaudit=_reaudit_contract(current_plan, candidate, current_audit))
+            if repaired_audit.status == "blocked":
+                repaired_audit = _demote_goalpost_moves(
+                    repaired_audit, raised_keys, _changed_fields(current_plan, candidate), candidate)
+            for _i in repaired_audit.issues:
+                if _i.severity in {"critical", "major"} and _i.category != "gate":
+                    raised_keys.setdefault((_i.story_id, _i.category), set()).add(_issue_sig(_i))
             if repaired_audit.status == "valid":
                 return candidate, repaired_audit
             if repaired_audit.status in {"infra_failed", "contract_failed"}:
@@ -5539,7 +7184,25 @@ class NarrativeUnitPipeline:
                     candidate=candidate, audit=repaired_audit,
                 )
                 return None, None
-            regressed = len(repaired_audit.blockers) >= len(current_audit.blockers)
+            # PROGRESS IS THE OLD OBJECTIONS GONE, NOT A SMALLER COUNT. The loaded
+            # run-15 plan had one gate blocker (a coincidental escape); the repair
+            # fixed it and the re-audit raised two NEW objections (knowledge path,
+            # staying at the counter). Two >= one read as regression and the
+            # premise was thrown away with its best rung repaired. A round that
+            # clears every objection it was given has earned another.
+            # An objection is the SAME objection when it points at the same plan
+            # text, not merely the same category: the auditor raises a fresh
+            # human_behavior note on every repaired rung, and a category key read
+            # three rounds of real progress as three rounds of no progress.
+            _key = lambda i: (i.story_id, i.category,
+                              " ".join((i.evidence_quote or i.problem or "").split()).lower()[:60])
+            prev_keys = {_key(i) for i in current_audit.issues if i.severity in {"critical", "major"}}
+            new_keys = {_key(i) for i in repaired_audit.issues if i.severity in {"critical", "major"}}
+            cleared_all = bool(prev_keys) and not (prev_keys & new_keys)
+            regressed = (
+                len(repaired_audit.blockers) >= len(current_audit.blockers)
+                and not cleared_all
+            )
             reject(
                 "repair", list(repaired_audit.blockers),
                 planner_attempt=planner_attempt, started=started,
@@ -6083,6 +7746,7 @@ class NarrativeUnitPipeline:
                         return story.story_id, review, []
                 except Exception as exc:
                     errors = [f"escalation schema or provider error: {str(exc)[:500]}"]
+            logger.warning("story_compliance.contract_failed", story_id=story.story_id, errors=[e[:300] for e in errors][:3])
             return story.story_id, None, errors
 
         results = await asyncio.gather(*(audit_one(story) for story in targets))
@@ -6171,7 +7835,7 @@ class NarrativeUnitPipeline:
                 response = await self.writer_llm.complete(
                     system=(
                         "You write restrained, plausible first-person horror "
-                        "submissions and obey the locked plan."
+                        "recollections and obey the locked plan."
                     ),
                     messages=[{"role": "user", "content": _story_prompt(
                         plans_by_id[story_id], per_story, (
@@ -6181,7 +7845,7 @@ class NarrativeUnitPipeline:
                         ), strategy, repair=repair_brief,
                         original=original.narration, topic=plan.topic,
                     )}],
-                    max_tokens=2600,
+                    max_tokens=_writer_max_tokens(int(getattr(plans_by_id[story_id], 'target_words', 0) or per_story)),
                     temperature=0.7,
                 )
                 self._record_cost(response)
@@ -6250,7 +7914,7 @@ class NarrativeUnitPipeline:
             response = await self.writer_llm.complete(
                 system=(
                     "You write restrained, plausible first-person horror "
-                    "submissions and obey the locked plan."
+                    "recollections and obey the locked plan."
                 ),
                 messages=[{"role": "user", "content": _story_prompt(
                     plan_item, per_story, (
@@ -6260,7 +7924,7 @@ class NarrativeUnitPipeline:
                     ), strategy, repair=repair_brief,
                     original=original.narration, topic=plan.topic,
                 )}],
-                max_tokens=2600,
+                max_tokens=_writer_max_tokens(int(getattr(plan_item, 'target_words', 0) or per_story)),
                 temperature=0.7,
             )
             self._record_cost(response)
@@ -6531,7 +8195,9 @@ class NarrativeUnitPipeline:
                 errors = [f"critic schema/provider failure: {str(exc)[:600]}"]
                 continue
             score = score.model_copy(update={
-                "story_issues": _canonicalize_issue_quotes(score.story_issues, stories),
+                "story_issues": _demote_cross_night_contradictions(
+                score.model_copy(update={"story_issues": _canonicalize_issue_quotes(score.story_issues, stories)}),
+                stories).story_issues,
             })
             score = promote_miscalibrated_issues(score, strategy)
             errors = validate_forensic_issues(score, stories)
@@ -6603,6 +8269,8 @@ class NarrativeUnitPipeline:
                 ending_discipline=0,
                 editorial_summary="Critic failed its structured-output contract twice.",
             )
+            logger.warning("critic.contract_failed",
+                           errors=[e[:300] for e in errors][:4])
         return score, False, errors
 
     async def _final_review(
@@ -6641,7 +8309,8 @@ class NarrativeUnitPipeline:
                 self._record_cost(response)
                 review = FinalCompilationReview.model_validate(review_obj)
                 review = review.model_copy(update={
-                    "issues": _canonicalize_issue_quotes(review.issues, stories),
+                    "issues": _demote_unfounded_editor_issues(
+                        _canonicalize_issue_quotes(review.issues, stories), stories),
                 })
             except Exception as exc:
                 errors = [f"schema/provider failure: {str(exc)[:400]}"]

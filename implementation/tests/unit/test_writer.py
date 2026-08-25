@@ -3,7 +3,11 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from omnicast.agents.writer import WriterAgent, ANGLES
+from omnicast.agents.writer import (
+    ANGLES,
+    WriterAgent,
+    production_competitor_rules,
+)
 from omnicast.llm.client import LLMClient, LLMResponse
 from omnicast.models.script import (
     TopicBrief, ScriptDraft, CriticFeedback, CriticDimension,
@@ -13,6 +17,7 @@ from omnicast.models.enums import Niche, Market, TopicSource
 from omnicast.kb.patterns import PatternStore
 from omnicast.shared.errors import AgentError
 from omnicast.config.niches import get_niche_config
+from omnicast.agents.editorial_angle import EditorialAngle
 
 
 @pytest.fixture
@@ -83,9 +88,72 @@ class TestWriterAgent:
         writer = WriterAgent(llm=mock_llm)
         assert writer.name == "writer"
 
+    def test_parser_accepts_em_dash_segment_headers_from_live_cli(
+        self, mock_llm
+    ):
+        raw = (
+            "HOOK:\nSCENES:\n[]\n"
+            "SEGMENT 1 — THE MECHANICS:\nSCENES:\n"
+            '[{"vo":"The first full segment now survives parsing.",'
+            '"visual":"SSA page","sfx":null}]\n'
+            "SEGMENT 2 - THE TURN:\nSCENES:\n"
+            '[{"vo":"The second segment survives too.",'
+            '"visual":"benefit chart","sfx":null}]\n'
+            "OUTRO:\nSCENES:\n[]"
+        )
+
+        parsed = WriterAgent(llm=mock_llm)._parse_draft(raw, "A", "Topic")
+
+        assert [segment.heading for segment in parsed.segments] == [
+            "THE MECHANICS", "THE TURN"]
+        assert sum(
+            len(segment.content.split()) for segment in parsed.segments) == 12
+
     async def test_system_prompt_not_empty(self, mock_llm):
         writer = WriterAgent(llm=mock_llm)
         assert len(writer.system_prompt) > 50
+
+    def test_finance_prosody_normalizer_keeps_only_load_bearing_pauses(
+        self, mock_llm
+    ):
+        scenes = []
+        for index in range(150):
+            voiceover = (
+                "Can we pause on this verified number together for one moment?"
+                if index == 0
+                else "This plain spoken sentence keeps the explanation moving with us."
+            )
+            scenes.append(ScriptScene(
+                voiceover=voiceover,
+                visual_prompt="benefit statement",
+                pause_after_ms=900 if index < 30 else 0,
+            ))
+        draft = ScriptDraft(
+            variant_id="A",
+            brief_title="Topic",
+            hook="",
+            segments=[ScriptSegment(
+                index=1,
+                heading="The rule",
+                content=" ".join(scene.voiceover for scene in scenes),
+                estimated_duration_seconds=900,
+                scenes=scenes,
+            )],
+        )
+
+        normalized = WriterAgent(
+            llm=mock_llm)._normalize_finance_prosody(draft)
+        pauses = [
+            scene.pause_after_ms
+            for segment in normalized.segments
+            for scene in segment.scenes
+            if scene.pause_after_ms >= 400
+        ]
+
+        assert len(pauses) <= 9
+        assert normalized.segments[0].scenes[0].pause_after_ms == 900
+        assert normalized.word_count > 0
+        assert normalized.raw_content
 
     async def test_generate_returns_variants(self, mock_llm, sample_brief):
         # Mock LLM to return parseable script content
@@ -183,6 +251,18 @@ class TestWriterAgent:
         assert "pain_hook" in ANGLES
         assert "data_driven" in ANGLES
         assert "contrarian" in ANGLES
+
+    def test_only_production_eligible_competitor_text_can_steer_writer(self):
+        old = (
+            "HYPOTHESIS: winners ask questions sooner\n\n"
+            "=== MEASURED CRAFT (caption forensics, cohort-derived) ===\n"
+            "PRODUCTION-ELIGIBLE COMPETITOR CRAFT RULES\n"
+            "RULES: NONE."
+        )
+        assert production_competitor_rules(old).startswith("PRODUCTION-ELIGIBLE")
+        assert "HYPOTHESIS" not in production_competitor_rules(old)
+        assert production_competitor_rules(
+            "STYLE REFERENCE ONLY: copy this winner shape") == ""
 
     def test_narrative_generation_prompt_has_v4_quality_contract(
         self, mock_llm, sample_brief
@@ -350,3 +430,271 @@ class TestWriterAgent:
         assert "(5 segments total" not in prompt
         assert "key stats" not in prompt
         assert "Open loops" not in prompt
+
+    def test_finance_prompt_has_one_hook_and_one_earned_subscribe_contract(
+        self, mock_llm, sample_brief
+    ):
+        """The old prompt simultaneously banned and required a greeting, then
+        treated every spoken subscribe invitation as disposable. The channel
+        needs one earned invitation tied to its promise, without generic
+        algorithm begging or a next-video detour."""
+        writer = WriterAgent(llm=mock_llm)
+        cfg = get_niche_config("finance", "retirement_senior")
+        prompt = writer._build_generation_prompt(
+            sample_brief, "pain_hook", [], cfg)
+
+        assert "G — short warm spoken greeting" not in prompt
+        assert "NO GREETING" in prompt
+        assert "ONE EARNED SPOKEN SUBSCRIBE INVITATION" in prompt
+        assert "channel promise" in prompt
+        assert "generic 'like and subscribe'" in prompt
+        assert "Next video tease" not in prompt
+        assert "final question ENDS the spoken script" in prompt
+        assert "Only when the OPERATOR BRIEF explicitly requests a HUMAN ANCHOR" in prompt
+        assert "Do not force every episode into one mold" in prompt
+        assert "A name alone does not make a story" in prompt
+        assert "Do not bolt on Roth conversions, IRMAA" in prompt
+        assert "invent an SSA letter" in prompt
+        assert "Ozempic" not in prompt
+        assert "fermenting" not in prompt
+        assert "stuck in the throat" not in prompt
+        assert "presenter on camera" not in prompt.lower()
+        assert "presenter direct" not in prompt.lower()
+        assert "BOTH open loops" not in prompt
+        assert "3-5 scenes and 45-75 spoken words" in prompt
+        assert "place it by hook scene 2" in prompt
+        compact_prompt = " ".join(prompt.split())
+        assert "Do not claim where specific withheld dollars are stored" in compact_prompt
+        assert "agency letters, statements, calculators" in prompt
+
+        system = writer._build_system_prompt(cfg)
+        assert "name the primary source and rule year aloud" in system
+        assert "one earned spoken subscribe invitation" in system
+        assert "generic algorithm begging" in system
+        assert "NEVER read the source aloud" not in system
+        assert "presenter on camera" not in system.lower()
+        assert "Ozempic" not in system
+
+    def test_editorial_angle_leads_the_generation_prompt(
+        self, mock_llm, sample_brief
+    ):
+        writer = WriterAgent(llm=mock_llm)
+        cfg = get_niche_config("finance", "retirement_senior")
+        angle = EditorialAngle(
+            thesis="The earnings test is not a tax, and treating it as one "
+                   "makes a temporary hold feel like a permanent loss",
+            against="Money withheld by the earnings test is gone forever",
+            stake="A working retiree may make a life decision from the wrong model",
+            turn="The withheld months are accounted for again at full retirement age",
+            walk_away="Withheld and lost are not the same thing",
+            evidence_ids=("E1",),
+            counterpoint="Cash flow can still hurt before full retirement age",
+            narrator_attitude="calmly irritated by rules whose names mislead people",
+            reaction_beats=(
+                "React to the withheld amount as a cash-flow shock",
+                "React to the recalculation as the overlooked turn",
+            ),
+            felt_metaphor="A locked drawer, not a shredder",
+            metaphor_callback="Open the drawer again at the recalculation",
+            driving_questions=(
+                "What is actually withheld?",
+                "When and how is it accounted for later?",
+            ),
+            ending_question="Would you still call it a tax after seeing the recalculation?",
+        )
+
+        prompt = writer._build_generation_prompt(
+            sample_brief, "pain_hook", [], cfg, editorial_angle=angle)
+
+        assert prompt.index("THIS VIDEO'S ARGUMENT") < prompt.index(
+            "UPSTREAM EVIDENCE/CONTEXT ANCHORS")
+        assert angle.thesis in prompt
+        assert angle.counterpoint in prompt
+        assert "invent a personal anecdote" in prompt.lower()
+        assert "Never substitute a remembered prior-year figure" in prompt
+        assert "first-person editorial reactions" in prompt
+
+    def test_finance_revision_keeps_angle_evidence_and_faceless_contract(
+        self, mock_llm, sample_brief, sample_draft, sample_feedback
+    ):
+        writer = WriterAgent(llm=mock_llm)
+        cfg = get_niche_config("finance", "retirement_senior")
+        draft = sample_draft.model_copy(update={"editorial_angle": {
+            "thesis": "Withheld is not permanently lost",
+            "against": "The earnings test is just a tax",
+            "counterpoint": "The temporary cash-flow loss is real",
+            "narrator_attitude": "calmly irritated by the misleading name",
+            "reaction_beats": ["after the hold", "after recalculation"],
+            "walk_away": "A hold and a loss are different",
+        }})
+        sample_brief = sample_brief.model_copy(update={
+            "key_points": [
+                "Operator brief: THE HUMAN ANCHOR\n"
+                "Let's call her Denise. Keep the kitchen table recurring."
+            ],
+        })
+        prompt = writer._build_revision_prompt(
+            draft, sample_feedback, sample_brief, niche_cfg=cfg)
+        assert "Withheld is not permanently lost" in prompt
+        assert "Do not add a new factual claim" in prompt
+        assert "VERIFIED EVIDENCE — OVERRIDES THE ORIGINAL SCRIPT" in prompt
+        assert "OPERATOR BRIEF — STILL BINDING" in prompt
+        assert "Let's call her Denise" in prompt
+        assert "Keep the kitchen table recurring" in prompt
+        assert "Never preserve a conflicting number" in prompt
+        assert "spoken words after revision" in prompt
+        assert "SFX remains null" in prompt
+        assert "presenter on camera" not in prompt.lower()
+        assert "(5 segments total" not in prompt
+        assert "Open loops must be" not in prompt
+        assert "Rewrite an overlong opening" in prompt
+        assert "45-75 spoken words" in prompt
+        assert "Ignore any critic fix" in prompt
+        assert "Do not trace specific withheld dollars" in prompt
+
+    async def test_revised_draft_keeps_editorial_angle_metadata(
+        self, mock_llm, sample_brief, sample_draft, sample_feedback
+    ):
+        mock_llm.complete.return_value = _make_llm_response(
+            "HOOK: Fixed.\nSEGMENT 1: Main\nBetter content.\nOUTRO: End.")
+        angle = {"thesis": "A hold is not a permanent loss"}
+        draft = sample_draft.model_copy(update={"editorial_angle": angle})
+        revised = await WriterAgent(llm=mock_llm).revise(
+            draft, sample_feedback, sample_brief,
+            niche_cfg=get_niche_config("finance", "retirement_senior"))
+        assert revised.editorial_angle == angle
+
+    def test_finance_length_fill_cannot_invent_more_data_points(
+        self, mock_llm, sample_brief, sample_draft
+    ):
+        writer = WriterAgent(llm=mock_llm)
+        draft = sample_draft.model_copy(update={
+            "editorial_angle": {"thesis": "A hold is not a permanent loss"}})
+        prompt = writer._build_expansion_prompt(
+            draft, sample_brief, words=800, floor=1500,
+            previous_script="HOOK: test", narrative=False)
+        assert "Do NOT add data points" in prompt
+        assert "counterpoint already present" in prompt
+        assert "SFX stays null" in prompt
+        assert '"insertions"' in prompt
+        assert "Do NOT output the full script" in prompt
+
+    async def test_finance_length_fill_is_one_insertion_patch_not_four_rewrites(
+        self, mock_llm, sample_brief
+    ):
+        mock_llm.complete.return_value = _make_llm_response(
+            '{"insertions":[{"segment_index":1,"after_scene_index":0,'
+            '"scenes":[{"vo":"This added explanation stays inside the supplied '
+            'mechanism and does not invent another number.",'
+            '"visual":"official document close-up","sfx":null,'
+            '"pace":"normal","pause_after_ms":0,"emphasis":[]}]}]}'
+        )
+        original = ScriptScene(
+            voiceover="The verified rule changes what the smaller check means.",
+            visual_prompt="SSA document")
+        draft = ScriptDraft(
+            variant_id="A", brief_title=sample_brief.title, hook="",
+            segments=[ScriptSegment(
+                index=1, heading="The cash-flow window",
+                content=original.voiceover, estimated_duration_seconds=5,
+                scenes=[original])],
+            editorial_angle={"thesis": "A delay and a loss are different"},
+        )
+
+        grown = await WriterAgent(llm=mock_llm)._ensure_length(
+            draft, sample_brief, "system", "CURRENT", "A",
+            max_passes=4, narrative=False,
+        )
+
+        assert mock_llm.complete.call_count == 1
+        assert len(grown.segments[0].scenes) == 2
+        assert "added explanation" in grown.segments[0].scenes[1].voiceover
+
+    async def test_finance_length_fill_stays_bounded_when_resume_lost_editorial_angle(
+        self, mock_llm, sample_brief
+    ):
+        mock_llm.complete.return_value = _make_llm_response(
+            '{"insertions":[{"segment_index":1,"after_scene_index":0,'
+            '"scenes":[{"vo":"This evidence-safe insertion deepens the existing '
+            'cash-flow distinction without adding another claim.",'
+            '"visual":"furnace estimate on table","sfx":null,'
+            '"pace":"normal","pause_after_ms":0,"emphasis":[]}]}]}'
+        )
+        original = ScriptScene(
+            voiceover="The verified rule changes what the smaller check means.",
+            visual_prompt="SSA document")
+        resumed = ScriptDraft(
+            variant_id="A", brief_title=sample_brief.title, hook="",
+            segments=[ScriptSegment(
+                index=1, heading="The cash-flow window",
+                content=original.voiceover, estimated_duration_seconds=5,
+                scenes=[original])],
+            editorial_angle={},
+        )
+
+        grown = await WriterAgent(llm=mock_llm)._ensure_length(
+            resumed, sample_brief, "system", "CURRENT", "A",
+            max_passes=4, narrative=False, finance=True,
+        )
+
+        assert mock_llm.complete.call_count == 1
+        assert len(grown.segments[0].scenes) == 2
+        prompt = mock_llm.complete.call_args.kwargs["messages"][0]["content"]
+        assert "senior-finance script" in prompt
+        assert "Do NOT output the full script" in prompt
+
+    def test_finance_revision_treats_deterministic_gate_as_delete_instruction(
+        self, mock_llm, sample_brief, sample_draft
+    ):
+        from omnicast.models.script import CriticFeedback
+
+        feedback = CriticFeedback(
+            variant_id="A",
+            dimensions=[],
+            total_score=70,
+            approved=False,
+            rejection_reasons=["HARD GATE (verified evidence)"],
+            specific_fixes=["Delete an unsupported prevalence claim."],
+        )
+        prompt = WriterAgent(llm=mock_llm)._build_revision_prompt(
+            sample_draft,
+            feedback,
+            sample_brief,
+            niche_cfg=get_niche_config("finance", "retirement_senior"),
+        )
+
+        assert "deterministic evidence-boundary complaint is a DELETE instruction" in prompt
+        assert "same named" in prompt
+
+    async def test_finance_patch_salvages_noncompliant_full_script_response(
+        self, mock_llm, sample_brief
+    ):
+        scene = (
+            '{"vo":"A complete substantive sentence stays inside the verified '
+            'mechanism here.","visual":"SSA document","sfx":null,'
+            '"pace":"normal","pause_after_ms":0,"emphasis":[]}')
+        mock_llm.complete.return_value = _make_llm_response(
+            "HOOK:\nSCENES:\n[]\n"
+            "SEGMENT 1: The cash-flow window\nSCENES:\n["
+            + ",".join([scene, scene, scene])
+            + "]\nOUTRO:\nSCENES:\n[]"
+        )
+        original = ScriptScene(
+            voiceover="The verified rule changes the check.",
+            visual_prompt="SSA document")
+        draft = ScriptDraft(
+            variant_id="A", brief_title=sample_brief.title, hook="",
+            segments=[ScriptSegment(
+                index=1, heading="The cash-flow window",
+                content=original.voiceover, estimated_duration_seconds=5,
+                scenes=[original])],
+            editorial_angle={"thesis": "A delay and a loss are different"},
+        )
+
+        grown = await WriterAgent(llm=mock_llm)._ensure_length(
+            draft, sample_brief, "system", "CURRENT", "A",
+            narrative=False,
+        )
+
+        assert mock_llm.complete.call_count == 1
+        assert len(grown.segments[0].scenes) == 3

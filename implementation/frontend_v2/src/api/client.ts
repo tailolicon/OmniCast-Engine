@@ -64,6 +64,25 @@ export async function apiPost<T, B = any>(path: string, body?: B): Promise<T> {
   }
 }
 
+export async function apiPatch<T, B = any>(path: string, body?: B): Promise<T> {
+  try {
+    const response = await fetchWithTimeout(path, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!response.ok) {
+      throw new ApiError(`PATCH ${path} failed: ${response.statusText}`, response.status);
+    }
+    return unwrapEnvelope(await response.json()) as T;
+  } catch (error) {
+    console.error(`API PATCH error on ${path}:`, error);
+    throw error;
+  }
+}
+
 export function getMediaUrl(path?: string): string {
   if (!path) return '';
   let clean = path.replace(/\\/g, '/');

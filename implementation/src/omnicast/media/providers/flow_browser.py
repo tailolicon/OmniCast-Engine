@@ -64,7 +64,9 @@ class _FlowSession:
         "imagen4": "Imagen 4", "imagen-4": "Imagen 4", "imagen": "Imagen 4",
         "nano-banana": "Nano Banana 2", "nano_banana": "Nano Banana 2",
         "nano-banana-2": "Nano Banana 2", "nano-banana2": "Nano Banana 2",
+        "nano banana 2": "Nano Banana 2", "nano banana": "Nano Banana 2",
         "nano-banana-pro": "Nano Banana Pro", "nano_banana_pro": "Nano Banana Pro",
+        "nano banana pro": "Nano Banana Pro",
         "pro": "Nano Banana Pro",
     }
 
@@ -74,7 +76,13 @@ class _FlowSession:
         self._project = project_url
         self._create_new = create_new
         # Desired Flow image model (label). Empty = keep Flow's current default.
-        self._image_model = self._MODEL_LABELS.get((image_model or "").lower().strip(), "")
+        # Unknown-but-nonempty names pass through verbatim: silently mapping
+        # them to "" made every guard downstream think NO model was chosen
+        # ('Nano Banana 2' with spaces fell through the slug table and the
+        # quota guard treated the session as Pro).
+        _key = (image_model or "").lower().strip()
+        self._image_model = self._MODEL_LABELS.get(
+            _key, (image_model or "").strip())
         # Ingredients (WS1 character consistency): reference images attached to
         # the composer so Nano Banana conditions every generation on the SAME
         # character — the root fix for per-frame face drift that the text-DNA
@@ -260,18 +268,51 @@ class _FlowSession:
         self._project = page.url
         print(f"[flow] new project: {self._project}", flush=True)
 
-    def _type_prompt(self, page, prompt: str) -> None:
+    def _type_prompt(self, page, prompt: str, *, clear: bool = True) -> None:
+        """clear=False appends after existing composer content — required when
+        @-mention chips were just attached (Ctrl+A would wipe them)."""
         self._dismiss_welcome_popup(page)
         box = page.locator(_PROMPT_SEL).first
         # Explicit timeout so a covered/disabled prompt box (e.g. while Flow is
         # busy) fails fast instead of blocking on Playwright's 30s default.
         box.click(timeout=10_000)
-        page.keyboard.press("Control+A")
-        page.keyboard.press("Delete")
+        if clear:
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Delete")
+        else:
+            page.keyboard.press("End")
         page.keyboard.type(prompt, delay=2)
         page.wait_for_timeout(400)
 
     def _click_generate(self, page) -> None:
+        """Click the send arrow that belongs to the COMPOSER. A page-wide
+        `.last` match also hits the retry (↻) buttons on old error cards in
+        the feed — which re-ran a dead Pro workflow instead of our prompt
+        (the source of every 'phantom Pro generation' since the feed filled
+        with error cards)."""
+        target = page.evaluate(
+            """(promptSel) => {
+                const box = document.querySelector(promptSel);
+                if (!box) return null;
+                const pb = box.getBoundingClientRect();
+                let best = null, bestD = 1e9;
+                for (const b of document.querySelectorAll('button')) {
+                    if (!(b.textContent || '').includes('arrow_forward'))
+                        continue;
+                    const r = b.getBoundingClientRect();
+                    if (r.width === 0) continue;
+                    const d = Math.abs((r.y + r.height / 2)
+                        - (pb.y + pb.height / 2))
+                        + Math.abs(r.x - pb.right) * 0.2;
+                    if (d < bestD) { bestD = d; best = r; }
+                }
+                if (!best || bestD > 400) return null;
+                return {x: best.x + best.width / 2,
+                        y: best.y + best.height / 2};
+            }""", _PROMPT_SEL)
+        if target:
+            page.mouse.click(target["x"], target["y"])
+            return
         gen = page.locator(_GENERATE_SEL).last
         if not gen.count():
             gen = page.get_by_role("button", name="Tạo").last
@@ -344,12 +385,33 @@ class _FlowSession:
             pass
 
     def _open_settings_panel(self, page) -> None:
-        """Open the model/format popover (chip shows model + aspect + count)."""
-        for pat in ("crop_", "Imagen", "Veo", "Banana", "🍌"):
-            loc = page.locator(f'button:has-text("{pat}")')
+        """Open the model/format popover (chip shows model + aspect + count).
+
+        Pattern order matters: the MODEL name ("Banana"/🍌) uniquely matches
+        the composer chip, while "crop_" also matches other icon-bearing
+        buttons — clicking one of those silently fails to open the popover
+        (live run 8 burned all three retries that way)."""
+        # The composer chip uniquely carries model name + output count in ONE
+        # button ("🍌 Nano Banana Pro / crop_16_9 / x1"); workflow info cards
+        # in the feed also mention the model name alone, so a single-text
+        # match can hit a card and open nothing (live run 9, count=2).
+        candidates = (
+            'button:has-text("Banana"):has-text("x1")',
+            'button:has-text("Veo"):has-text("x1")',
+            'button:has-text("crop_"):has-text("x1")',
+            'button:has-text("Banana")',
+            'button:has-text("🍌")',
+            'button:has-text("Imagen")',
+            'button:has-text("Veo")',
+            'button:has-text("crop_")',
+        )
+        for sel in candidates:
+            loc = page.locator(sel)
             if loc.count():
                 try:
                     loc.last.click(timeout=6000)
+                    print(f"      [flow] settings opener matched {sel!r} "
+                          f"(count={loc.count()})", flush=True)
                     return
                 except Exception:
                     continue
@@ -375,14 +437,280 @@ class _FlowSession:
         except Exception as e:
             print(f"      [flow] close agent panel skipped ({e})", flush=True)
 
+    def _settings_popover(self, page):
+        """The VISIBLE settings popover, or None. Radix keeps hidden mirror
+        copies of the popover content in the DOM, so text-based waits with
+        .last kept latching onto an invisible node and timing out (live runs
+        8-10). Scope every interaction to the visible wrapper instead."""
+        pops = page.locator("[data-radix-popper-content-wrapper]")
+        fallback = None
+        for i in range(pops.count() - 1, -1, -1):
+            p = pops.nth(i)
+            try:
+                if not (p.locator(':text-is("9:16")').count()
+                        and p.is_visible()):
+                    continue
+                # Prefer the FULL panel (aspect chips AND the model row) —
+                # radix nests a smaller aspect-only wrapper inside it, and
+                # matching that one made the model switch silently skip.
+                if p.get_by_text("Banana", exact=False).count() \
+                        or p.get_by_text("Veo", exact=False).count():
+                    return p
+                if fallback is None:
+                    fallback = p
+            except Exception:
+                continue
+        return fallback
+
+    #: The composer persists its ENTIRE configuration in ONE localStorage key
+    #: (calibrated live in the operator's Chrome via the extension). Model
+    #: families: narwhal_display = Nano Banana 2 (free tier), abra = Omni
+    #: Flash video. Writing this key and reloading replaces the whole fragile
+    #: popover dance (eleven runs of selector archaeology died on that UI).
+    _PROMPT_BOX_KEY = "FLOW_MAIN_PROMPT_BOX_STATE"
+
+    def _apply_prompt_box_state(self, page, **updates) -> None:
+        import json as _json
+
+        cur = page.evaluate(
+            f"() => localStorage.getItem('{self._PROMPT_BOX_KEY}')")
+        try:
+            state = _json.loads(cur) if cur else {}
+        except Exception:
+            state = {}
+        if all(state.get(k) == v for k, v in updates.items()):
+            return                       # already configured — no reload
+        state.update(updates)
+        page.evaluate(
+            f"(s) => localStorage.setItem('{self._PROMPT_BOX_KEY}', s)",
+            _json.dumps(state, separators=(",", ":")))
+        # The composer reads the key on mount only.
+        self._reload_project(page)
+        print(f"      [flow] prompt-box state applied: {updates}", flush=True)
+
+    #: Model label → localStorage family (calibrated live via the extension).
+    #: Nano Banana PRO is the QUALITY model: it is the only tier that follows
+    #: attached reference images faithfully — Nano Banana 2 drifted to
+    #: training-prior archetypes (fairy forests, school girls, cyberpunk) on
+    #: the exact prompts and chips that Pro rendered correctly. Keyframes
+    #: therefore run on Pro; the 2-tier is only the quota fallback.
+    _IMAGE_MODEL_FAMILIES = {
+        "Nano Banana Pro": "nano_banana_pro",
+        "Nano Banana 2": "narwhal_display",
+    }
+
     def _set_image_mode(self, page, resolution: tuple[int, int] | None = None) -> None:
-        """Put the project in the CLASSIC direct image composer: close the agent
-        chat panel (→ fast direct gen), then apply the requested image model.
-        The account's composer default can be Nano Banana PRO (quota-limited) —
-        `_select_model` was previously defined but never wired, so the configured
-        model AND the Pro→2 quota fallback both silently did nothing."""
+        """Configure the composer for image generation via localStorage state
+        (portrait + selected model family + 1 output), then verify."""
         self._close_agent_panel(page)
         page.wait_for_timeout(300)
+        portrait = bool(resolution and resolution[1] > resolution[0])
+        model = self._image_model or "Nano Banana Pro"
+        family = self._IMAGE_MODEL_FAMILIES.get(model, "nano_banana_pro")
+        self._apply_prompt_box_state(
+            page,
+            imageOrVideoMode="IMAGE",
+            aspectRatio="PORTRAIT" if portrait else "LANDSCAPE",
+            selectedImageModelFamily=family,
+            outputsPerPrompt=1,
+        )
+        # The composer mounts late and sometimes not at all on a stale page —
+        # poll for the chip, and give the page ONE hard reload before giving
+        # up (runs 37/40 died on two variants of this race).
+        chip = page.locator('button:has-text("Banana"):has-text("x1")')
+        for round_ in range(2):
+            waited = 0
+            while not chip.count() and waited < 30_000:
+                page.wait_for_timeout(1500)
+                waited += 1500
+            if chip.count():
+                break
+            if round_ == 0:
+                self._reload_project(page)
+        if page.get_by_text(re.compile(r"Video · \d+s")).count():
+            raise MediaError(
+                "Flow composer still in VIDEO mode after applying the "
+                "prompt-box state — needs a live DOM calibration.")
+        if not chip.count():
+            raise MediaError(
+                "Flow composer chip not found after applying the prompt-box "
+                "state — the page may not have finished loading.")
+        return
+
+    def _set_image_mode_LEGACY_POPOVER(self, page, resolution: tuple[int, int] | None = None) -> None:
+        """Old UI-driven path, kept for reference during calibration."""
+        self._close_agent_panel(page)
+        page.wait_for_timeout(300)
+        # The composer mode is remembered SERVER-SIDE per project: a manual
+        # session that left it on Video makes an unguarded prompt generate a
+        # billed VIDEO instead of a free image (happened live — one 4s clip
+        # burned before the corrupt "still" crashed the gate). Force the
+        # Hình ảnh tab; portrait is REQUIRED when asked for (a silent 16:9
+        # fallback produced landscape "stills" for a full reroll cycle).
+        pop = None
+        for attempt in range(3):
+            self._open_settings_panel(page)
+            page.wait_for_timeout(1000)
+            pop = self._settings_popover(page)
+            if pop is not None:
+                break
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(800)
+        if pop is None:
+            raise MediaError(
+                "Flow: settings popover never opened (3 attempts)")
+        img_tab = pop.locator(':text-is("Hình ảnh")')
+        if img_tab.count():
+            img_tab.first.click()
+            page.wait_for_timeout(500)
+        if resolution and resolution[1] > resolution[0]:
+            pop.locator(':text-is("9:16")').first.click(timeout=5000)
+            page.wait_for_timeout(300)
+        # Proactively pick Nano Banana 2 for stills: Pro is the project
+        # default and quota-limited — waiting for the quota ERROR text to
+        # trigger the fallback wastes reroll attempts when Pro degrades
+        # silently instead of erroring (operator-reported).
+        # Stills NEVER run on Pro: it is quota-capped and the project default.
+        # Whatever the configured value (settings stores the slug, some paths
+        # normalize it to the label — 'Nano Banana Pro' reached here verbatim
+        # and made the != check skip the switch for eleven runs), a Pro-ish
+        # target is coerced to the free tier.
+        raw_model = self._image_model or ""
+        target_model = (raw_model if raw_model
+                        and "pro" not in raw_model.lower()
+                        else "Nano Banana 2")
+        print(f"      [flow] image model target={target_model!r} "
+              f"(configured={raw_model!r})", flush=True)
+        try:
+            # Playwright locators kept missing the model row through three
+            # selector variants (emoji node, composite label, nested radix
+            # wrappers) — leaf-node JS click is the calibration-proof form.
+            def _js_click_text(txt: str, menu_only: bool = False) -> str:
+                # Smallest visible element CONTAINING the text: leaf-only
+                # filtering missed the label (the 🍌 emoji span makes its
+                # parent non-leaf), containment-sort survives any nesting.
+                # menu_only scopes to the OPEN dropdown — a page-wide match
+                # for "Nano Banana" hit the composer chip itself and reported
+                # 'clicked' while changing nothing (live run 24).
+                return page.evaluate(
+                    """([txt, menuOnly]) => {
+                        const root = menuOnly
+                            ? document.querySelector(
+                                '[data-radix-menu-content][data-state="open"]')
+                            : document;
+                        if (!root) return 'no-menu';
+                        const cands = [...root.querySelectorAll('*')]
+                          .filter(e => e.offsetParent !== null
+                              && (e.textContent || '').includes(txt));
+                        if (!cands.length) return 'miss';
+                        cands.sort((a, b) =>
+                            a.textContent.length - b.textContent.length);
+                        cands[0].click();
+                        return 'clicked';
+                    }""", [txt, menu_only])
+
+            if target_model != "Nano Banana Pro":
+                # Open the model dropdown via ITS OWN arrow inside the popover
+                # (element-scoped): page-wide text clicks kept hitting the
+                # model name inside feed cards, and the "open menu" that got
+                # inspected was the settings popover itself.
+                # Synthetic JS events never opened the Radix Select (isTrusted
+                # checks) — use REAL CDP mouse clicks at measured coordinates.
+                box = pop.evaluate(
+                    """(el) => {
+                        const leaf = [...el.querySelectorAll('*')]
+                          .filter(e => e.offsetParent !== null
+                              && e.childElementCount === 0);
+                        const dd = leaf.find(e =>
+                            (e.textContent || '').trim()
+                                === 'arrow_drop_down');
+                        if (!dd) return null;
+                        const r = (dd.closest('button') || dd)
+                            .getBoundingClientRect();
+                        return {x: r.x + r.width / 2,
+                                y: r.y + r.height / 2};
+                    }""")
+                r1 = "no-dd" if not box else "clicked"
+                r2, hit = "skipped", ""
+                if box:
+                    page.mouse.click(box["x"], box["y"])
+                    page.wait_for_timeout(800)
+                    opt = page.evaluate(
+                        """() => {
+                            const opts = [...document.querySelectorAll(
+                                '[role="option"]')]
+                              .filter(e => e.offsetParent !== null);
+                            const texts = opts.map(
+                                e => (e.textContent || '').trim())
+                              .filter(t => t).slice(0, 12);
+                            let pick = opts.find(e => {
+                                const t = e.textContent || '';
+                                return t.includes('Banana')
+                                    && !t.includes('Pro');
+                            }) || opts.find(e =>
+                                !((e.textContent || '').includes('Pro')));
+                            if (!pick) return {err: 'no-option', texts};
+                            const r = pick.getBoundingClientRect();
+                            return {picked:
+                                    (pick.textContent || '').trim(),
+                                    x: r.x + r.width / 2,
+                                    y: r.y + r.height / 2, texts};
+                        }""")
+                    safe = str(opt).encode("ascii", "ignore").decode()
+                    print(f"      [flow] menu pick: {safe[:200]}", flush=True)
+                    if isinstance(opt, dict) and opt.get("picked"):
+                        page.mouse.click(opt["x"], opt["y"])
+                        r2, hit = "clicked", opt["picked"]
+                    else:
+                        r2 = "miss"
+                    page.wait_for_timeout(600)
+                chip_txt = page.evaluate(
+                    """() => {
+                        const b = [...document.querySelectorAll('button')]
+                          .find(x => (x.textContent || '').includes('Banana')
+                              && (x.textContent || '').includes('x1'));
+                        return b ? b.textContent.trim().slice(0, 60) : '';
+                    }""")
+                # ascii-safe: the chip text carries the 🍌 emoji, which
+                # crashes print on Windows' charmap console and the crash
+                # swallowed this whole log line (live run 25).
+                chip_ascii = chip_txt.encode("ascii", "ignore").decode()
+                print(f"      [flow] image model switch: open={r1} "
+                      f"pick({hit or target_model})={r2} chip={chip_ascii!r}",
+                      flush=True)
+                # The dropdown menu STAYS OPEN after a JS click and swallows
+                # every later pointer event (the prompt box click timed out
+                # against it live). Close it explicitly and verify.
+                for _ in range(3):
+                    if not page.locator(
+                            '[data-radix-menu-content][data-state="open"]'
+                    ).count():
+                        break
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(400)
+        except Exception as e:
+            print(f"      [flow] model pick skipped ({str(e)[:80]})",
+                  flush=True)
+        try:
+            one = pop.locator(':text-is("x1")')
+            if one.count():
+                one.first.click()
+        except Exception:
+            pass
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+        if page.get_by_text(re.compile(r"Video · \d+s")).count():
+            raise MediaError(
+                "Flow composer is still in VIDEO mode after switching to "
+                "Hình ảnh — refusing to generate (a prompt here would bill a "
+                "video). Needs a live DOM calibration.")
+        if (resolution and resolution[1] > resolution[0]
+                and not page.locator('button:has-text("crop_9_16")').count()
+                and page.locator('button:has-text("crop_16_9")').count()):
+            raise MediaError(
+                "Flow composer still shows a 16:9 aspect chip after selecting "
+                "9:16 — refusing to generate landscape stills for a portrait "
+                "film.")
         if self._image_model:
             try:
                 self._select_model(page, self._image_model)
@@ -578,32 +906,253 @@ class _FlowSession:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(resp.body())
 
+    def set_characters(self, names: list[str] | None) -> None:
+        """Project CHARACTERS to @-mention into every prompt. This is how the
+        approved keyframes were conditioned — uploaded ingredient chips never
+        reached the composer (three off-context generations proved it)."""
+        names = list(names or [])
+        if names != getattr(self, "_characters", []):
+            self._characters = names
+
+    def set_prompt_assets(self, names: list[str] | None) -> None:
+        """Project image ASSETS (by displayed name, e.g. 'K1.jpg') to attach
+        to every prompt as visual anchors via the same @-picker."""
+        names = list(names or [])
+        if names != getattr(self, "_prompt_assets", []):
+            self._prompt_assets = names
+
+    def _mention_picker(self, page):
+        """The VISIBLE @-picker overlay (identified by its search box), or
+        None. Same trap as the settings popover: page-level text lookups hit
+        the SIDEBAR ('Nhân vật' exists there too) and navigated away — every
+        interaction must stay inside this container."""
+        pops = page.locator(
+            '[data-radix-popper-content-wrapper], [role="dialog"]')
+        for i in range(pops.count() - 1, -1, -1):
+            p = pops.nth(i)
+            try:
+                if (p.get_by_placeholder("Tìm kiếm thành phần").count()
+                        and p.is_visible()):
+                    return p
+            except Exception:
+                continue
+        return None
+
+    def _mention_attach(self, page, tab_label: str, item_name: str) -> bool:
+        """Typing '@' in the composer opens the universal asset picker
+        (tabs Tất cả/Hình ảnh/Nhân vật/…, search 'Tìm kiếm thành phần',
+        confirm 'Thêm vào câu lệnh'). Search-first, then row, then confirm —
+        the discipline that ended the look-alike-row bug in the manual runs."""
+        box = page.locator(_PROMPT_SEL).first
+        box.click(timeout=8000)
+        page.keyboard.type("@", delay=30)
+        picker = None
+        for _ in range(4):
+            page.wait_for_timeout(800)
+            picker = self._mention_picker(page)
+            if picker is not None:
+                break
+        if picker is None:
+            page.keyboard.press("Backspace")
+            print("      [flow] @-picker did not open", flush=True)
+            return False
+        try:
+            tab = picker.locator(f':text-is("{tab_label}")')
+            if tab.count():
+                tab.first.click(timeout=4000)
+                page.wait_for_timeout(700)
+            search = picker.get_by_placeholder("Tìm kiếm thành phần")
+            if search.count():
+                search.first.fill(item_name)
+                page.wait_for_timeout(1200)
+            row = picker.get_by_text(item_name, exact=False)
+            if not row.count():
+                page.keyboard.press("Escape")
+                page.keyboard.press("Backspace")   # drop the dangling '@'
+                return False
+            row.last.click(timeout=4000)
+            page.wait_for_timeout(700)
+            add = picker.locator('button:has-text("Thêm vào câu lệnh")')
+            if add.count() and add.first.is_enabled():
+                add.first.click(timeout=4000)
+                page.wait_for_timeout(700)
+                return True
+            page.keyboard.press("Escape")
+            page.keyboard.press("Backspace")
+            return False
+        except Exception as e:
+            print(f"      [flow] mention {item_name!r} failed ({str(e)[:80]})",
+                  flush=True)
+            try:
+                page.keyboard.press("Escape")
+                page.keyboard.press("Backspace")
+            except Exception:
+                pass
+            return False
+
+    def set_prompt_files(self, paths: list[str] | None) -> None:
+        """LOCAL image files to attach to every prompt via the @-picker's
+        'Tệp tải lên' tab. The strongest conditioning channel this profile
+        has: the project characters do not exist in its mention picker at all
+        (tab shows 'Không tìm thấy kết quả nào'), while file-upload chips are
+        first-class."""
+        self._prompt_files = [str(Path(p).resolve()) for p in (paths or [])
+                              if Path(p).exists()]
+
+    def _mention_upload(self, page, path: str) -> bool:
+        """'@' → 'Tệp tải lên' tab → file input → confirm. The uploaded item
+        auto-selects (observed live on the FLF slot picker); confirm with
+        'Thêm vào câu lệnh' when it does not auto-attach."""
+        box = page.locator(_PROMPT_SEL).first
+        box.click(timeout=8000)
+        page.keyboard.type("@", delay=30)
+        picker = None
+        for _ in range(4):
+            page.wait_for_timeout(800)
+            picker = self._mention_picker(page)
+            if picker is not None:
+                break
+        if picker is None:
+            page.keyboard.press("Backspace")
+            print("      [flow] @-picker did not open for upload", flush=True)
+            return False
+        try:
+            tab = picker.locator(':text-is("Tệp tải lên")')
+            if tab.count():
+                tab.first.click(timeout=4000)
+                page.wait_for_timeout(700)
+            inputs = page.locator('input[type="file"]')
+            if not inputs.count():
+                page.keyboard.press("Escape")
+                page.keyboard.press("Backspace")
+                return False
+            inputs.last.set_input_files(path)
+            # Upload + auto-select; wait for the confirm button to enable.
+            deadline_ms = 60_000
+            waited = 0
+            while waited < deadline_ms:
+                page.wait_for_timeout(1500)
+                waited += 1500
+                if self._mention_picker(page) is None:
+                    return True     # picker closed itself → chip attached
+                add = picker.locator('button:has-text("Thêm vào câu lệnh")')
+                try:
+                    if add.count() and add.first.is_enabled():
+                        add.first.click(timeout=4000)
+                        page.wait_for_timeout(700)
+                        return True
+                except Exception:
+                    pass
+            page.keyboard.press("Escape")
+            page.keyboard.press("Backspace")
+            return False
+        except Exception as e:
+            print(f"      [flow] mention-upload {path!r} failed "
+                  f"({str(e)[:80]})", flush=True)
+            try:
+                page.keyboard.press("Escape")
+                page.keyboard.press("Backspace")
+            except Exception:
+                pass
+            return False
+
+    def _attach_prompt_refs(self, page) -> None:
+        """Attach configured refs into the CURRENT prompt: local files first
+        (strongest), then named assets, then characters (kept for profiles
+        whose picker has them). Chips live inside the prompt text, so this
+        runs per generation, after clearing the composer and before typing.
+        Fail-closed when nothing attaches — a context-free still burns the
+        reroll budget for nothing."""
+        files = getattr(self, "_prompt_files", [])
+        chars = getattr(self, "_characters", [])
+        assets = getattr(self, "_prompt_assets", [])
+        if not files and not chars and not assets:
+            return
+        # Clear leftover text first (chips are added fresh each time).
+        box = page.locator(_PROMPT_SEL).first
+        box.click(timeout=8000)
+        page.keyboard.press("Control+A")
+        page.keyboard.press("Delete")
+        attached = 0
+        for path in files:
+            ok = self._mention_upload(page, path)
+            print(f"      [flow] file chip {Path(path).name!r}: "
+                  f"{'ok' if ok else 'MISS'}", flush=True)
+            attached += int(ok)
+        for name in assets:
+            ok = self._mention_attach(page, "Hình ảnh", name)
+            print(f"      [flow] asset chip {name!r}: "
+                  f"{'ok' if ok else 'MISS'}", flush=True)
+            attached += int(ok)
+        for name in chars:
+            # Search from "Tất cả": this account's picker shows characters in
+            # the all-assets list while its "Nhân vật" tab renders empty.
+            ok = self._mention_attach(page, "Tất cả", name)
+            print(f"      [flow] character chip {name!r}: "
+                  f"{'ok' if ok else 'MISS'}", flush=True)
+            attached += int(ok)
+        if not attached:
+            raise MediaError(
+                "Flow: no reference chip could be attached via the @-picker "
+                "— aborting instead of generating context-free stills")
+
+    def _reload_project(self, page) -> None:
+        """Hard-reset the composer UI. Chips and slot attachments do NOT
+        survive a reload (observed live), so this is the reliable way to drop
+        stale ingredient chips before attaching a new set — chip-remove
+        buttons would need per-release DOM calibration."""
+        page.goto(self._project, wait_until="domcontentloaded", timeout=120_000)
+        page.wait_for_timeout(4000)
+        self._dismiss_welcome_popup(page)
+        self._ingredients_attached = False
+        self._characters_attached = False
+
     def gen_image(self, prompt: str, out_path: str, wait_s: int, resolution: tuple[int, int] | None = None) -> str:
+        """One prompt → one image, identified through the WORKFLOW API.
+
+        The old implementation diffed the DOM's <img src> set, but Flow signs
+        those URLs per page-load: every poll saw "new" srcs for OLD images and
+        happily downloaded a stale generation (three keyframes in a row came
+        back as the same old picture before this was caught). Workflow ids and
+        primaryMediaId are stable, so the project feed is the identity source;
+        the DOM is only used to submit the prompt.
+        """
         page = self._ensure_page()
         self._set_image_mode(page, resolution)
-        self._check_blocked(page)  # raises FlowBlocked early instead of waiting out wait_s
-        # Track by src set, not count: Flow virtualizes the media grid, so the
-        # element count can stay flat while new results appear/old ones unmount.
-        before = set(self._newest_result_srcs(page))
-        self._type_prompt(page, prompt)
+        # Early guard with a baseline: the feed is full of OLD Pro-quota error
+        # cards, and an un-baselined check here killed the first NB2 run
+        # before it could generate anything.
+        self._check_blocked(page, self._quota_card_count(page))
+        feed = self._workflows()
+        before_ids = {w["media_id"] for w in feed if w["media_id"]}
+        newest_ts = feed[0]["created"] if feed else ""
+        has_chips = bool(getattr(self, "_characters", [])
+                         or getattr(self, "_prompt_assets", [])
+                         or getattr(self, "_prompt_files", []))
+        self._attach_prompt_refs(page)
+        self._type_prompt(page, prompt, clear=not has_chips)
+        qbase = self._quota_card_count(page)
         self._click_generate(page)
 
-        new_src: str | None = None
-        for _ in range(max(1, wait_s // 3)):
-            page.wait_for_timeout(3000)
-            cur = self._newest_result_srcs(page)
-            fresh = [s for s in cur if s and s not in before]
-            if fresh:
-                page.wait_for_timeout(3000)  # settle (image finishes loading)
-                cur = self._newest_result_srcs(page)
-                fresh = [s for s in cur if s and s not in before] or fresh
-                new_src = fresh[0]
-                break
-        if not new_src:
-            raise MediaError(f"Flow produced no image within {wait_s}s")
-
-        self._download(new_src, out_path)
-        return str(Path(out_path).resolve())
+        # Attached reference images create their own UPLOAD workflows named
+        # after the file — newest in the feed, and exactly what got downloaded
+        # as the "generation" three times in a row before this skip existed.
+        # EVERY upload channel must be covered: legacy ingredients, named
+        # assets, AND the @-picker file chips (missing the last one re-created
+        # the stale-download bug live: workflow 'K4.jpg' returned as the gen).
+        skip = {Path(r).name for r in (self._ref_images or [])}
+        skip |= {Path(p).name for p in getattr(self, "_prompt_files", [])}
+        skip |= set(getattr(self, "_prompt_assets", []))
+        new_wf = self._await_new_workflow(page, before_ids, skip, wait_s,
+                                          after_ts=newest_ts, qbase=qbase)
+        print(f"      [flow] image workflow: {new_wf['name'][:60]!r} "
+              f"media={new_wf['media_id'][:8]}", flush=True)
+        data = self._await_media_bytes(page, new_wf["media_id"], wait_s,
+                                       kind="image", qbase=qbase)
+        out = Path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+        return str(out.resolve())
 
     WAVE = 3  # max prompts per wave — smaller bursts are gentler on Flow's abuse limits
 
@@ -615,10 +1164,42 @@ class _FlowSession:
         hi = int(base_ms * (1 + spread))
         return random.randint(lo, hi)
 
-    def _check_blocked(self, page) -> None:
+    def _quota_card_count(self, page) -> int:
+        """How many 'hết hạn mức … Nano Banana Pro' error cards are on the
+        page. Failed generations leave their error cards in the project feed
+        FOREVER, so presence alone is meaningless — only an INCREASE during
+        the current generation means the quota actually fired now. (Without
+        this, one old card made every later run raise FlowModelQuota even
+        after the model was switched.)"""
+        try:
+            return page.evaluate(
+                """() => {
+                    let n = 0;
+                    for (const e of document.querySelectorAll('*')) {
+                        // Next.js embeds page data in <script> tags whose
+                        // text ALSO contains the quota strings — and that
+                        // blob changes on every poll, which broke the
+                        // baseline. Count visible UI leaves only.
+                        if (e.tagName === 'SCRIPT' || e.tagName === 'STYLE')
+                            continue;
+                        if (e.childElementCount === 0) {
+                            const t = e.textContent || '';
+                            if (t.includes('hết hạn mức')
+                                || t.includes('hạn mức về số lượt')) n++;
+                        }
+                    }
+                    return n;
+                }""") or 0
+        except Exception:
+            return 0
+
+    def _check_blocked(self, page, quota_baseline: int | None = None) -> None:
         """Detect Flow's 'unusual activity' / rate-limit block. If present, abort
         immediately (do NOT retry — hammering a flagged session makes it worse and
-        is exactly what the block guards against). The operator must wait it out."""
+        is exactly what the block guards against). The operator must wait it out.
+
+        quota_baseline: pass the pre-generation _quota_card_count so the model-
+        quota check only fires on NEW error cards (old ones persist in the feed)."""
         try:
             txt = page.evaluate(
                 "() => document.body ? document.body.innerText : ''") or ""
@@ -628,13 +1209,45 @@ class _FlowSession:
         # MODEL-specific quota ('...hết hạn mức... Nano Banana Pro. Hãy thử dùng
         # một mô hình khác.') → switching model fixes it; raise the fallback-able
         # subclass BEFORE the generic quota check.
-        if ("nano banana pro" in low
+        # When we are ALREADY generating on a non-Pro model, any Pro-quota text
+        # can only be an OLD error card in the feed — the virtualized list
+        # re-renders those the moment a new generation lands, which inflated
+        # the baseline count and killed three healthy NB2 runs in a row.
+        running_pro = "pro" in (self._image_model or "pro").lower()
+        if "nano banana pro" in low and ("hết hạn mức" in low):
+            print(f"      [flow] quota-guard eval: _image_model="
+                  f"{(self._image_model or '').encode('ascii','ignore').decode()!r} "
+                  f"running_pro={running_pro} baseline={quota_baseline}",
+                  flush=True)
+        if (running_pro and "nano banana pro" in low
                 and ("hết hạn mức" in low or "hạn mức về số lượt" in low
                      or "reached your limit" in low or "try another model" in low
                      or "mô hình khác" in low)):
-            raise FlowModelQuota(
-                "Nano Banana Pro hết lượt — chuyển Nano Banana 2 (fallback tự động)."
-            )
+            if quota_baseline is None \
+                    or self._quota_card_count(page) > quota_baseline:
+                try:
+                    cards = page.evaluate(
+                        """() => {
+                            const out = [];
+                            for (const e of document.querySelectorAll('*')) {
+                                if (e.childElementCount === 0) {
+                                    const t = (e.textContent || '').trim();
+                                    if (t.includes('hết hạn mức')
+                                        || t.includes('Không thành công'))
+                                        out.push(t.slice(0, 160));
+                                }
+                            }
+                            return out.slice(-4);
+                        }""")
+                    safe = str(cards).encode("ascii", "ignore").decode()
+                    print(f"      [flow] quota cards (newest last): "
+                          f"{safe[:400]}", flush=True)
+                except Exception:
+                    pass
+                raise FlowModelQuota(
+                    "Nano Banana Pro hết lượt — chuyển Nano Banana 2 "
+                    "(fallback tự động)."
+                )
         # Hard image-generation QUOTA reached → abort, must wait ~1h (no bypass).
         if ("giới hạn tạo ảnh" in low or "hết hạn mức" in low
                 or "reached your limit" in low
@@ -817,6 +1430,250 @@ class _FlowSession:
         self._download(new_src, out_path)
         return str(Path(out_path).resolve())
 
+    # ------------------------------------------------------------------
+    # First/last-frame (FLF) video — "Khung hình" mode with both slots.
+    # This is the film path: video interpolates BETWEEN two APPROVED stills
+    # (AIComicBuilder/Jellyfish architecture; see storyboard/style_lock.py for
+    # why the endpoints must be image-model stills, never video tails).
+    # ------------------------------------------------------------------
+
+    def _trpc_get(self, proc: str, payload: dict) -> dict:
+        """GET a Flow trpc endpoint through the logged-in browser context.
+
+        Uses context.request (cookies ride along, no page JS) — immune to the
+        page-extension fetch-wrapping that broke window.fetch pulls before.
+        """
+        import json as _json
+        import urllib.parse as _up
+
+        url = (f"https://labs.google/fx/api/trpc/{proc}"
+               f"?input={_up.quote(_json.dumps({'json': payload}))}")
+        resp = self._ctx.request.get(url, timeout=60_000)
+        if not resp.ok:
+            raise MediaError(f"Flow trpc {proc} failed: HTTP {resp.status}")
+        return resp.json()
+
+    def _project_id(self) -> str:
+        m = re.search(r"/project/([0-9a-f-]{16,})", self._project or "")
+        if not m:
+            raise MediaError(f"Flow: no project id in url {self._project!r}")
+        return m.group(1)
+
+    def _workflows(self) -> list[dict]:
+        """Project workflows newest-first: {name, created, media_id}."""
+        r = self._trpc_get("flow.projectInitialData",
+                           {"projectId": self._project_id()})
+        raw = (r.get("result", {}).get("data", {}).get("json", {})
+                .get("projectContents", {}).get("workflows", []))
+        rows = []
+        for it in raw:
+            if not it:
+                continue
+            w = it.get("workflow", it) or {}
+            md = w.get("metadata", {}) or {}
+            rows.append({
+                "name": md.get("displayName", "") or "",
+                "created": md.get("createTime", "") or "",
+                "media_id": md.get("primaryMediaId", "") or "",
+            })
+        rows.sort(key=lambda x: x["created"], reverse=True)
+        return rows
+
+    def _fetch_media_bytes(self, media_id: str) -> bytes | None:
+        """Pull one finished video via media.fetchMedia (base64 in JSON).
+        Returns None while the workflow is still rendering."""
+        import base64
+
+        try:
+            r = self._trpc_get("media.fetchMedia", {"mediaKey": media_id})
+        except MediaError:
+            return None
+        video = (r.get("result", {}).get("data", {}).get("json", {})
+                  .get("result", {}).get("video", {}) or {})
+        enc = video.get("encodedVideo")
+        if not enc:
+            return None
+        return base64.b64decode(enc)
+
+    def _fetch_image_bytes(self, media_id: str) -> bytes | None:
+        """Pull one finished image via getMediaUrlRedirect (follows to the
+        actual file). Returns None while still rendering / not yet routable.
+        Raises when the media turns out to be a VIDEO — that means the
+        composer generated the wrong kind and billed credits; silently saving
+        it as a .jpg only crashes the pipeline further downstream."""
+        url = ("https://labs.google/fx/api/trpc/media.getMediaUrlRedirect"
+               f"?name={media_id}")
+        try:
+            resp = self._ctx.request.get(url, timeout=60_000)
+        except Exception:
+            return None
+        if not resp.ok:
+            return None
+        body = resp.body()
+        # A JSON/HTML body means the endpoint answered with an error or a
+        # not-ready envelope instead of file bytes.
+        if body[:1] in (b"{", b"[", b"<"):
+            return None
+        if body[:3] == b"\xff\xd8\xff" or body[:8] == b"\x89PNG\r\n\x1a\n" \
+                or body[:4] == b"RIFF":
+            return body
+        if b"ftyp" in body[:16]:
+            raise MediaError(
+                "Flow returned a VIDEO for an image request — the composer "
+                "was in the wrong mode and credits were billed. Aborting.")
+        return body  # unknown-but-plausible image container: let PIL decide
+
+    def _await_new_workflow(self, page, before_ids: set[str],
+                            skip_names: set[str], wait_s: int,
+                            after_ts: str = "",
+                            qbase: int | None = None) -> dict:
+        """Poll the project feed until a workflow with an UNSEEN media id
+        appears. Identity by media_id, never by DOM src (signed URLs churn).
+        `after_ts` (ISO from the feed itself) additionally rejects pre-existing
+        workflows whose media id only became visible late — an old scene
+        object surfacing its media mid-poll must not be mistaken for ours."""
+        waited = 0
+        while True:
+            for w in self._workflows():
+                if (w["media_id"] and w["media_id"] not in before_ids
+                        and w["name"] not in skip_names
+                        and (not after_ts or w["created"] > after_ts)):
+                    return w
+            if waited >= wait_s:
+                raise MediaError(f"Flow: no new workflow within {wait_s}s")
+            page.wait_for_timeout(5000)
+            waited += 5
+            self._check_blocked(page, qbase)
+
+    def _await_media_bytes(self, page, media_id: str, wait_s: int,
+                           *, kind: str, qbase: int | None = None) -> bytes:
+        """Poll until the workflow's media is downloadable, then return it."""
+        fetch = (self._fetch_image_bytes if kind == "image"
+                 else self._fetch_media_bytes)
+        waited = 0
+        while True:
+            data = fetch(media_id)
+            if data:
+                return data
+            if waited >= wait_s:
+                raise MediaError(
+                    f"Flow: media {media_id} not downloadable within {wait_s}s")
+            page.wait_for_timeout(5000)
+            waited += 5
+            self._check_blocked(page, qbase)
+
+    def _set_flf_mode(self, page, seconds: int) -> None:
+        """Configure the composer for first/last-frame video via localStorage
+        (VIDEO mode + Omni Flash + portrait + duration), then verify the
+        Bắt đầu slot rendered."""
+        self._exit_agent_mode(page)
+        self._apply_prompt_box_state(
+            page,
+            imageOrVideoMode="VIDEO",
+            aspectRatio="PORTRAIT",
+            selectedVideoModelFamily="abra",
+            selectedVideoDuration=int(seconds),
+            outputsPerPrompt=1,
+        )
+        if not page.get_by_text(re.compile(rf"Video · {seconds}s")).count():
+            raise MediaError(
+                f"Flow composer chip does not show 'Video · {seconds}s' "
+                f"after applying the prompt-box state.")
+        if self._slot_button(page, "Bắt đầu") is None \
+                and self._slot_button(page, "Kết thúc") is None:
+            raise MediaError(
+                "Flow FLF: composer shows no frame slots after switching to "
+                "VIDEO mode — frames/components submode may need its own "
+                "state key (calibrate live).")
+
+    def _slot_button(self, page, slot_label: str):
+        """The empty-slot control, however Flow marks it up. The label text
+        exists only while the slot is EMPTY (a thumbnail replaces it), so
+        text presence == slot empty. None when no such text is on the page."""
+        for loc in (page.get_by_role("button", name=slot_label),
+                    page.locator(f'button:has-text("{slot_label}")'),
+                    page.get_by_text(slot_label, exact=True)):
+            if loc.count():
+                return loc.first
+        return None
+
+    def _slot_attached(self, page, slot_label: str) -> bool:
+        return self._slot_button(page, slot_label) is None
+
+    def _attach_frame_slot(self, page, slot_label: str, image_path: str,
+                           wait_s: int = 90) -> None:
+        """Click the Bắt đầu/Kết thúc slot, upload the still into the picker,
+        confirm it landed in the slot. Uploads are unique-named by the caller so
+        the picker can never grab a lookalike (the K5-dup lesson)."""
+        slot = self._slot_button(page, slot_label)
+        if slot is None:
+            return  # already filled (retry path)
+        slot.click(timeout=10_000)
+        page.wait_for_timeout(1500)
+        inputs = page.locator('input[type="file"]')
+        if not inputs.count():
+            raise MediaError(f"Flow FLF: no file input after opening {slot_label!r} picker")
+        inputs.last.set_input_files(image_path)
+        # Upload → either auto-attaches to the open slot, or leaves the item
+        # selected with an enabled "Thêm vào câu lệnh" button. Handle both.
+        deadline = wait_s * 1000
+        step = 1500
+        waited = 0
+        while waited < deadline:
+            page.wait_for_timeout(step)
+            waited += step
+            if self._slot_attached(page, slot_label):
+                page.keyboard.press("Escape")  # close picker if it lingered
+                page.wait_for_timeout(300)
+                if self._slot_attached(page, slot_label):
+                    return
+                continue  # Escape wiped it (observed once) — loop re-checks
+            try:
+                add = page.get_by_role("button", name="Thêm vào câu lệnh")
+                if add.count() and add.first.is_enabled():
+                    add.first.click()
+                    page.wait_for_timeout(800)
+            except Exception:
+                pass
+        raise MediaError(
+            f"Flow FLF: still not attached to {slot_label!r} after {wait_s}s "
+            f"({image_path})")
+
+    def gen_video_flf(self, prompt: str, start_path: str, end_path: str,
+                      seconds: int, out_path: str, wait_s: int) -> dict:
+        """One FLF clip: start still + end still + motion-delta prompt.
+
+        Returns {"path", "workflow", "media_id"} for plan.json write-back
+        (Orkas: produced artifacts must be re-renderable/diffable).
+        """
+        page = self._ensure_page()
+        self._check_blocked(page, self._quota_card_count(page))
+        self._set_flf_mode(page, seconds)
+        feed = self._workflows()
+        before_ids = {w["media_id"] for w in feed if w["media_id"]}
+        newest_ts = feed[0]["created"] if feed else ""
+        self._attach_frame_slot(page, "Bắt đầu", start_path)
+        self._attach_frame_slot(page, "Kết thúc", end_path)
+        self._type_prompt(page, prompt)
+        qbase = self._quota_card_count(page)
+        self._click_generate(page)
+        page.wait_for_timeout(4000)
+
+        # Identify the new workflow via the API, not the DOM: virtualized grids
+        # lie, the project feed doesn't. Uploaded stills also create workflows
+        # named after their file — skip those.
+        upload_names = {Path(start_path).name, Path(end_path).name}
+        new_wf = self._await_new_workflow(page, before_ids, upload_names,
+                                          wait_s, after_ts=newest_ts,
+                                          qbase=qbase)
+        data = self._await_media_bytes(page, new_wf["media_id"], wait_s,
+                                       kind="video", qbase=qbase)
+        out = Path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+        return {"path": str(out.resolve()), "workflow": new_wf["name"],
+                "media_id": new_wf["media_id"]}
+
     def close(self) -> None:
         def _c():
             try:
@@ -864,12 +1721,20 @@ class FlowProvider:
         )
         # One fresh Flow project per video (default) — avoids old images piling up
         # and confusing the newest-first result mapping. Set FLOW_NEW_PROJECT=0 to
-        # reuse FLOW_PROJECT_URL instead.
-        self._create_new = os.environ.get("FLOW_NEW_PROJECT", "1") != "0"
+        # reuse FLOW_PROJECT_URL instead. An EXPLICIT project_url argument flips
+        # the default to reuse: a caller that names a project means that project
+        # (the film pipeline's characters/settings live in it — a silent fresh
+        # project generated off-style stills for a full bounded-reroll cycle
+        # before this was caught).
+        self._create_new = (os.environ.get("FLOW_NEW_PROJECT",
+                                           "0" if project_url else "1") != "0")
         # Ingredients (WS1): reference images for character consistency.
         # env FLOW_INGREDIENTS = os.pathsep-separated image paths — lets the
         # render set them per-channel/per-video without new CLI plumbing.
         self._reference_images = self._refs_from_env()
+        self._characters: list[str] = []
+        self._prompt_assets: list[str] = []
+        self._prompt_files: list[str] = []
         self._session: _FlowSession | None = None
 
     @staticmethod
@@ -887,6 +1752,27 @@ class FlowProvider:
         if self._session is not None:
             self._session.set_ref_images(self._reference_images)
 
+    def set_characters(self, names: list[str] | None) -> None:
+        """Attach the project's saved CHARACTERS to every generation (the way
+        this project's approved keyframes were actually conditioned)."""
+        self._characters = list(names or [])
+        if self._session is not None:
+            self._session.set_characters(self._characters)
+
+    def set_prompt_assets(self, names: list[str] | None) -> None:
+        """Attach project image assets (by display name, e.g. 'K1.jpg') to
+        every generation as visual style anchors."""
+        self._prompt_assets = list(names or [])
+        if self._session is not None:
+            self._session.set_prompt_assets(self._prompt_assets)
+
+    def set_prompt_files(self, paths: list[str] | None) -> None:
+        """Attach LOCAL image files to every generation via the @-picker
+        upload tab (per-still anchor + previous keyframe)."""
+        self._prompt_files = list(paths or [])
+        if self._session is not None:
+            self._session.set_prompt_files(self._prompt_files)
+
     def _sess(self) -> _FlowSession:
         if not self._create_new and not self._project:
             raise MediaError(
@@ -902,6 +1788,12 @@ class FlowProvider:
                                          create_new=self._create_new,
                                          image_model=self._image_model,
                                          ref_images=self._reference_images)
+            if self._characters:
+                self._session.set_characters(self._characters)
+            if self._prompt_assets:
+                self._session.set_prompt_assets(self._prompt_assets)
+            if self._prompt_files:
+                self._session.set_prompt_files(self._prompt_files)
         return self._session
 
     async def _run_with_banana_fallback(self, call):
@@ -1013,6 +1905,19 @@ class FlowProvider:
         return await asyncio.to_thread(
             sess.submit, sess.gen_video, prompt, output_path, wait_s
         )
+
+    #: FLF ("Khung hình" both slots) is implemented — film_runner keys on this.
+    supports_last_frame = True
+
+    async def convert_flf(self, start_path: str, end_path: str, prompt: str,
+                          *, seconds: int, output_path: str,
+                          wait_s: int = 480) -> dict:
+        """First/last-frame clip between two APPROVED stills (the film path).
+        Returns {"path", "workflow", "media_id"}."""
+        sess = self._sess()
+        return await asyncio.to_thread(
+            sess.submit, sess.gen_video_flf, prompt, start_path, end_path,
+            seconds, output_path, wait_s)
 
     async def credits(self) -> int | None:
         """Current Flow credit balance (None if unreadable). Image gen is free;

@@ -8,6 +8,8 @@ memory of the state machine; the browser holds no state of its own.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import hashlib
 import json
 import os
@@ -39,9 +41,28 @@ class SourceEntry(BaseModel):
     url: str = ""
     source_hash: str = ""            # short hash of packet content (packet kind)
     remote_title: str = ""           # filename as it appears in the source list
-    upload_status: str = "pending"   # pending | uploaded | indexed | failed
+    # THREE-STAGE TRUTH (operator audit 27/07). The old vocabulary stopped at
+    # `indexed`, which was set for EVERY source as soon as the UI's own
+    # "N sources" counter reached the expected number — a count, not a check.
+    # A URL can be listed and still hold no usable transcript, and a run that
+    # calls that "indexed" reports 280 pieces of evidence it never verified.
+    #   pending          — registered, not yet added
+    #   uploaded         — added to the notebook UI
+    #   ui_indexed       — the UI counts it as a source (what we can see cheaply)
+    #   transcript_verified — the notebook answered a probe about THIS source
+    #   evidence_usable  — verified AND long enough to carry craft evidence
+    #   failed           — add/import error, packet fallback candidate
+    upload_status: str = "pending"
     attempts: int = 0
     last_error: str | None = None
+    # Verification detail, filled by the source-audit stage. The QUOTE and the
+    # TIMESTAMP are the evidence — `verified_words` counts words in the quote,
+    # never in the model's reply (an earlier version counted the reply, so a
+    # summary or a hallucination could pass as a verified transcript).
+    verified_words: int | None = None
+    verify_quote: str = ""
+    verify_timestamp: str = ""
+    verify_note: str = ""
 
 
 class PromptJob(BaseModel):
@@ -163,9 +184,33 @@ class RunManifest(BaseModel):
     def pending_uploads(self) -> list[SourceEntry]:
         return [s for s in self.sources if s.upload_status == "pending"]
 
+    # Stages that mean "the UI shows it" vs "we checked it carries evidence".
+    UI_OK: ClassVar[set[str]] = {
+        "ui_indexed", "indexed", "transcript_verified", "evidence_usable"}
+    # ONLY evidence_usable counts. `transcript_verified` was described as
+    # "verified but possibly too short to carry evidence" and then included in
+    # the evidence pool anyway — the weaker tier meant nothing.
+    EVIDENCE_OK: ClassVar[set[str]] = {"evidence_usable"}
+
+    def evidence_sources(self) -> list["SourceEntry"]:
+        """Sources a finding may legitimately rest on."""
+        return [s for s in self.sources if s.upload_status in self.EVIDENCE_OK]
+
+    def evidence_summary(self) -> dict:
+        """What the run may CLAIM, separated from what it merely displayed."""
+        counts: dict[str, int] = {}
+        for s in self.sources:
+            counts[s.upload_status] = counts.get(s.upload_status, 0) + 1
+        return {"by_status": counts,
+                "ui_listed": sum(1 for s in self.sources
+                                 if s.upload_status in self.UI_OK),
+                "evidence_usable": len(self.evidence_sources()),
+                "total": len(self.sources)}
+
     def all_indexed(self) -> bool:
+        """UI-level completeness only — NOT evidence readiness (see UI_OK)."""
         return bool(self.sources) and all(
-            s.upload_status == "indexed" for s in self.sources)
+            s.upload_status in self.UI_OK for s in self.sources)
 
     # ── prompts (idempotent job set) ─────────────────────────────────────────
 

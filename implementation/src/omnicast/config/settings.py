@@ -172,6 +172,16 @@ class Settings(BaseSettings):
     omnicast_topic_router: str = Field(
         default="scorer_gate", description="scorer_gate | architect_only")
 
+    # Pull a low-res copy of competitor winners so §5 forensics can measure
+    # their frames (shot rhythm, motion, colour). OFF by default: it is
+    # bandwidth, disk and wall-clock time. Declared HERE, not read straight from
+    # os.environ, because this project configures through `.env` + Settings —
+    # an env-only flag is invisible to anyone reading the config surface, and
+    # would be the only setting in the system that works differently.
+    omnicast_competitor_forensics: bool = Field(
+        default=False,
+        description="Download competitor video to measure how it was cut")
+
     # === NAS ===
     nas_mount_path: str = Field(default="/Volumes/NAS")
     nas_fallback_path: str = Field(default="/tmp/omnicast_local")

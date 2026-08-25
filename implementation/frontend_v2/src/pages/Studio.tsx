@@ -47,6 +47,8 @@ export const Studio: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
   const [chanOpen, setChanOpen] = useState<boolean>(false);
   const [sceneIdx, setSceneIdx] = useState<number>(0);
+  const [sceneQuery, setSceneQuery] = useState<string>('');
+  const [sceneMsg, setSceneMsg] = useState<string>('');
 
   // Queries
   const { data: pipelineData } = useApi<any>('/api/pipeline', { refetchInterval: 3000 });
@@ -72,6 +74,12 @@ export const Studio: React.FC = () => {
   const { data: thumbsData, refetch: refetchThumbs } = useApi<any>(
     selectedChannel && selectedSlug ? `/api/thumbs/${selectedChannel}/${selectedSlug}` : '',
     { enabled: !!(selectedChannel && selectedSlug), refetchInterval: 8000 }
+  );
+  // Scene Review: nội dung + vị trí + asset THẬT của từng cảnh (duyệt trước render).
+  const { data: reviewData } = useApi<any>(
+    selectedChannel && selectedSlug
+      ? `/api/scene-review/${selectedChannel}~${selectedSlug}/scenes` : '',
+    { enabled: !!(selectedChannel && selectedSlug) }
   );
   const [productScript, setProductScript] = useState<string>('');
   const [thumbNote, setThumbNote] = useState<string>('');
@@ -372,8 +380,12 @@ export const Studio: React.FC = () => {
   const ACCENT = 'var(--accent)';
   const channels = channelsData?.channels || [];
   const activeChannel = channels.find((c: any) => c.channel_id === activeChannelId) || channels[0];
-  const scenes: any[] = timelineData?.shots || [];
+  // Ưu tiên danh sách cảnh từ Scene Review (có lời thoại, timecode, section,
+  // asset thật) — timeline render cũ chỉ có heading nội bộ.
+  const reviewScenes: any[] = reviewData?.scenes || [];
+  const scenes: any[] = reviewScenes.length ? reviewScenes : (timelineData?.shots || []);
   const selScene = scenes[sceneIdx] || scenes[0];
+  const reviewScene = reviewScenes[sceneIdx];
   const rendering = isRendering || !!renderStatusData?.rendering;
   const progressPct = typeof renderStatusData?.progress === 'number'
     ? Math.round(renderStatusData.progress * (renderStatusData.progress <= 1 ? 100 : 1))
@@ -525,13 +537,25 @@ export const Studio: React.FC = () => {
                     const thumb: React.CSSProperties = (done || running)
                       ? { ...thumbBase, background: running ? 'linear-gradient(135deg,#f45fce,#a877ff)' : GRADS[i % GRADS.length], border: '2px solid var(--ink)', boxShadow: `${sel ? '0 0 0 3px rgba(244,95,206,.3), ' : ''}2px 2px 0 0 rgba(74,59,122,.15)` }
                       : { ...thumbBase, background: 'var(--surface3)', border: '2px dashed #c9b8f0', boxShadow: sel ? '0 0 0 3px rgba(244,95,206,.3)' : undefined };
+                    // THUMBNAIL THẬT: asset đã acquire cho cảnh này (clip stock /
+                    // chart PNG / web-shot) thay cho ô gradient pastel vô nghĩa.
+                    const assetUrl = (selectedChannel && selectedSlug)
+                      ? `/api/scene-review/${selectedChannel}~${selectedSlug}/poster/${i}` : '';
                     return (
                       <div key={i} style={{ flex: '0 0 130px' }}>
                         <div onClick={() => setSceneIdx(i)} style={thumb}>
+                          {assetUrl && (
+                            <img src={assetUrl} loading="lazy" alt=""
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                          )}
                           <span style={{ position: 'absolute', top: 5, left: 5, background: 'rgba(74,59,122,.75)', color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 999, fontFamily: mono }}>#{i}</span>
                           <span style={{ position: 'absolute', top: 5, right: 5, width: 11, height: 11, borderRadius: '50%', border: '2px solid #fff', background: dot }}></span>
                         </div>
-                        <div className="disp" style={{ fontSize: 10.5, marginTop: 7, lineHeight: 1.3, height: 27, overflow: 'hidden', color: (done || running || sel) ? 'var(--text2)' : 'var(--text3)', fontWeight: 600 }}>{c.heading || ''}</div>
+                        <div className="disp" style={{ fontSize: 10.5, marginTop: 7, lineHeight: 1.3, height: 40, overflow: 'hidden', color: (done || running || sel) ? 'var(--text2)' : 'var(--text3)', fontWeight: 600 }}>
+                          {c.timecode && <span style={{ fontFamily: mono, color: 'var(--accent)', fontWeight: 800 }}>{c.timecode} </span>}
+                          {c.narration || c.heading || ''}
+                        </div>
                       </div>
                     );
                   })}
@@ -545,10 +569,70 @@ export const Studio: React.FC = () => {
                     <div className="disp" style={{ fontSize: 13, fontWeight: 700, color: 'var(--heading)' }}>Cảnh đang chọn · <span style={{ color: ACCENT, fontFamily: mono }}>#{sceneIdx}</span></div>
                     <span className="disp" style={{ fontSize: 10, fontWeight: 800, color: '#fff', background: (selScene.state || selScene.status) === 'done' ? 'var(--green)' : ((selScene.state || selScene.status) === 'running' ? 'var(--accent)' : 'var(--text3)'), border: '1.5px solid var(--ink)', borderRadius: 999, padding: '2px 9px' }}>{(selScene.state || selScene.status) === 'done' ? 'Xong' : ((selScene.state || selScene.status) === 'running' ? 'Đang tạo' : 'Chờ')}</span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 12 }}>{selScene.heading || selScene.narration || ''}</div>
+                  {/* CẢNH NHƯ TRONG VIDEO THẬT: hình + phụ đề + số nổi + vị trí */}
+                  {selectedChannel && selectedSlug && (
+                    <div style={{ position: 'relative', marginBottom: 10, borderRadius: 12, overflow: 'hidden', background: '#000', aspectRatio: '16/9' }}>
+                      <video
+                        key={`sc-${sceneIdx}`}
+                        src={`/api/scene-review/${selectedChannel}~${selectedSlug}/asset/${sceneIdx}`}
+                        poster={`/api/scene-review/${selectedChannel}~${selectedSlug}/poster/${sceneIdx}`}
+                        autoPlay loop muted playsInline
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                      />
+                      {/* vị trí trong video + section */}
+                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ background: 'rgba(10,8,16,.8)', color: '#ffd147', fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, fontFamily: mono }}>
+                          {reviewScene?.timecode ?? '–'} · #{sceneIdx}
+                        </span>
+                        <span style={{ background: 'rgba(10,8,16,.65)', color: '#fff', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999 }}>
+                          {reviewScene?.section || selScene.heading || ''}
+                        </span>
+                      </div>
+                      {/* số nổi (kinetic stat) như bản render */}
+                      {reviewScene?.stat_number && (
+                        <div style={{ position: 'absolute', left: 16, bottom: 74, color: '#ffd147', fontWeight: 900, fontSize: 30, textShadow: '0 2px 10px rgba(0,0,0,.85)', lineHeight: 1.1 }}>
+                          {reviewScene.stat_number}
+                          <div style={{ color: '#fff', fontSize: 11, fontWeight: 800, letterSpacing: .5 }}>{reviewScene.stat_label}</div>
+                        </div>
+                      )}
+                      {/* phụ đề đúng kiểu bản render (trắng, viền đen, dưới khung) */}
+                      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 12, textAlign: 'center', padding: '0 24px' }}>
+                        <span style={{ color: '#fff', fontWeight: 800, fontSize: 15, lineHeight: 1.35, textShadow: '2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000' }}>
+                          {selScene.narration || ''}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11.5, color: 'var(--text3)', marginBottom: 8, fontFamily: mono }}>
+                    {reviewScene ? `${reviewScene.timecode} · ${reviewScene.dur_sec}s · ${reviewScene.asset_kind}${reviewScene.chart_title ? ' · ' + reviewScene.chart_title : ''}${reviewScene.stock_query ? ' · “' + reviewScene.stock_query + '”' : ''}` : ''}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <input
+                      value={sceneQuery}
+                      onChange={(e) => setSceneQuery(e.target.value)}
+                      placeholder="đổi footage: vd senior man hardware store"
+                      style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 10, padding: '7px 10px', fontSize: 12, background: 'var(--surface)' }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!sceneQuery.trim()) return;
+                        setSceneMsg('đang tải…');
+                        try {
+                          const r = await fetch(`/api/scene-review/${selectedChannel}~${selectedSlug}/scene/${sceneIdx}/visual`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ stock_query: sceneQuery }),
+                          });
+                          setSceneMsg(r.ok ? '✓ đã thay' : '✗ không có kết quả');
+                        } catch { setSceneMsg('✗ lỗi mạng'); }
+                      }}
+                      style={{ ...pillBtn, flex: '0 0 auto', color: 'var(--accent)' }}>↻ Tải</button>
+                  </div>
+                  {sceneMsg && <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>{sceneMsg}</div>}
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => setActivePreviewAudio(`/pmedia/${selectedChannel}/${selectedSlug}/_assets/scene_${String(sceneIdx).padStart(2, '0')}.mp3`)} style={{ ...pillBtn, flex: 1, color: 'var(--accent)' }}>▶ Nghe audio</button>
-                    <button onClick={handleStartRender} style={{ ...pillBtn, flex: '0 0 auto' }}>↻</button>
+                    <button onClick={() => setActivePreviewAudio(`/api/scene-review/${selectedChannel}~${selectedSlug}/tts/${sceneIdx}`)} style={{ ...pillBtn, flex: 1, color: 'var(--accent)' }}>▶ Nghe lời</button>
+                    <button
+                      onClick={() => window.open(`/api/scene-review/${selectedChannel}~${selectedSlug}/page`, '_blank')}
+                      style={{ ...pillBtn, flex: 1 }}>⏵ Rough-cut liên tục</button>
                   </div>
                   {activePreviewAudio && <audio src={activePreviewAudio} controls autoPlay style={{ width: '100%', marginTop: 8, height: 30 }} />}
                 </div>

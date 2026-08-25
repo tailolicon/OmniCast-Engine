@@ -744,12 +744,17 @@ async def _measure_production(niche_key: str, measured: list[dict]
 
       * CAN measure — hook type and its evidence, beat structure from real cue
         timings, words per minute, runtime.
-      * CANNOT measure — anything visual. No frames are fetched, so art style,
-        colour mood, b-roll ratio and text-overlay frequency come back
-        `unknown`, and `build_blueprint` both discounts confidence for it and
-        lists them in `assumed_fields`. A visual blueprint needs the P1
-        audiovisual forensic analyzer; pretending otherwise here is precisely
-        the failure this module was rewritten to stop.
+      * CAN measure, WHEN `OMNICAST_COMPETITOR_FORENSICS=1` — shot rhythm,
+        motion mix, colour mood and transition grammar, by pulling a low-res
+        copy of the top winners and measuring the frames (see
+        `analytics.av_fetch`). The copy is deleted as soon as it is measured.
+      * CANNOT measure, ever, from here — art style, b-roll ratio and
+        text-overlay frequency. Those need a vision model, and
+        `build_blueprint` keeps them in `assumed_fields`.
+      * With the flag off (the default) nothing visual is fetched and the
+        blueprint reports the visual fields as unmeasured, exactly as before.
+        Pretending otherwise is precisely the failure this module was rewritten
+        to stop.
     """
     notes: list[str] = []
     if not measured:
@@ -757,7 +762,16 @@ async def _measure_production(niche_key: str, measured: list[dict]
 
     from omnicast.analytics.video_intel import VideoIntelligenceAnalyzer
 
+    from omnicast.analytics import av_fetch
+
     analyzer = VideoIntelligenceAnalyzer()
+    forensics_on = av_fetch.forensics_enabled()
+    if not forensics_on:
+        notes.append(
+            "competitor audiovisual forensics is OFF — set "
+            f"{av_fetch.ENV_FLAG}=1 to measure shot rhythm, motion and colour "
+            "from the winners' frames; until then every visual field is "
+            "unmeasured")
     analyses: list[dict] = []
     for row in measured:
         transcript = row["transcript"]
@@ -771,17 +785,34 @@ async def _measure_production(niche_key: str, measured: list[dict]
         except Exception as exc:
             notes.append(f"blueprint: {row['video_id']} analysis failed ({exc})")
             continue
-        analyses.append({
+        analysis = {
             "video_id": row["video_id"],
             "title": row.get("title", ""),
             "duration_minutes": duration_minutes,
             "structure": structure,
             "hook": hook,
             "audio": audio,
-            # No visual block on purpose — see the docstring. An empty dict here
-            # would be counted as an unmeasured block and drag coverage down;
-            # omitting it says "not attempted", which is the truth.
-        })
+        }
+        # A visual block ONLY when frames were actually measured. Omitting it
+        # says "not attempted", which is the truth when the flag is off; an
+        # empty dict would be counted as an unmeasured block and quietly drag
+        # confidence down for a measurement nobody asked for.
+        if forensics_on:
+            try:
+                grammar = await asyncio.to_thread(
+                    av_fetch.measure_competitor_video,
+                    row["video_id"], transcript=transcript,
+                    duration_minutes=duration_minutes)
+            except Exception as exc:
+                grammar = None
+                notes.append(f"forensics {row['video_id']}: failed ({exc})")
+            if grammar:
+                analysis["visual"] = _forensics_visual_block(grammar)
+            else:
+                notes.append(
+                    f"forensics {row['video_id']}: no frames measured "
+                    "(download unavailable, too long, or ffmpeg missing)")
+        analyses.append(analysis)
 
     if not analyses:
         return None, notes or ["production blueprint skipped: no analysis succeeded"]
@@ -790,6 +821,31 @@ async def _measure_production(niche_key: str, measured: list[dict]
     notes.extend(blueprint.notes)
     payload = blueprint.model_dump(mode="json")
     return payload, notes
+
+
+def _forensics_visual_block(grammar: dict) -> dict:
+    """Turn an `av_forensics` report into the `visual` block build_blueprint reads.
+
+    Same shape as `VideoIntelligenceAnalyzer.analyze_forensics` produces for our
+    own renders, so a competitor blueprint and our own are directly comparable —
+    which is the whole point of measuring theirs."""
+    return {
+        "measured": grammar.get("field_status", {}).get("shots") == "measured",
+        "source": "av_forensics",
+        "art_direction": "unknown",
+        "b_roll_ratio": 0.0,
+        "text_overlay_freq": 0.0,
+        "color_mood": grammar.get("colour_mood", "unknown"),
+        "scene_count": grammar.get("shot_count"),
+        "median_shot_seconds": grammar.get("median_shot_seconds"),
+        "cuts_per_minute": grammar.get("cuts_per_minute"),
+        "motion_mix": grammar.get("motion_mix"),
+        "transition_mix": grammar.get("transition_mix"),
+        "text_overlay_proxy": grammar.get("text_overlay_proxy"),
+        "silence_ratio": grammar.get("silence_ratio"),
+        "forensics": grammar,
+        "notes": list(grammar.get("notes") or []),
+    }
 
 
 # ── Audience, schedule and pillars (brief §4.2, §4.4, §4.6) ──────────────────

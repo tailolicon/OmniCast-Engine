@@ -408,15 +408,23 @@ def audit_chart_spec(spec: dict, ledger_data: dict, script_text: str) -> list[st
         failures.append("fact ledger bound to a different script (sha mismatch)")
 
     entry_tokens: set[tuple[str, float]] = set()
+    real_tokens: set[tuple[str, float]] = set()
+    hypo_tokens: set[tuple[str, float]] = set()
     attribution_years: set[float] = set()
     for e in ledger.get("entries") or []:
+        _src = str(e.get("source_name", "")).lower()
+        _is_example = "hypothetical" in _src or "worked example" in _src
         for tok in numeric_tokens(f"{e.get('value', '')} {e.get('claim', '')}"):
             entry_tokens.add(tok.key)
+            (hypo_tokens if _is_example else real_tokens).add(tok.key)
         for tok in numeric_tokens(f"{e.get('as_of', '')} {e.get('source_name', '')}"):
             if 1900 <= tok.value <= 2099:
                 attribution_years.add(tok.value)
 
     values = spec.get("values") or []
+    example_only_values: list = []
+    collision_values: list = []
+    real_only_present = False
     for v in values:
         try:
             fv = float(v)
@@ -425,9 +433,37 @@ def audit_chart_spec(spec: dict, ledger_data: dict, script_text: str) -> list[st
             continue
         # No abs(): a negative bar is a different figure from its positive —
         # a ledger entry for 62 must not authorise -62 (codex verify).
-        if not _matches(NumericToken("plain", fv, str(v)), entry_tokens,
-                        chart_side=True):
+        tok = NumericToken("plain", fv, str(v))
+        if not _matches(tok, entry_tokens, chart_side=True):
             failures.append(f"chart value {v} has no ledger entry")
+            continue
+        in_real = _matches(tok, real_tokens, chart_side=True)
+        in_hypo = _matches(tok, hypo_tokens, chart_side=True)
+        if in_real and in_hypo:
+            collision_values.append(v)
+        elif in_real:
+            real_only_present = True
+        else:
+            example_only_values.append(v)
+
+    # SOURCE ATTRIBUTION (codex render audit): a chart whose values include a
+    # figure covered ONLY by worked-example entries must SAY so in its source
+    # line — crediting an authority ("SSA 2026") over hypothetical numbers is
+    # a misattribution on a YMYL video. COLLISION values ($2,040 is BOTH the
+    # real monthly limit AND the example benefit) cannot prove real context by
+    # themselves: without at least one real-only anchor value in the same
+    # chart, the example must be declared too (codex verify round).
+    _needs_example = bool(example_only_values) or (
+        bool(collision_values) and not real_only_present)
+    if _needs_example:
+        _src_text = str(spec.get("source") or "").lower()
+        if not any(w in _src_text for w in ("example", "hypothetical", "illustrative")):
+            _vals = example_only_values or collision_values
+            failures.append(
+                f"chart values {_vals} are worked-example figures (or ambiguous "
+                "real/example collisions with no real-only anchor) — the source "
+                "line must declare the example (e.g. 'Worked example'), not "
+                "credit an authority")
 
     # Attribution years may cover the SOURCE line only ("SSA 2026") — a year in
     # a label or the title is a displayed claim and needs a typed entry token

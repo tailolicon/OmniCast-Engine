@@ -151,3 +151,59 @@ def describe_level(level: str) -> str:
         "niche": ("BORROWED: niche-wide intel, not specific to this channel's "
                   "audience or format — the failure mode §4.2 describes"),
     }.get(level, level)
+
+
+def resolve_scoped_playbook(channel, artifact: str, *, pillar_id: str = "",
+                            required: bool = False, load=None):
+    """Walk the scope chain and gate the row — for ANY consumer, not just the writer.
+
+    THE PACKAGING PATH DID NOT DO THIS. `clickbait.py` read
+    `get_competitor_intel(niche)` directly: no scope chain, no comparability
+    check, no freshness check, and `except Exception: pass` around all of it. So
+    a retirement channel for 65-year-olds could dress its thumbnails from the
+    playbook of a channel for 25-year-olds, or from an uncontrolled or stale
+    artifact, and nothing anywhere would say so — which is exactly the §4.2
+    failure the scope key exists to end.
+
+    Returns `(text, decision)`. `text` is empty whenever the gate refuses.
+    """
+    from omnicast.analytics.intel_gate import (
+        STATUS_ERROR,
+        CompetitorIntelRequired,
+        IntelDecision,
+        resolve_for_writer,
+    )
+
+    if load is None:
+        from omnicast.agents.writer import _load_competitor_intel as load
+
+    chain = fallback_chain(channel, pillar_id=pillar_id)
+    try:
+        for level, key in chain:
+            row = load(key)
+            if row is None:
+                continue
+            decision = resolve_for_writer(row, artifact=artifact,
+                                          required=required, scope=key)
+            # `IntelDecision` is frozen, so this rebuilds it rather than
+            # assigning — an assignment raised `FrozenInstanceError`, the
+            # `except Exception` below swallowed it, and every caller got a
+            # decision whose `scope_level` was blank. A borrowed playbook would
+            # have looked like an exact-scope one.
+            import dataclasses
+
+            decision = dataclasses.replace(decision, scope_level=level)
+            return (decision.playbook if decision.usable else "", decision)
+    except CompetitorIntelRequired:
+        raise
+    except Exception as exc:
+        decision = IntelDecision(STATUS_ERROR, reason=f"vault read failed: {exc}")
+        if required:
+            raise CompetitorIntelRequired(
+                f"{chain[0][1]} requires competitor intel but the vault could "
+                f"not be read: {exc}") from exc
+        return "", decision
+
+    decision = resolve_for_writer(None, artifact=artifact, required=required,
+                                  scope=chain[0][1])
+    return "", decision

@@ -390,6 +390,72 @@ class TestScoringIntegrityV2:
         # explainer unchanged
         assert "hook_quality" in ep and "SPECIFIC number" in ep
 
+    def test_finance_critic_receives_the_same_editorial_contract(
+        self, mock_llm, sample_brief, sample_draft
+    ):
+        from omnicast.config.niches import get_niche_config
+
+        angle = {
+            "thesis": "Withheld is not the same thing as permanently lost",
+            "against": "The earnings test is simply a tax",
+            "counterpoint": "The short-term cash-flow loss is still real",
+            "narrator_attitude": "calmly irritated by the misleading name",
+            "reaction_beats": [
+                "react after the withheld amount",
+                "react after the recalculation rule",
+            ],
+            "walk_away": "A hold and a loss require different decisions",
+        }
+        draft = sample_draft.model_copy(update={"editorial_angle": angle})
+        sample_brief = sample_brief.model_copy(update={"evidence_points": [{
+            "evidence_id": "E1",
+            "claim": "The 2026 exempt amount is $24,480",
+            "value": "$24,480",
+            "source_name": "SSA 2026 Exempt Amounts",
+            "source_url": "https://www.ssa.gov/oact/cola/rtea.html",
+            "as_of": "2026",
+            "quote": "the annual exempt amount in 2026 is $24,480",
+        }]})
+        prompt = CriticAgent(llm=mock_llm)._build_review_prompt(
+            draft, sample_brief,
+            get_niche_config("finance", "retirement_senior"))
+
+        assert "PRE-WRITING EDITORIAL CONTRACT" in prompt
+        assert angle["thesis"] in prompt
+        assert angle["counterpoint"] in prompt
+        assert "Merely repeating the vocabulary is not delivery" in prompt
+        assert "VERIFIED EVIDENCE — FACTUAL CEILING" in prompt
+        assert "$24,480" in prompt
+        assert "unsupported causal story" in prompt
+        assert "human-anchor story" in prompt
+        assert "tax or Medicare effect" in prompt
+        assert "spousal-benefit effect" in prompt
+
+    def test_finance_critic_uses_brief_duration_not_a_fixed_ten_minutes(
+        self, mock_llm, sample_draft
+    ):
+        from omnicast.config.niches import get_niche_config
+
+        brief = TopicBrief(
+            title="Working and Social Security",
+            niche=Niche.FINANCE,
+            market=Market.US,
+            source=TopicSource.MANUAL,
+            target_duration_min=15,
+            sub_niche="retirement_senior",
+        )
+        critic = CriticAgent(llm=mock_llm)
+        cfg = get_niche_config("finance", "retirement_senior")
+
+        system = critic._build_system_prompt(cfg)
+        prompt = critic._build_review_prompt(sample_draft, brief, cfg)
+
+        assert "for 10 minutes" not in system
+        assert "brief-specific target duration" in system
+        assert "TARGET DURATION: 15 minutes" in prompt
+        assert "CURRENT SPOKEN WORDS:" in prompt
+        assert "Do not call a script under-length or over-length" in prompt
+
     async def test_underlength_routes_to_writer_not_visual(self, mock_llm, sample_brief):
         """A short script (high scores) must reject on length with a writer/expand
         reason — never pass as a visuals-only fix."""

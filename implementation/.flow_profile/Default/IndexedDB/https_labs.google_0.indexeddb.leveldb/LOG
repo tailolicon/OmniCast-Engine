@@ -1,14 +1,14 @@
-2026/07/14-08:39:57.424 4eb4 Reusing MANIFEST E:\Project\OmniCast Engine\implementation\.flow_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/MANIFEST-000001
-2026/07/14-08:39:57.425 4eb4 Recovering log #818
-2026/07/14-08:39:57.425 4eb4 Reusing old log E:\Project\OmniCast Engine\implementation\.flow_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/000818.log 
-2026/07/14-08:39:57.425 4eb4 Delete type=2 #816
-2026/07/14-08:39:57.455 5bec Level-0 table #823: started
-2026/07/14-08:39:57.459 5bec Level-0 table #823: 1168 bytes OK
-2026/07/14-08:39:57.462 5bec Delete type=0 #818
-2026/07/14-08:39:57.462 4eb4 Manual compaction at level-0 from '\x00\xd8\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xd9\x00\x00\x00' @ 0 : 0; will stop at '\x00\xd8\x00\x00\x05' @ 8587 : 1
-2026/07/14-08:39:57.463 4eb4 Compacting 1@0 + 1@1 files
-2026/07/14-08:39:57.465 4eb4 Generated table #824@0: 278 keys, 5036 bytes
-2026/07/14-08:39:57.466 4eb4 Compacted 1@0 + 1@1 files => 5036 bytes
-2026/07/14-08:39:57.467 4eb4 compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/07/14-08:39:57.467 4eb4 Delete type=2 #823
-2026/07/14-08:39:57.468 4eb4 Manual compaction at level-0 from '\x00\xd8\x00\x00\x05' @ 8587 : 1 .. '\x00\xd9\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/08/25-19:54:05.626 8658 Reusing MANIFEST E:\Project\OmniCast Engine\implementation\.flow_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/MANIFEST-000001
+2026/08/25-19:54:05.627 8658 Recovering log #1380
+2026/08/25-19:54:05.628 8658 Reusing old log E:\Project\OmniCast Engine\implementation\.flow_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/001380.log 
+2026/08/25-19:54:05.628 8658 Delete type=2 #1378
+2026/08/25-19:54:05.722 8c64 Level-0 table #1385: started
+2026/08/25-19:54:05.724 8c64 Level-0 table #1385: 1193 bytes OK
+2026/08/25-19:54:05.726 8c64 Delete type=0 #1380
+2026/08/25-19:54:05.726 6a68 Manual compaction at level-0 from ' i\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' j\x01\x00\x00\x00' @ 0 : 0; will stop at ' i\x01\x00\x00\x05' @ 13490 : 1
+2026/08/25-19:54:05.727 6a68 Compacting 1@0 + 1@1 files
+2026/08/25-19:54:05.737 6a68 Generated table #1386@0: 300 keys, 5034 bytes
+2026/08/25-19:54:05.737 6a68 Compacted 1@0 + 1@1 files => 5034 bytes
+2026/08/25-19:54:05.739 6a68 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/25-19:54:05.746 6a68 Delete type=2 #1385
+2026/08/25-19:54:05.747 8c64 Manual compaction at level-0 from ' i\x01\x00\x00\x05' @ 13490 : 1 .. ' j\x01\x00\x00\x00' @ 0 : 0; will stop at (end)

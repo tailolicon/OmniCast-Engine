@@ -25,6 +25,13 @@ if TYPE_CHECKING:
 # Vocabulary: omnicast.shared.production_signals.ALL_TAGS.
 PIPELINE_UNSUPPORTED_PRODUCTION: frozenset[str] = frozenset({
     "face_cam", "interview", "on_location", "live_footage", "in_person_demo",
+    # `screen_capture` belongs here for the same reason as the rest: there is no
+    # screen-recording step in the render pipeline, which
+    # `production_router.APPROXIMATED_MODES` says in its own words. The router
+    # was fixed to stop granting it, but the TOPIC SCORER does not go through
+    # the router — it reads this set — so a software tutorial still looked
+    # producible at the moment the system decides what to make.
+    "screen_capture",
 })
 
 # Band around `target_duration_min` that counts as "the runtime we produce".
@@ -154,8 +161,22 @@ class ChannelProfile(BaseModel):
     audience_segment: str = ""     # "55plus_preretiree", "25_35_beginner", ...
     content_format: str = ""       # "longform_narration", "shorts", "explainer", ...
     content_pillars: list[dict] = []
-    #   [{"id": "annuities", "name": "Annuities", "keywords": ["annuity", ...]}]
+    #   [{"id": "annuities", "name": "Annuities", "keywords": ["annuity", ...],
+    #     "role": "core"}]   role: core | supporting | experimental (§11.2)
     #   See analytics.pillars — declared, never auto-discovered.
+
+    # Channel thesis (§11.1). Five questions an experienced operator can answer
+    # about their channel and this system never could. DECLARED, never generated:
+    # an LLM would write a plausible thesis for any channel in four seconds, and
+    # it would agree with whatever the channel already does — which is exactly
+    # what makes it useless as evidence of drift.
+    #   {"audience": ..., "promise": ..., "return_reason": ..., "moat": ...,
+    #    "owned_format": ...}
+    channel_thesis: dict = {}
+    # Which experiment lane this channel occupies: proven | adjacent |
+    # asymmetric (§11.5). Empty means undeclared, which spends the proven lane's
+    # budget without saying so.
+    experiment_lane: str = ""
 
     # Schedule
     upload_cadence: str = "3x_weekly"  # "daily", "3x_weekly", "weekly"

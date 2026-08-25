@@ -21,3 +21,14 @@ _refs/
 # IDE/scratch
 .history/
 .graphify_ready
+
+# linux migration backup excludes
+implementation/.venv_chatterbox/
+implementation/output/
+output/
+_to_delete/
+_refs/VideoToolsPro/
+_refs/*.exe
+_refs/**/*.rar
+_archive/media_reference/
+*.mp4

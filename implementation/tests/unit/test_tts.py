@@ -182,7 +182,7 @@ class TestTTSModule:
         with patch.object(TTSModule._router, "synthesize",
                           new_callable=AsyncMock, return_value=fake), \
              patch.object(tts, "_normalize_lufs", new_callable=AsyncMock), \
-             patch("omnicast.media.tts._measure_duration", return_value=3.2):
+             patch("omnicast.media.tts.measure_duration", return_value=3.2):
             result = await tts._process(
                 TTSRequest(text="Hello", voice_profile="kokoro:af_heart"))
         assert result.audio_path == "/tmp/out.wav"
@@ -206,7 +206,7 @@ class TestTTSModule:
         with patch.object(TTSModule._router, "synthesize",
                           side_effect=fake_synth), \
              patch.object(tts, "_normalize_lufs", new_callable=AsyncMock), \
-             patch("omnicast.media.tts._measure_duration", return_value=1.0):
+             patch("omnicast.media.tts.measure_duration", return_value=1.0):
             await tts._process(TTSRequest(
                 text="Hi", voice_clone="/refs/brand.wav",
                 voice_profile="kokoro:af_heart"))

@@ -75,14 +75,30 @@ class FactLedgerAgent(BaseAgent):
         script_text: str,
         *,
         proof_sources: list[str] | None = None,
+        evidence_points: list[dict[str, str]] | None = None,
         current_year: int,
         model_label: str = "",
     ) -> FactLedger:
         numeric = extract_numeric_claims(script_text)
         sources = ", ".join(proof_sources or []) or "SSA (ssa.gov), IRS (irs.gov), CFPB, FBI IC3"
+        verified_block = ""
+        if evidence_points:
+            rows = "\n".join(
+                f"- {item.get('evidence_id')}: {item.get('claim')} | "
+                f"value={item.get('value') or '(qualitative)'} | "
+                f"source={item.get('source_name')} | as_of={item.get('as_of')} | "
+                f"url={item.get('source_url')}"
+                for item in evidence_points)
+            verified_block = (
+                "\nPRE-WRITING SOURCES ALREADY FETCHED AND VERIFIED:\n"
+                + rows
+                + "\nFor non-hypothetical claims, source_name/source_url/as_of "
+                  "MUST come from this list. Do not substitute a remembered URL "
+                  "or add a source that was not verified before writing.\n\n")
         base_rules = (
             f"RULE YEAR: {current_year}. Preferred source families: {sources}.\n\n"
-            "For EVERY load-bearing claim — every dollar amount, percentage, "
+            + verified_block
+            + "For EVERY load-bearing claim — every dollar amount, percentage, "
             "threshold, rule age, deadline, historical year, and every stated "
             "rule/law — emit one entry with ALL of these fields filled: claim (as "
             "spoken), value (the figure verbatim), source_name (the real document "
@@ -91,6 +107,10 @@ class FactLedgerAgent(BaseAgent):
             "REQUIRED, never empty), year_sensitive (true for anything that changes "
             "by rule year: earnings limits, brackets, premiums), section (the "
             "script heading it appears in).\n\n"
+            "For a qualitative rule with no spoken figure, value MUST be the "
+            "empty string. Never write placeholders such as '(qualitative)', "
+            "'N/A', or combine multiple verified values into one slash-separated "
+            "value. Emit separate entries when separate figures are spoken.\n"
             "HYPOTHETICAL WORKED-EXAMPLE figures (an invented income, benefit "
             "amount, or hourly wage used purely for illustration) get "
             f"source_name='worked example (hypothetical)' and as_of='{current_year}' "
@@ -100,7 +120,9 @@ class FactLedgerAgent(BaseAgent):
             "source_name and that year as as_of.\n\n"
             "If you cannot attribute a REAL figure to a real source you are "
             "confident exists, put the claim in needs_verification instead of "
-            "inventing one.\n\n"
+            "inventing one. Do not put a missing figure in needs_verification "
+            "unless the script actually states that figure; a qualitative "
+            "reference to a rule is not an unstated dollar claim.\n\n"
         )
         # The client does NOT inject the schema — the model only knows the
         # shape we show it (the critic's reliability comes from exactly this

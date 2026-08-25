@@ -1,7 +1,7 @@
 """Clickbait title + thumbnail generation (all channels).
 
 Two pieces, channel-agnostic:
-  1. generate_clickbait(script, channel_meta) -> {title, thumb_text, thumb_prompt}
+  1. generate_clickbait(script, channel_meta, pillar_id) -> {title, thumb_text, thumb_prompt}
      via DeepSeek — a curiosity-gap YouTube title + 2-4 punchy thumbnail words +
      a dramatic high-contrast thumbnail background prompt in the channel's style.
   2. compose_thumbnail(bg_png, thumb_text, out_png, accent) -> PIL 1280x720
@@ -19,10 +19,95 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
+# Imported at module level so the `except` clauses below can NAME it. A broad
+# `except Exception` that also catches this is how a fail-closed channel keeps
+# rendering.
+try:
+    from omnicast.analytics.intel_gate import CompetitorIntelRequired
+except Exception:  # pragma: no cover - package not importable in some scripts
+    class CompetitorIntelRequired(RuntimeError):
+        """Fallback so the handlers below are still well-formed."""
+
 # Impact is the classic YouTube-thumbnail face; fall back to Arial Bold.
 _FONT_IMPACT = "C:/Windows/Fonts/impact.ttf"
 _FONT_BOLD = "C:/Windows/Fonts/arialbd.ttf"
+_FONT_TRUST = "C:/Windows/Fonts/georgiab.ttf"
+_FONT_UI = "C:/Windows/Fonts/segoeuib.ttf"
 TW, TH = 1280, 720
+
+_UNSUPPORTED_NEWS_RE = re.compile(
+    r"\b(breaking|just\s+(?:confirmed|announced|changed|revealed|got)|"
+    r"suddenly|new\s+(?:social\s+security\s+)?rule|now\s+warns?)\b",
+    re.I,
+)
+_UNSUPPORTED_SECRECY_RE = re.compile(
+    r"\b(won't tell you|doesn't want you to know|hidden truth|"
+    r"too rich for)\b",
+    re.I,
+)
+_TRAP_RE = re.compile(r"\btrap\b", re.I)
+_SCRIPT_NEWS_SUPPORT_RE = re.compile(
+    r"\b(announced|confirmed|changed|new rule|takes effect|effective on|"
+    r"released (?:today|this week|this month)|breaking)\b",
+    re.I,
+)
+_WITHHOLDING_AS_LOSS_RE = re.compile(
+    r"\b(takes?\s+back|takes?\s+\$|keeps?\s+\$|steals?|"
+    r"money\s+(?:is\s+)?lost|you\s+lose)\b",
+    re.I,
+)
+_SCRIPT_CORRECTS_LOSS_RE = re.compile(
+    r"\b(not lost|withheld|withholding|recalculat(?:e|ed|ion)|"
+    r"increased permanently)\b",
+    re.I,
+)
+
+
+def _apply_packaging_truth_guard(data: dict, script_text: str) -> dict:
+    """Choose the first high-CTR title that does not invent a news event.
+
+    A current year in a standing rule is not evidence that an agency "just
+    confirmed" anything. This deterministic pass considers the primary title
+    and alternatives, preserving the model's creativity while refusing false
+    recency. If every candidate makes the same unsupported claim, it supplies
+    a conservative subject-specific fallback.
+    """
+    out = dict(data or {})
+    candidates = [
+        str(out.get("title") or "").strip(),
+        *[str(x or "").strip() for x in (out.get("alternatives") or [])],
+    ]
+    supports_news = bool(_SCRIPT_NEWS_SUPPORT_RE.search(script_text or ""))
+    corrects_loss_framing = bool(
+        _SCRIPT_CORRECTS_LOSS_RE.search(script_text or ""))
+
+    def acceptable(title: str) -> bool:
+        if not title:
+            return False
+        if not supports_news and _UNSUPPORTED_NEWS_RE.search(title):
+            return False
+        if _UNSUPPORTED_SECRECY_RE.search(title):
+            return False
+        if _TRAP_RE.search(title) and not _TRAP_RE.search(script_text or ""):
+            return False
+        if (corrects_loss_framing
+                and _WITHHOLDING_AS_LOSS_RE.search(title)):
+            return False
+        return True
+
+    selected = next((title for title in candidates if acceptable(title)), "")
+    if not selected:
+        if re.search(r"\b(social security|SSA)\b", script_text or "", re.I):
+            selected = (
+                "Working While on Social Security? Where the Withheld Money Goes"
+            )
+        else:
+            selected = "The Rule Behind What Changes — And What Does Not"
+    original = str(out.get("title") or "").strip()
+    out["title"] = selected[:100]
+    out["truth_guard_replaced_title"] = selected != original
+    return out
+
 
 _SYSTEM = (
     "You are a top-1% YouTube packaging strategist (Vox / Johnny Harris / MrBeast level "
@@ -56,6 +141,13 @@ _SYSTEM = (
     "BAD (spoils / bland): 'The Food Stealing Your B12' (names the answer), '3 Foods "
     "Wrecking Your Ozempic Results' (generic, no stake). "
     "FORBIDDEN: literal greeting, flat recap, generic summary, clickbait lies, "
+    "or invented recency ('BREAKING', 'NEW RULE', 'JUST CONFIRMED', 'NOW WARNS') "
+    "unless the script explicitly reports that dated announcement/change; a "
+    "current-year threshold by itself is NOT a new announcement. If the script "
+    "distinguishes temporary withholding from permanent loss, the title MUST "
+    "preserve that distinction — never say SSA 'TAKES BACK', 'KEEPS', 'STEALS', "
+    "or that the viewer simply 'LOSES' the money. Never invent agency secrecy "
+    "('SSA WON'T TELL YOU') or call a published conditional formula a 'TRAP'. "
     "demonetizing words. A bland title is a FAIL even if accurate>\", "
     "\"thumb_text\": \"2-4 UPPERCASE words for "
     "the thumbnail — a VISCERAL SCROLL-STOPPER that creates a CURIOSITY GAP. PICK ONE form: "
@@ -143,7 +235,62 @@ _SYSTEM_NARRATIVE = (
 )
 
 
-def generate_clickbait(script_text: str, channel_meta: dict | None = None) -> dict | None:
+def _packaging_pillar(meta: dict, script_text: str) -> str:
+    """Which content pillar this script belongs to, for the scope key.
+
+    Packaging was scoped on four dimensions and silently unscoped on the fifth,
+    so annuities and social-security thumbnails still shared one channel-wide
+    playbook — §4.2's finest level existed for the writer and not here. Uses the
+    same deterministic classifier as the scorer and the brief builders, so a
+    video's pillar is one answer everywhere."""
+    try:
+        from omnicast.analytics.pillars import classify_pillar, load_pillars
+
+        pillars = load_pillars((meta or {}).get("content_pillars"))
+        if not pillars:
+            return ""
+        match = classify_pillar(script_text[:2000], "", pillars)
+        return match.pillar_id if match.is_classified else ""
+    except Exception:
+        return ""
+
+
+def _scoped_playbook(meta: dict, artifact: str, pillar_id: str = ""):
+    """(text, decision) for one competitor artifact, scoped and gated.
+
+    `channel_meta` here is a raw dict read from `channels/<id>.json`, so it is
+    wrapped in a tiny attribute view — `intel_scope` reads its dimensions with
+    `getattr`, and a dict would silently produce `*` for every one of them."""
+    from omnicast.analytics.intel_gate import CompetitorIntelRequired
+    from omnicast.analytics.intel_scope import resolve_scoped_playbook
+
+    class _ChannelView:
+        def __init__(self, raw: dict, pillar: str) -> None:
+            for key in ("channel_id", "niche", "market", "intel_archetype",
+                        "audience_segment", "content_format"):
+                setattr(self, key, raw.get(key, "") or "")
+            self.pillar_id = pillar
+
+    try:
+        return resolve_scoped_playbook(
+            _ChannelView(meta or {}, pillar_id), artifact,
+            pillar_id=pillar_id,
+            required=bool((meta or {}).get("competitor_intel_required")))
+    except CompetitorIntelRequired:
+        # FAIL CLOSED. A channel that declares `competitor_intel_required` has
+        # said it would rather stop than ship packaging built from patterns
+        # nobody verified. Catching this alongside everything else turned that
+        # declaration into a no-op — the channel kept rendering, which is the
+        # single thing it asked not to happen.
+        raise
+    except Exception as exc:
+        # Everything else: packaging degrades to no playbook, and says so.
+        print(f"[clickbait] competitor {artifact} unavailable: {exc}")
+        return "", None
+
+
+def generate_clickbait(script_text: str, channel_meta: dict | None = None,
+                       pillar_id: str = "") -> dict | None:
     """One DeepSeek call -> {title, thumb_text, thumb_prompt}. None on failure."""
     try:
         src = ROOT / "src"
@@ -167,18 +314,46 @@ def generate_clickbait(script_text: str, channel_meta: dict | None = None) -> di
         system_prompt = _SYSTEM_NARRATIVE if _is_narrative else _SYSTEM
         # Inject competitor-learned playbooks (how winning channels in this niche
         # name titles + design thumbnails) so output mirrors what already works.
+        # SCOPED AND GATED, exactly like the writer's script playbook.
+        #
+        # This used to be `get_competitor_intel(niche)` inside
+        # `except Exception: pass`: no channel/audience/format/pillar scope, no
+        # comparability check, no freshness check, and every failure silent. A
+        # retirement channel for 65-year-olds could therefore dress its
+        # thumbnails from a 25-year-old audience's playbook, or from an
+        # uncontrolled or stale artifact, and nothing would say so — the §4.2
+        # failure the scope key exists to end, still live on the packaging path
+        # after the writer had been fixed.
         playbook = ""
-        try:
-            from omnicast.vault import db as _vdb
-            VAULT_DB = ROOT / "output" / "vault.db"
-            ci = _vdb.get_competitor_intel((meta.get("niche", "") or "").lower(), VAULT_DB)
-            if ci:
-                if ci.title_playbook:
-                    playbook += f"\n\nCOMPETITOR TITLE PLAYBOOK (mirror these winning patterns):\n{ci.title_playbook}"
-                if ci.thumbnail_playbook:
-                    playbook += f"\n\nCOMPETITOR THUMBNAIL PLAYBOOK (thumb_prompt + thumb_text must follow this recipe):\n{ci.thumbnail_playbook}"
-        except Exception:
-            pass
+        # SSOT FIRST. `pillar_id` comes from `TopicBrief.pillar_id` via the
+        # product metadata — the same answer the scorer and the writer used.
+        # Re-deriving it from the script text is a FALLBACK for callers that
+        # have no brief, and it is noted as one: a video about annuities that
+        # mentions Medicare repeatedly can classify as social_security and take
+        # the wrong playbook.
+        _pillar = str(pillar_id or "").strip()
+        _pillar_source = "brief"
+        if not _pillar:
+            _pillar = _packaging_pillar(meta, script_text)
+            _pillar_source = "classified from script (no pillar on the brief)"
+        if _pillar and _pillar_source != "brief":
+            print(f"[clickbait] pillar '{_pillar}' {_pillar_source}")
+        for artifact, header in (
+            ("title_playbook",
+             "COMPETITOR TITLE PLAYBOOK (mirror these winning patterns)"),
+            ("thumbnail_playbook",
+             "COMPETITOR THUMBNAIL PLAYBOOK (thumb_prompt + thumb_text must "
+             "follow this recipe)"),
+        ):
+            text, decision = _scoped_playbook(meta, artifact, _pillar)
+            if text:
+                borrowed = ""
+                level = getattr(decision, "scope_level", "") if decision else ""
+                if level not in ("", "exact"):
+                    from omnicast.analytics.intel_scope import describe_level
+
+                    borrowed = f"\n[SCOPE NOTE: {describe_level(level)}]"
+                playbook += f"\n\n{header}:{borrowed}\n{text}"
         ctx = (
             f"Channel: {meta.get('name','')} | niche: {meta.get('niche','')} | "
             f"tone: {meta.get('tone','')} | brand_voice: {meta.get('brand_voice','')}"
@@ -224,12 +399,19 @@ def generate_clickbait(script_text: str, channel_meta: dict | None = None) -> di
             return None
         m = re.search(r"\{[\s\S]*\}", resp.content)
         data = orjson.loads(m.group(0) if m else resp.content)
-        return {
+        packaged = {
             "title": (data.get("title") or "").strip()[:100],
             "thumb_text": (data.get("thumb_text") or "").strip().upper()[:40],
             "thumb_prompt": (data.get("thumb_prompt") or "").strip(),
             "alternatives": [a.strip()[:100] for a in (data.get("alternatives") or [])][:3],
         }
+        return _apply_packaging_truth_guard(packaged, script_text)
+    except CompetitorIntelRequired:
+        # The outer net must not close over this either: the channel declared
+        # that it would rather stop than ship unverified packaging, and a
+        # `return None` here turns the declaration back into a no-op one frame
+        # further out.
+        raise
     except Exception as exc:
         print(f"      [warn] clickbait LLM failed ({exc})")
         return None
@@ -248,10 +430,17 @@ def _font(path_primary: str, size: int):
 def compose_thumbnail(
     bg_png: Path, thumb_text: str, out_png: Path,
     *, accent: tuple[int, int, int] = (255, 209, 71),
+    layout: str = "impact",
 ) -> None:
-    """Compose a 1280x720 clickbait thumbnail: bg + vignette + huge outlined text
-    with the last word in the channel accent colour."""
-    from PIL import Image, ImageDraw
+    """Compose a 1280x720 thumbnail in the audience's packaging grammar.
+
+    ``impact`` preserves the entertainment-oriented, outlined display type.
+    ``trust`` is deliberately quieter: a navy editorial panel, a restrained
+    gold rule and large serif/sans typography.  The latter is for older
+    finance/health audiences where an exaggerated MrBeast treatment reads as
+    a scam signal rather than a click signal.
+    """
+    from PIL import Image, ImageDraw, ImageEnhance
 
     base = Image.open(bg_png).convert("RGB")
     scale = max(TW / base.width, TH / base.height)
@@ -259,6 +448,60 @@ def compose_thumbnail(
     x0 = (base.width - TW) // 2
     y0 = (base.height - TH) // 2
     img = base.crop((x0, y0, x0 + TW, y0 + TH))
+
+    if layout == "trust":
+        # Keep the real scene recognizable, but calm saturation and make a
+        # deterministic reading zone.  The graduated panel preserves subject
+        # detail on the right instead of crushing the entire frame.
+        img = ImageEnhance.Color(img).enhance(0.78)
+        img = ImageEnhance.Contrast(img).enhance(1.08).convert("RGBA")
+        panel = Image.new("RGBA", (TW, TH), (0, 0, 0, 0))
+        px = panel.load()
+        navy = (11, 36, 61)
+        for x in range(820):
+            alpha = int(232 * max(0.0, 1.0 - (x / 900) ** 2))
+            for y in range(TH):
+                px[x, y] = (*navy, alpha)
+        img = Image.alpha_composite(img, panel)
+        draw = ImageDraw.Draw(img)
+
+        # A small masthead establishes the desk/editor identity without
+        # competing with the one promise the viewer must read on a phone.
+        ui = _font(_FONT_UI, 30)
+        draw.rounded_rectangle((62, 54, 456, 101), radius=8,
+                               fill=(8, 29, 49, 220),
+                               outline=(*accent, 230), width=2)
+        draw.text((82, 61), "THE RETIREMENT DESK", font=ui,
+                  fill=(244, 242, 234, 255))
+        draw.rectangle((65, 132, 236, 140), fill=(*accent, 255))
+
+        words = (thumb_text or "THE RULE").upper().split()
+        if len(words) >= 3:
+            mid = (len(words) + 1) // 2
+            lines = [" ".join(words[:mid]), " ".join(words[mid:])]
+        elif len(words) == 2:
+            lines = [words[0], words[1]]
+        else:
+            lines = [words[0]]
+        longest = max(len(line) for line in lines)
+        size = 112 if longest <= 10 else 92 if longest <= 15 else 76
+        font = _font(_FONT_TRUST, size)
+        line_h = int(size * 1.13)
+        y = 190
+        for i, line in enumerate(lines):
+            # Put the concrete number/last promise in gold; everything else
+            # stays warm white. A small shadow is enough—no meme outline.
+            colour = (*accent, 255) if (
+                any(ch.isdigit() for ch in line) or i == len(lines) - 1
+            ) else (248, 246, 239, 255)
+            draw.text((70 + 3, y + 4), line, font=font,
+                      fill=(0, 0, 0, 125))
+            draw.text((70, y), line, font=font, fill=colour)
+            y += line_h
+
+        out_png.parent.mkdir(parents=True, exist_ok=True)
+        img.convert("RGB").save(out_png, quality=95)
+        return
 
     # Bottom-up dark gradient so big text reads.
     grad = Image.new("L", (1, TH), 0)

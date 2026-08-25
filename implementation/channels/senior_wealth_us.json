@@ -6,19 +6,73 @@
   "niche": "finance",
   "sub_niche": "retirement finance for 60-75 US viewers: Social Security decisions, retirement taxes, outliving-your-money risk, senior-targeted scams",
   "niche_config_key": "finance.retirement_senior",
-  "supported_production": ["chart_render"],
+  "supported_production": [
+    "chart_render"
+  ],
   "competitor_intel_required": true,
   "content_pillars": [
-    {"pillar_id": "scam_protection", "label": "Scam protection for retirees",
-     "keywords": ["scam", "fraud", "impersonation", "phishing", "stolen", "draining"]},
-    {"pillar_id": "social_security_rules", "label": "Social Security rules and changes",
-     "keywords": ["social security", "earnings limit", "claiming", "benefit", "ssa", "cola"]},
-    {"pillar_id": "decision_numbers", "label": "The numbers behind one decision",
-     "keywords": ["how much", "your number", "portfolio", "expenses", "at 62", "at 65", "at 67"]},
-    {"pillar_id": "retirement_taxes", "label": "Taxes and deadlines in retirement",
-     "keywords": ["tax", "irs", "rmd", "irmaa", "withdrawal", "deadline", "refund"]},
-    {"pillar_id": "document_readthrough", "label": "Official reports, read for you",
-     "keywords": ["report", "study", "vanguard", "fidelity", "fact sheet", "released"]}
+    {
+      "pillar_id": "scam_protection",
+      "label": "Scam protection for retirees",
+      "keywords": [
+        "scam",
+        "fraud",
+        "impersonation",
+        "phishing",
+        "stolen",
+        "draining"
+      ]
+    },
+    {
+      "pillar_id": "social_security_rules",
+      "label": "Social Security rules and changes",
+      "keywords": [
+        "social security",
+        "earnings limit",
+        "claiming",
+        "benefit",
+        "ssa",
+        "cola"
+      ]
+    },
+    {
+      "pillar_id": "decision_numbers",
+      "label": "The numbers behind one decision",
+      "keywords": [
+        "how much",
+        "your number",
+        "portfolio",
+        "expenses",
+        "at 62",
+        "at 65",
+        "at 67"
+      ]
+    },
+    {
+      "pillar_id": "retirement_taxes",
+      "label": "Taxes and deadlines in retirement",
+      "keywords": [
+        "tax",
+        "irs",
+        "rmd",
+        "irmaa",
+        "withdrawal",
+        "deadline",
+        "refund"
+      ]
+    },
+    {
+      "pillar_id": "document_readthrough",
+      "label": "Official reports, read for you",
+      "keywords": [
+        "report",
+        "study",
+        "vanguard",
+        "fidelity",
+        "fact sheet",
+        "released"
+      ]
+    }
   ],
   "market": "US",
   "visual_style": "clean_trust",
@@ -30,9 +84,9 @@
     "edge:en-US-DavisNeural"
   ],
   "voice_persona": "calm_experienced_male_60",
-  "brand_voice": "A sharp, seasoned desk editor with a personality: dry wit, genuine curiosity, and a point of view. He reads the official documents so you don't have to, and he'll tell you when a rule is absurd or a headline is overblown - educational stance, never personal advice. Loves a short storytelling aside (where a rule came from, what Congress was thinking). Talks TO the viewer like a smart friend, conversational but urgent - never a stiff newscast. Plain English, concrete dollar examples, zero hype, zero fear-mongering; every number carries its source and year.",
+  "brand_voice": "A sharp, seasoned desk editor with a personality: dry wit, genuine curiosity, and a point of view stated in the first person. He reads the official documents so you don't have to, sells his reaction before the fact ('this stopped me'), and disagrees with the document at least once per read - educational stance, never personal advice, never invented credentials or clients. The SYSTEM is always the villain, never the viewer: he legitimizes the viewer's confusion or fear as reasonable BEFORE correcting it, so every correction lands as relief, not lecture. Talks TO the viewer like a smart friend, conversational but urgent - never a stiff newscast. Plain English, concrete dollar examples metered (never three raw figures without a worked example or story), zero hype, zero fear-mongering; fear appears at most once and is immediately followed by the fix; every number carries its source and year. He is an advisor-friend, not a wire service: he gives a provisional opinion early, takes at least one position viewers can argue with, allows himself one moment of play per video, and keeps recurring brand phrases alive across videos ('this desk', coined metaphors from past reads) - judgment spoken as judgment, never dressed as statistics.",
   "tone": "warm_direct",
-  "hook_format": "One clear consequence stated with a concrete number in the first 15 seconds — e.g. 'Claiming at 62 instead of 67 costs this retiree $612 every month, for life.'",
+  "hook_format": "Open on the viewer's own questions or one concrete consequence with a real number, spec the official document being read (issuer + year, page count if striking) within 15 seconds, and schedule ONE held-back reveal out loud ('I'll get there near the end') that the body pays off at 55-80%. No greeting.",
   "brand_color_hex": "#1B3A5C",
   "font_vibe": "serif_trust_large",
   "competitor_handles": [
@@ -73,9 +127,13 @@
     "how much do I need to retire at 65"
   ],
   "rss_feeds": [],
-  "subreddits": ["retirement", "SocialSecurity", "personalfinance"],
+  "subreddits": [
+    "retirement",
+    "SocialSecurity",
+    "personalfinance"
+  ],
   "rpm_floor": 25.0,
-  "target_duration_min": 15,
+  "target_duration_min": 14,
   "destinations": [
     {
       "destination_id": "senior_wealth_us_youtube",
@@ -101,7 +159,17 @@
   "ymyl": true,
   "shorts": {
     "cadence_days": 2,
-    "modes": ["cut_from_long", "single_question"],
+    "modes": [
+      "cut_from_long",
+      "single_question"
+    ],
     "cta": "full breakdown in the linked video"
-  }
+  },
+  "render": {
+    "subtitle": true
+  },
+  "ban_generated_images": true,
+  "sfx_style": "restrained",
+  "visual_match_qc_required": true,
+  "visual_match_qc_threshold": 6
 }

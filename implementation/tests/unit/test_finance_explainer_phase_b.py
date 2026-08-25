@@ -505,6 +505,13 @@ class TestCodexVerifyRound2:
 
 
 class TestChartRouting:
+    def test_chart_renderer_dependency_is_declared(self):
+        import tomllib
+
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        deps = project["project"]["dependencies"]
+        assert any(str(dep).lower().startswith("matplotlib") for dep in deps)
+
     def test_infographic_without_capability_stays_approximated(self):
         route = pr.route_scene(0, _CHART_TEXT, capabilities=set())
         assert route.mode == pr.INFOGRAPHIC

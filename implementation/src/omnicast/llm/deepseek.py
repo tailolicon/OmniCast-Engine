@@ -123,10 +123,19 @@ class DeepSeekClient:
             temperature=temperature,
         )
         try:
-            from omnicast.llm.json_utils import parse_json_payload
+            from omnicast.llm.json_utils import (
+                coerce_object_schema_payload,
+                parse_json_payload,
+            )
             parsed_data = parse_json_payload(_strip_json_fences(response.content))
+            parsed_data = coerce_object_schema_payload(
+                parsed_data, output_schema)
             # Clamp total_score to 100 — LLM sometimes returns >100 when weights sum oddly
-            if "total_score" in parsed_data and isinstance(parsed_data["total_score"], (int, float)):
+            if (
+                isinstance(parsed_data, dict)
+                and "total_score" in parsed_data
+                and isinstance(parsed_data["total_score"], (int, float))
+            ):
                 parsed_data["total_score"] = min(int(parsed_data["total_score"]), 100)
             parsed = output_schema.model_validate(parsed_data)
             return response, parsed

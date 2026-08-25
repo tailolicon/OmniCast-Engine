@@ -193,6 +193,42 @@ class VideoIntelligenceAnalyzer:
 
     # ── Visual ───────────────────────────────────────────────────────────────
 
+    async def analyze_forensics(self, video_path, *, transcript=None) -> dict:
+        """A `visual` block measured from the FILE, not from descriptions of it.
+
+        P1 §5. `analyze_visual_style` reads frame descriptions somebody else
+        produced; if nobody did, every visual field is `unknown`. This reads the
+        frames. It fills only what signal processing can honestly support —
+        scene pacing, motion mix, colour mood, transition grammar — and leaves
+        `art_direction` and `b_roll_ratio` alone, because a look and a presenter
+        both need a vision model and guessing them here would put the exact
+        placeholders back that this module was rewritten to remove."""
+        from omnicast.analytics import av_forensics as avf
+
+        report = avf.analyse_video(video_path, transcript=transcript)
+        measured = report.field_status.get("shots") == avf.MEASURED
+
+        block = {
+            "measured": measured,
+            "source": "av_forensics",
+            "art_direction": UNKNOWN,   # needs a vision model
+            "b_roll_ratio": 0.0,        # needs face detection to be meaningful
+            "text_overlay_freq": 0.0,   # the proxy is NOT this number
+            "color_mood": report.colour_mood,
+            "scene_count": report.shot_count,
+            "median_shot_seconds": report.median_shot_seconds,
+            "cuts_per_minute": report.cuts_per_minute,
+            "motion_mix": report.motion_mix,
+            "transition_mix": report.transition_mix,
+            "text_overlay_proxy": report.text_overlay_proxy,
+            "silence_ratio": report.silence_ratio,
+            "forensics": report.as_dict(),
+            "notes": list(report.notes),
+        }
+        if report.field_status.get("colour") != avf.MEASURED:
+            block["color_mood"] = UNKNOWN
+        return block
+
     async def analyze_visual_style(self, frame_descriptions: list[str]) -> dict:
         """Tally visual traits across the frame descriptions supplied.
 
@@ -500,9 +536,60 @@ class VideoIntelligenceAnalyzer:
             assumed.extend(["art_style", "color_mood", "b_roll_ratio",
                             "text_overlay_freq"])
             notes.append("no frame descriptions: every visual field is unmeasured")
+        else:
+            # A forensics block measures colour but deliberately does not
+            # measure art style, b-roll ratio or overlay frequency. Marking the
+            # whole visual block as measured because ONE of its fields is would
+            # relaunch the confusion this list exists to prevent.
+            forensic_only = all(v.get("source") == "av_forensics" for v in visual)
+            if forensic_only:
+                assumed.extend(["art_style", "b_roll_ratio", "text_overlay_freq"])
+                notes.append(
+                    "visual measured by signal processing: colour mood and shot "
+                    "rhythm are real; art style, b-roll ratio and overlay "
+                    "frequency still need a vision model")
+                if any(v.get("color_mood") not in (None, "", UNKNOWN) for v in visual):
+                    notes.append("color_mood measured from sampled frames")
 
-        # Pacing from MEASURED segment length where we have it. The old formula
-        # derived scene duration from intro length, which are different things.
+        # Pacing, best source first.
+        #
+        # 1. Real SHOT lengths from forensics. `pacing_scene_duration` is about
+        #    how long a picture stays on screen, and a shot boundary is exactly
+        #    that — the transcript can only ever approximate it from where the
+        #    speaker pauses.
+        shot_lengths = [v.get("median_shot_seconds") for v in visual
+                        if v.get("median_shot_seconds")]
+        if shot_lengths:
+            centre = mean(shot_lengths)
+            pacing = (round(centre * 0.5, 1), round(centre * 1.5, 1))
+            # `.get(k, 0)` does NOT apply when the key exists with value None,
+            # which a persisted or hand-built analyses list can carry.
+            shots_seen = sum(int(v.get("scene_count") or 0) for v in visual)
+            notes.append(
+                f"pacing measured from {shots_seen} detected shot(s), not "
+                "inferred from speech")
+            return ProductionBlueprint(
+                niche=niche,
+                video_format=video_format,
+                art_style=art_direction,
+                pacing_scene_duration=pacing,
+                crossfade_seconds=DEFAULT_CROSSFADE_SECONDS,
+                music_energy=music_energy,
+                text_overlay_freq=avg_text,
+                b_roll_ratio=avg_broll,
+                hook_type=hook_type,
+                intro_duration=avg_intro,
+                target_duration_minutes=target_minutes,
+                color_mood=color_mood,
+                confidence=confidence,
+                sample_size=sample_size,
+                generated_at=datetime.now(timezone.utc),
+                assumed_fields=sorted(set(assumed)),
+                notes=notes,
+            )
+
+        # 2. MEASURED transcript segment length. The original formula derived
+        #    scene duration from intro length, which are different things.
         measured_segment = [s.get("avg_segment_duration", 0.0) for s in structure
                             if s.get("measured") and s.get("avg_segment_duration")]
         if measured_segment:

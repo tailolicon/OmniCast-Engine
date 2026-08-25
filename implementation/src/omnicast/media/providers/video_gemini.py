@@ -19,9 +19,15 @@ from omnicast.media.providers.image_gemini import MediaError
 
 class GeminiVideoProvider:
     """Video generation provider using Google Veo 3 API."""
-    
+
     id = "gemini"
     name = "Google Veo"
+    #: First/last-frame interpolation, gated on the INSTALLED SDK rather than
+    #: hard-coded: `GenerateVideosConfig` forbids extra fields, so passing
+    #: `last_frame` to an SDK that lacks it fails validation before any request
+    #: is sent. Callers (storyboard/clips.py) read this flag to decide whether
+    #: the final clip of a chain may be planned as first→last interpolation.
+    supports_last_frame = "last_frame" in types.GenerateVideosConfig.model_fields
     models = [
         ModelOption(
             id="veo-3.0-generate-001",
@@ -51,55 +57,83 @@ class GeminiVideoProvider:
         model: str | None = None,
         resolution: tuple[int, int] | None = None,
         output_path: str,
+        last_image_path: str | None = None,
     ) -> str:
         """Convert an image into a video clip.
-        
+
         Args:
             image_path: Absolute path to the source image.
             prompt: Text prompt describing the desired video motion/style.
             duration: Duration of the video in seconds (will be clamped to 4, 6, or 8).
-            model: Optional model ID. Defaults to veo-3.0-generate-001.
+            model: Optional model ID. Defaults to veo-3.0-generate-001
+                (veo-3.1-generate-preview when a last frame is supplied).
             resolution: Optional (width, height) tuple for aspect ratio.
             output_path: Absolute path where the generated video should be saved.
-        
+            last_image_path: Optional still the clip must END on. The model
+                interpolates first→last (Veo 3.1). Requires an SDK with
+                `GenerateVideosConfig.last_frame` — see `supports_last_frame`.
+
         Returns:
             Absolute path to the generated video file.
-        
+
         Raises:
             MediaError: If video generation fails.
         """
         if not self.settings.google_api_key:
             raise MediaError("GOOGLE_API_KEY not configured in settings")
 
-        model_id = model or "veo-3.0-generate-001"
+        if last_image_path and not self.supports_last_frame:
+            # Refuse loudly rather than shipping a clip that quietly ignored
+            # the end frame — the caller planned an interpolation, and a plain
+            # i2v result here would LOOK done while ending off-model.
+            raise MediaError(
+                "last_image_path given but this google-genai SDK has no "
+                "GenerateVideosConfig.last_frame — upgrade the SDK or plan "
+                "the clip without an end frame")
+
+        # Veo 3.0 does not take a last frame; 3.1 does. Only the DEFAULT moves
+        # — an explicit `model` is the caller's call and is passed through.
+        model_id = model or ("veo-3.1-generate-preview" if last_image_path
+                             else "veo-3.0-generate-001")
 
         try:
             # Load and encode image
             image_bytes, mime_type = await self._load_image(image_path)
-            
+
             # Build full prompt
             full_prompt = prompt if prompt else "Generate a video based on this image."
-            
+
             # Clamp duration to supported values
             duration_seconds = self._clamp_duration(duration)
-            
+
             # Determine aspect ratio from resolution
             aspect_ratio = self._determine_aspect_ratio(resolution)
-            
-            print(f"[veo] Starting video generation with model={model_id} duration={duration_seconds}s{aspect_ratio if aspect_ratio else ''}")
-            
+
+            config_kwargs: dict = {}
+            if aspect_ratio:
+                config_kwargs["aspect_ratio"] = aspect_ratio
+            if last_image_path:
+                last_bytes, last_mime = await self._load_image(last_image_path)
+                config_kwargs["last_frame"] = types.Image(
+                    image_bytes=last_bytes, mime_type=last_mime)
+
+            print(f"[veo] Starting video generation with model={model_id} duration={duration_seconds}s{aspect_ratio if aspect_ratio else ''}{' first->last' if last_image_path else ''}")
+
             # Initialize client with explicit api_key
             client = genai.Client(api_key=self.settings.google_api_key)
-            
+
             # Generate video
             operation = client.models.generate_videos(
                 model=model_id,
                 prompt=full_prompt,
-                image=types.Image(data=image_bytes, mime_type=mime_type),
+                # `image_bytes`, not `data`: the google-genai `Image` model
+                # forbids extra fields, so `data=` failed validation before the
+                # request was ever sent — image→video had never actually run.
+                image=types.Image(image_bytes=image_bytes, mime_type=mime_type),
                 config=types.GenerateVideosConfig(
                     number_of_videos=1,
                     duration_seconds=duration_seconds,
-                    **({"aspect_ratio": aspect_ratio} if aspect_ratio else {})
+                    **config_kwargs
                 )
             )
             
@@ -109,7 +143,11 @@ class GeminiVideoProvider:
                     break
                 await asyncio.sleep(5)
                 print(f"[veo] Polling... attempt {i + 1}")
-                operation = client.operations.get_videos_operation(operation=operation)
+                # `operations.get`, not the retired `get_videos_operation`:
+                # the SDK collapsed the per-modality pollers into one, so the
+                # old name raised AttributeError on the FIRST poll — after the
+                # generation had already been submitted and paid for.
+                operation = client.operations.get(operation)
             
             if not operation.done:
                 raise MediaError("Veo video generation timed out after 10 minutes")

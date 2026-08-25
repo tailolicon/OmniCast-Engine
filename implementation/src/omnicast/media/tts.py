@@ -18,6 +18,7 @@ from omnicast.media.base import BaseMediaModule
 from omnicast.media.models import (
     TTSRequest, TTSResult, TTSEngine, MediaStatus,
 )
+from omnicast.media.tts_normalize import estimate_duration, normalize_for_tts
 from omnicast.media.voice_router import VoiceRouter, VoiceSpec
 from omnicast.shared.errors import MediaError
 
@@ -46,19 +47,31 @@ class TTSModule(BaseMediaModule):
 
         output_path = request.output_path or "tts_output.wav"
 
+        text = request.text
+        if request.normalize:
+            cleaned = normalize_for_tts(text)
+            if cleaned:
+                if cleaned != text:
+                    logger.debug(
+                        "tts text normalized",
+                        before=len(text), after=len(cleaned),
+                    )
+                text = cleaned
+
         result = await self._router.synthesize(
-            request.text,
+            text,
             chain,
             output_path,
             voice_clone_path=request.voice_clone,
+            prosody=request.prosody,
         )
 
         if request.target_lufs:
             await self._normalize_lufs(result.audio_path, request.target_lufs)
 
-        duration = await asyncio.to_thread(_measure_duration, result.audio_path)
-        if duration <= 0.0:  # container not probe-able → word estimate
-            duration = len(request.text.split()) * 0.4
+        duration = await asyncio.to_thread(measure_duration, result.audio_path)
+        if duration <= 0.0:  # container not probe-able → syllable estimate
+            duration = estimate_duration(text, request.language)
 
         try:
             engine_used = TTSEngine(result.spec.provider)
@@ -100,13 +113,13 @@ class TTSModule(BaseMediaModule):
     def _dry_run_result(self, request: TTSRequest) -> TTSResult:
         return TTSResult(
             audio_path=request.output_path or "dry_run_tts.wav",
-            duration_seconds=len(request.text.split()) * 0.4,
+            duration_seconds=estimate_duration(request.text, request.language),
             engine_used=request.engine,
             status=MediaStatus.DONE,
         )
 
 
-def _measure_duration(audio_path: str) -> float:
+def measure_duration(audio_path: str) -> float:
     """Real duration: wave header for .wav, ffprobe for anything else."""
     p = Path(audio_path)
     if not p.exists():

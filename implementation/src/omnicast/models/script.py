@@ -77,6 +77,10 @@ class TopicBrief(OmnicastSchema):
     source: TopicSource = TopicSource.YOUTUBE_COMPETITOR
     angle: str = ""
     key_points: list[str] = Field(default_factory=list)
+    # Source-backed claims verified before a YMYL EditorialAngle is planned.
+    # Dict shape is kept JSON-friendly for CLI/API boundaries:
+    # evidence_id, claim, value, source_name, source_url, as_of, quote.
+    evidence_points: list[dict[str, str]] = Field(default_factory=list)
     source_urls: list[str] = Field(default_factory=list)
     target_duration_min: int = 10
     brand_voice: str = ""
@@ -200,6 +204,9 @@ class ScriptDraft(OmnicastSchema):
     estimated_duration_seconds: int = 0
     word_count: int = 0
     thinking_notes: str = ""
+    # The pre-writing argument contract. Stored on the draft so the critic and
+    # release artifact judge the same thesis the Writer was asked to deliver.
+    editorial_angle: dict[str, object] = Field(default_factory=dict)
     version: int = 1
 
 

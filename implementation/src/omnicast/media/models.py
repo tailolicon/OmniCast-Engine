@@ -55,6 +55,15 @@ class TTSRequest(OmnicastSchema):
     engine: TTSEngine = TTSEngine.KOKORO  # legacy hint; spec provider wins
     output_path: str = ""
     target_lufs: float = -14.0
+    #: Strip stage directions / emoji and spell out symbols before synthesis.
+    #: Off only when the caller has already conditioned the text itself.
+    normalize: bool = True
+    #: Speaking-rate hint for duration estimates; auto-detected when unset.
+    language: str | None = None
+    #: Per-channel delivery knobs, applied only where the chosen provider
+    #: supports them: Edge takes rate/pitch/volume ("+8%", "-2Hz"), Kokoro
+    #: takes a numeric speed. Unsupported keys are dropped, never fatal.
+    prosody: dict[str, str | float] = Field(default_factory=dict)
 
 
 class TTSResult(OmnicastSchema):
@@ -123,12 +132,24 @@ class SubtitleRequest(OmnicastSchema):
     audio_path: str
     language: str = "en"
     output_path: str = ""
+    #: Spoken script. With it the module can align without an ASR pass; without
+    #: it, captions must come from word timings or transcription.
+    text: str = ""
+    #: `.words.json` sidecar (Edge-TTS word boundaries). Defaults to the one
+    #: sitting next to `audio_path` when present.
+    words_path: str | None = None
+    #: Characters per caption line. 0 picks by script: 15 for CJK, 40 otherwise.
+    max_line_chars: int = 0
 
 
 class SubtitleResult(OmnicastSchema):
     srt_path: str = ""
     word_count: int = 0
     duration_seconds: float = 0.0
+    #: How the timings were obtained: 'word_boundaries' (exact, from the TTS
+    #: provider), 'whisperx' (forced alignment) or 'estimated' (proportional
+    #: split — good enough to preview, not to ship).
+    timing_source: str = ""
     status: MediaStatus = MediaStatus.DONE
 
 

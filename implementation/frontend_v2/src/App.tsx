@@ -5,6 +5,9 @@ import { connectSSE } from './api/sse';
 import { translateError } from './lib/errorTranslator';
 import { Dashboard } from './pages/Dashboard';
 import { Studio } from './pages/Studio';
+import { Storyboard } from './pages/Storyboard';
+import { Reup } from './pages/Reup';
+import { SeriesLibrary } from './pages/SeriesLibrary';
 import { Approvals } from './pages/Approvals';
 import { Library } from './pages/Library';
 import { Channels } from './pages/Channels';
@@ -28,6 +31,9 @@ const NAV_GROUPS = [
   { eyebrow: 'Sản xuất', items: [
     { path: '/dashboard', label: 'Bảng điều khiển', icon: 'dashboard' },
     { path: '/studio', label: 'Xưởng', icon: 'studio' },
+    { path: '/storyboard', label: 'Storyboard', icon: 'storyboard' },
+    { path: '/reup', label: 'Reup Trung Quốc', icon: 'tiktok' },
+    { path: '/series', label: 'Kho phim', icon: 'film' },
     { path: '/library', label: 'Thư viện', icon: 'library' },
   ]},
   { eyebrow: 'Kênh', items: [
@@ -417,6 +423,9 @@ export const App: React.FC = () => {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/studio" element={<Studio />} />
+            <Route path="/storyboard" element={<Storyboard />} />
+            <Route path="/reup" element={<Reup />} />
+            <Route path="/series" element={<SeriesLibrary />} />
             <Route path="/studio/office" element={<FullscreenOffice />} />
             <Route path="/library" element={<Library />} />
             <Route path="/channels" element={<Channels />} />

@@ -1,4 +1,4 @@
-"""Named narrative quality profiles are isolated and cannot weaken system gates."""
+﻿"""Named narrative quality profiles are isolated and cannot weaken system gates."""
 
 from __future__ import annotations
 
@@ -38,8 +38,8 @@ def _profile_payload(**overrides):
         ("continuity_floor", 21),
         ("dimension_floor_ratio", 0.59),
         ("minimum_human_threat_fraction", 0.60),
-        ("maximum_numeric_anchors", 5),
-        ("maximum_precise_clock_times", 2),
+        ("maximum_numeric_anchors", 7),
+        ("maximum_precise_clock_times", 5),
         ("patch_candidate_count", 3),
     ],
 )
@@ -56,7 +56,9 @@ def test_resolver_returns_fresh_frozen_profiles_and_runtime_adapter_preserves_fl
     assert first is not second
     assert runtime.strategy_id == "true_horror_strict_v1"
     assert runtime.approval_score == 84
-    assert runtime.continuity_min == 23
+    # 23/08: 23 sat inside the critic's noise and blocked an 89/100 account with
+    # no continuity issue filed; the hard no-major-contradiction rule carries it.
+    assert runtime.continuity_min == 22
     assert runtime.voice_min == 13
     assert runtime.plausible_response_min == 7
     assert runtime.structural_variety_min == 7
@@ -98,3 +100,4 @@ def test_channel_without_profile_remains_unaffected():
         niche=Niche.PSYCHOLOGY,
     )
     assert channel.script_profile == ""
+

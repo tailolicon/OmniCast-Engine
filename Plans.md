@@ -301,3 +301,25 @@ reaches `production_ready` and then survives an independent manual audit with no
 critical/major finding. DeepSeek health remains the external blocker (every primary
 plan-audit call 402'd); the complete Sonnet-CLI fallback path now exists so a live run
 can proceed without DeepSeek balance, but it has not yet been exercised end-to-end.
+
+---
+
+## Phase 3: Professional flagship explainer
+
+Purpose: Turn the evidence-driven finance script and media pipeline into a finished
+video that feels authored, directed, edited and sound-designed by a professional team
+rather than assembled from generic AI assets.
+
+| Task | Content | DoD | Depends | Status |
+|------|---------|-----|---------|--------|
+| 3.1 | Produce and prove a professional Retirement Desk flagship `[tdd:required]` | Script speaks as a truthful close companion with an editorial stance, earns one channel-specific subscribe invitation, and preserves sourced/year-bound YMYL facts; storyboard maps each spoken beat to a semantically supporting real/document/chart/typography visual; quote cards use verified identity/source/provenance; edit rhythm, motion, SFX, music and captions serve the audience rather than repeat mechanically; stock selection and release QA inspect acquired/rendered evidence and fail closed on wrong or unknown flagship visuals; targeted and regression tests pass; a full rendered artifact is watched/listened to and has no unresolved critical/major viewer-experience finding | - | cc:WIP |
+
+Script milestone (2026-07-29): the accepted, content-locked finance artifact
+`implementation/output/products/senior_wealth_us/20260729_2039_your_social_security_check_shrinks_when_you_keep_w`
+scored 90/100 with 10 live-page-verified SSA anchors, a deterministic 11/11
+fact ledger, a 75-word sourced hook, one labelled worked example, and an earned
+fine-print CTA. Target runtime was calibrated from 15 to 14 minutes: the
+competitor long-form cohort median is 13.7 minutes and forcing 2,250 words from
+eight source anchors produced measured repetition and unsupported padding.
+The script portion is proven; 3.1 remains WIP until the final storyboard,
+render, visual-match QC and manual watch/listen audit pass.

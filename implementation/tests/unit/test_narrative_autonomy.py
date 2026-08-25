@@ -465,7 +465,7 @@ from tests.unit.test_narrative_writer_reliability import _rewrite_writer
 async def test_length_defects_skip_the_patch_contract_entirely():
     planner = _FakeStructuredLLM(lambda _p, _s: _plan())
     initial = {f"story_{i}": _draft(i) for i in range(1, 4)}
-    initial["story_2"] = _draft(2, words=630)
+    initial["story_2"] = _draft(2, words=500)
     log: dict = {}
     write = _rewrite_writer(initial, {"story_2": _narration("stretched", 760)}, log)
 
@@ -666,11 +666,29 @@ def test_overlong_two_sentence_cold_open_is_trimmed_to_its_first_sentence():
     assert len(np._words(salvaged.cold_open)) <= 28
 
 
-def test_single_overlong_sentence_cold_open_is_left_for_preflight_to_reject():
+def test_single_overlong_sentence_cold_open_is_trimmed_not_rejected():
+    """This used to assert the opposite — that a single over-long sentence was
+    left alone for preflight to reject. Live 2026-08-22, run 8 attempt 2: the
+    planner returned a one-sentence cold open a few words over the cap, and
+    preflight threw away a plan whose six-rung ladder the auditor never got
+    to read. A hook line is the cheapest field in the plan to lose a few
+    words from; a rejected plan costs the whole attempt."""
     one_long_sentence = " ".join(f"w{i}" for i in range(35)) + "."
     plan = _plan().model_copy(update={"cold_open": one_long_sentence})
     salvaged = np._salvage_cold_open(plan)
-    assert salvaged.cold_open == one_long_sentence
+    assert len(np._words(salvaged.cold_open)) <= 28
+    assert salvaged.cold_open.startswith("w0 w1")
+    assert salvaged.cold_open.endswith((".", "!", "?"))
+
+
+def test_cold_open_trim_keeps_the_comma_at_the_cut():
+    text = ("I didn't think twice about giving a stranger my home address, not "
+            "until his truck sat idling at the curb for a long while before he "
+            "ever texted that he had arrived outside")
+    plan = _plan().model_copy(update={"cold_open": text})
+    out = np._salvage_cold_open(plan).cold_open
+    assert len(np._words(out)) <= 28
+    assert "address, not until" in out
 
 
 def test_compliant_cold_open_is_untouched():

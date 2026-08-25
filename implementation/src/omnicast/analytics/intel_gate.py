@@ -53,6 +53,9 @@ STATUS_LEGACY = "legacy"                # row predates per-artifact provenance
 class IntelDecision:
     status: str
     playbook: str = ""
+    # Which fallback level answered — a borrowed niche-wide playbook must be
+    # visible to whoever consumes it, not only to the writer.
+    scope_level: str = ""
     reason: str = ""
     research_run_id: str = ""
     age_days: float | None = None
@@ -66,6 +69,7 @@ class IntelDecision:
         return {
             "status": self.status,
             "usable": self.usable,
+            "scope_level": self.scope_level,
             "reason": self.reason,
             "research_run_id": self.research_run_id,
             "age_days": self.age_days,

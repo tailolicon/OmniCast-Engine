@@ -43,3 +43,40 @@ def parse_json_payload(text: str):
         if values:
             return values[0]
         raise first_error
+
+
+def coerce_object_schema_payload(payload, output_schema: type):
+    """Recover the narrow object-as-root-list error seen from JSON judges.
+
+    DeepSeek occasionally emits the requested ``dimensions`` array as the
+    entire response, dropping the enclosing CriticFeedback object.  The scores
+    are still complete and CriticAgent independently recomputes/caps every
+    subtotal, so wrapping that one recognisable shape is safer than discarding
+    a full pipeline run. Other root lists remain untouched and fail validation.
+    """
+    fields = getattr(output_schema, "model_fields", {})
+    if (
+        isinstance(payload, list)
+        and payload
+        and {"dimensions", "total_score"}.issubset(fields)
+        and all(
+            isinstance(item, dict)
+            and "name" in item
+            and "score" in item
+            for item in payload
+        )
+    ):
+        total = sum(
+            max(0, int(item.get("score", 0) or 0))
+            for item in payload
+        )
+        return {
+            "total_score": min(total, 100),
+            "dimensions": payload,
+            "approved": False,
+            "rejection_reasons": [
+                "Judge returned dimensions without its outer object; "
+                "scores were recovered and canonical gates re-applied."
+            ],
+        }
+    return payload

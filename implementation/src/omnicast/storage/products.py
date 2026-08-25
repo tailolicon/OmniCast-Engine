@@ -149,6 +149,83 @@ def product_dir_for_asset(asset: Path) -> Path:
     return start
 
 
+def publish_blockers(pd: Path) -> list[str]:
+    """Reasons this product must not leave the machine.
+
+    Kept SEPARATE from `release_issues()` on purpose. `release_issues()` gates
+    the RENDER, and a re-render is the repair path for everything below — a
+    packaging failure that blocked the next render would block the only route
+    that clears it, which is the deadlock this project already shipped once with
+    `needs_human`.
+
+    A flag nothing reads is a comment. `render_real_video` writes
+    `publishable=False` / `packaging_blocked` when a channel that declared
+    `competitor_intel_required` could not get usable intel; until this function
+    existed, the MP4 was still the channel's newest render and both the publish
+    queue and the direct upload would happily take it.
+    """
+    meta = read_meta(Path(pd))
+    issues: list[str] = []
+    if meta.get("publishable") is False:
+        issues.append("marked_unpublishable")
+    blocked = str(meta.get("packaging_blocked") or "").strip()
+    if blocked:
+        issues.append(f"packaging_blocked: {blocked[:200]}")
+    return issues
+
+
+def publish_blockers_for_video(video: Path) -> list[str]:
+    """All blockers that can be decided for a concrete rendered cut.
+
+    Packaging blockers live on the product. Human review is additionally bound
+    to the exact video bytes, so it belongs on this asset-aware path used by
+    direct upload and the final platform adapter.
+    """
+    video = Path(video)
+    return list(dict.fromkeys([
+        *publish_blockers(product_dir_for_asset(video)),
+        *human_review_blockers_for_video(video),
+    ]))
+
+
+def human_review_blockers_for_video(video: Path) -> list[str]:
+    """Require a named, timestamped review of the exact current cut."""
+    video = Path(video)
+    meta = read_meta(product_dir_for_asset(video))
+    if meta.get("requires_human_review") is not True:
+        return []
+
+    review = meta.get("human_review")
+    if not isinstance(review, dict):
+        return ["human_review_required: no human review has been recorded"]
+    for field in ("reviewer", "reviewed_at", "artifact_sha256"):
+        if not str(review.get(field) or "").strip():
+            return [f"human_review_required: the recorded review has no {field}"]
+    try:
+        current = hashlib.sha256(video.read_bytes()).hexdigest()
+    except OSError as exc:
+        return [f"human_review_required: current cut could not be hashed ({exc})"]
+    if review["artifact_sha256"] != current:
+        return [
+            "human_review_required: the recorded review covers a different cut"
+        ]
+    return []
+
+
+def mark_packaging_ready(pd: Path) -> dict:
+    """Clear a prior packaging failure after packaging succeeds.
+
+    ``write_meta`` intentionally merges fields, so both failure markers must be
+    replaced explicitly.  Keep this transition separate from render release
+    gates: re-rendering is the repair path for a packaging failure.
+    """
+    return write_meta(
+        Path(pd),
+        packaging_blocked="",
+        publishable=True,
+    )
+
+
 def release_issues_for_script(script: Path) -> list[str]:
     """Return release blockers for a concrete script asset.
 

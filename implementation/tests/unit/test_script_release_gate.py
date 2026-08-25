@@ -126,6 +126,38 @@ async def test_deepseek_disables_thinking_and_does_not_double_bill_cache_partiti
 
 
 @pytest.mark.asyncio
+async def test_deepseek_recovers_critic_dimensions_emitted_as_root_array():
+    from omnicast.models.script import CriticFeedback
+    from omnicast.llm import LLMResponse
+
+    client = DeepSeekClient("test", "deepseek-v4-pro")
+    client.complete = AsyncMock(return_value=LLMResponse(
+        content=(
+            '[{"name":"accuracy_trust","score":14,"max_score":16,'
+            '"feedback":"grounded"},'
+            '{"name":"visual_concreteness","score":18,"max_score":20,'
+            '"feedback":"specific"}]'
+        ),
+        model="deepseek-v4-pro",
+        input_tokens=10,
+        output_tokens=10,
+        cost_usd=0.0,
+        stop_reason="stop",
+    ))
+
+    _, parsed = await client.complete_structured(
+        system="judge",
+        messages=[{"role": "user", "content": "review"}],
+        output_schema=CriticFeedback,
+    )
+
+    assert parsed.total_score == 32
+    assert [dimension.name for dimension in parsed.dimensions] == [
+        "accuracy_trust", "visual_concreteness"]
+    assert parsed.approved is False
+
+
+@pytest.mark.asyncio
 async def test_cost_accumulators_are_isolated_between_concurrent_jobs():
     async def job(model: str, amount: float) -> dict:
         reset_session_cost()

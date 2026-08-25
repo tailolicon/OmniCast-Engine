@@ -152,8 +152,13 @@ def capture_web_page(url_or_query: str, dest_png: Path, target_w: int = 1920, ta
 
         # Step 3: Render Browser Mockup Frame
         domain = _extract_domain(url)
-        # Convert absolute path to a URL that can be loaded in Playwright
-        raw_img_url = temp_raw.resolve().as_uri()
+        # Embed as a data: URI — the mockup page is set_content() (origin
+        # about:blank) and Chromium BLOCKS file:// subresources from non-file
+        # origins, so a file URI renders a broken-image icon on a white body
+        # while the mockup screenshot itself still "succeeds".
+        import base64
+        raw_img_url = ("data:image/png;base64,"
+                       + base64.b64encode(temp_raw.read_bytes()).decode("ascii"))
 
         # HTML Mockup Template
         # Using HSL dark backgrounds, nice typography, glowing accent borders
@@ -269,6 +274,20 @@ def capture_web_page(url_or_query: str, dest_png: Path, target_w: int = 1920, ta
         # Shoot the mockup HTML
         mock_page = browser.new_page(viewport={"width": target_w, "height": target_h}, device_scale_factor=1)
         mock_page.set_content(mockup_html, wait_until="load")
+        # Belt-and-braces: verify the embedded screenshot actually decoded —
+        # a broken embed must fail the capture, not ship a blank frame.
+        try:
+            mock_page.wait_for_function(
+                "() => { const i = document.querySelector('.screenshot-img');"
+                " return i && i.complete && i.naturalWidth > 0; }",
+                timeout=5000)
+        except Exception:
+            logger.error("web_shot.mockup_image_embed_failed", url=url[:80])
+            try:
+                mock_page.close()
+            except Exception:
+                pass
+            return False
         dest_png.parent.mkdir(parents=True, exist_ok=True)
 
         if dest_png.exists():

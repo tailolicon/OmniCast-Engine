@@ -29,13 +29,14 @@ RUBRIC_ID = "finance_explainer_v1"
 # ── Script dimensions (sum = 70) ──────────────────────────────────────────────
 VO_DIMS: dict[str, int] = {
     "accuracy_trust":      16,  # sourced+dated numbers, no invented figures, consistent math
-    "clarity_65plus":      12,  # plain English, one idea per sentence, jargon defined on first use
-    "hook_quality":        10,  # concrete consequence + real number in the first 15 seconds
-    "retention_structure": 10,  # open loops, chapters, promises paid off
-    "actionability":        8,  # a step the viewer can take this week, stated as education
-    "anti_ai_cliche":       6,  # no "delve/tapestry/in conclusion", no corporate filler
-    "niche_compliance":     5,  # finance fatal rules (guarantees, predictions, persona)
-    "pacing_compliance":    3,  # scene word caps + prosody discipline
+    "spoken_presence":     10,  # WRITTEN TO BE SPOKEN by a person with a self (see below)
+    "clarity_65plus":       9,  # plain English, one idea per sentence, jargon defined on first use
+    "hook_quality":         9,  # concrete consequence + real number in the first 15 seconds
+    "retention_structure":  9,  # open loops, chapters, promises paid off
+    "actionability":        6,  # a step the viewer can take this week, stated as education
+    "anti_ai_cliche":       4,  # no "delve/tapestry/in conclusion", no corporate filler
+    "niche_compliance":     3,  # finance fatal rules (guarantees, predictions, persona)
+    "editorial_courage":    4,  # THE REWARD LANE: contestable opinion + play (operator 2026-08-01)
 }
 # ── Production dimensions (sum = 30) ──────────────────────────────────────────
 PROD_DIMS: dict[str, int] = {
@@ -120,6 +121,43 @@ _ANECDOTE_EVIDENCE_RE = re.compile(
     r"comments|reddit|facebook)\b", re.IGNORECASE)
 
 
+# ── Spoken-presence detectors (operator review 27/07) ─────────────────────────
+# The six mechanics that make a script sound like a person, learned from a
+# NotebookLM-generated video the operator judged far more alive than our own
+# accurate-but-voiceless build.
+_COMPANION_RE = re.compile(
+    r"\b(?:let'?s|we'?ll|we'?re|we've|we\s+(?:can|need|start|begin|walk|run|look|"
+    r"come back|move|end)|together|our\s+(?:example|retiree|math|number))\b",
+    re.IGNORECASE)
+# The narrator responding to their own fact, not just asserting it.
+_REACTION_RE = re.compile(
+    r"\b(?:that'?s the part that|here'?s what (?:gets|bothers|surprised)|"
+    r"i'?ll be honest|honestly|and yes|no really|that stopped me|"
+    r"read that (?:again|twice)|sit with that|it'?s worth pausing|"
+    r"annoys me|surprised me|shocked me|frustrating part|maddening|"
+    r"strange thing is|odd part|worth saying out loud)\b"
+    r"|\b(?:right\?|isn'?t it\?|doesn'?t it\?|sound familiar\?)",
+    re.IGNORECASE)
+_INVITATION_RE = re.compile(
+    r"\b(?:picture|imagine|look at (?:this|that|these)|watch (?:this|what)|"
+    r"try this|think about|walk through (?:this|it) with me|"
+    r"pull up|grab (?:your|that)|check (?:your|that)|take a (?:second|look))\b",
+    re.IGNORECASE)
+# Real contractions only — a possessive ("SSA's fact sheet") is written
+# register too, so it must not count as spoken.
+_CONTRACTION_RE = re.compile(
+    r"\b\w+n'?t\b"
+    r"|\b(?:i|you|we|they|he|she|it|that|this|there|here|what|who|how|"
+    r"let|who|where|when|one)'(?:s|re|ve|ll|d|m)\b",
+    re.IGNORECASE)
+_SIGNPOST_RE = re.compile(
+    r"\b(?:that'?s the (?:history|mechanism|rule|first part|easy part)|"
+    r"now (?:the|for|comes|let'?s)|next (?:up|comes|question)|"
+    r"before we (?:get|move|go)|so far,? we|coming back to|"
+    r"one more (?:thing|wrinkle|piece)|here'?s where we'?re going)\b",
+    re.IGNORECASE)
+
+
 def fatal_caps(caps: dict[str, int]) -> bool:
     """Whether the deterministic caps constitute a FATAL violation.
 
@@ -190,12 +228,189 @@ def finance_slop_signals(text: str) -> tuple[list[str], dict[str, int]]:
                      f"{MAX_NOBODY_SCAFFOLDS}) — manufactured-secret framing "
                      "repeated as filler is a signature AI tell")
         caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
+
+    # A machine used to hard-cap ``spoken_presence`` from counts of "let's",
+    # contractions, invitations and reaction phrases here. That was gameable:
+    # a model could repeat the vocabulary and earn the shape without having a
+    # thesis, counterpoint, or genuine response to a fact. Semantic editorial
+    # presence belongs to the critic. Deterministic code keeps only a narrow
+    # written-register tell (extreme em-dash density), and routes it to
+    # anti_ai_cliche rather than pretending it measured a human point of view.
+    words = max(1, len(text.split()))
+    per_1k = 1000.0 / words
+    if words < 400:
+        return flags, caps
+    dashes = text.count("—")
+    if dashes * per_1k > 22:
+        flags.append(
+            f"em-dash prose: {dashes} em-dashes in {words} words — periodic, balanced "
+            "clauses are essay register; break them into spoken fragments")
+        caps["anti_ai_cliche"] = min(caps.get("anti_ai_cliche", 99), 3)
     return flags, caps
+
+
+def finance_presence_diagnostics(text: str) -> dict[str, float | int]:
+    """Observable texture for the semantic critic, never a pass/fail score."""
+    words = max(1, len((text or "").split()))
+    scale = 1000.0 / words
+    return {
+        "words": words,
+        "companionship_per_1k": round(len(_COMPANION_RE.findall(text)) * scale, 2),
+        "reaction_phrases_per_1k": round(len(_REACTION_RE.findall(text)) * scale, 2),
+        "invitations_per_1k": round(len(_INVITATION_RE.findall(text)) * scale, 2),
+        "contractions_per_1k": round(len(_CONTRACTION_RE.findall(text)) * scale, 2),
+        "spoken_signposts": len(_SIGNPOST_RE.findall(text)),
+        "em_dashes_per_1k": round((text or "").count("—") * scale, 2),
+    }
+
+
+_HUMAN_ANCHOR_CONTRACT_RE = re.compile(
+    r"\bthe human anchor\b|\bhuman[- ]anchor\b", re.IGNORECASE)
+_HUMAN_ANCHOR_DETAILS_RE = re.compile(
+    r"(?im)^\s*HUMAN_ANCHOR_REQUIRED_DETAILS\s*:\s*([^\r\n]+)")
+_NAMED_ANCHOR_RE = re.compile(
+    r"\b(?:(?:let(?:'s| us)|we(?:'ll| will))\s+call\s+"
+    r"(?:her|him|them)\s+|(?:picture|imagine|consider)\s+)"
+    r"([A-Z][A-Za-z'-]{1,30})\b",
+    re.IGNORECASE)
+_ILLUSTRATIVE_CUE_RE = re.compile(
+    r"\b(?:hypothetical(?:ly)?|picture|imagine|consider|suppose)\b",
+    re.IGNORECASE)
+_ANCHOR_DETAIL_GROUPS = (
+    re.compile(
+        r"\b(?:shift|schedule|part[- ]time|mornings?|job|work|apron|"
+        r"garden center|pay ?stub)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:kitchen table|grocer(?:y|ies)|rent|bill|furnace|repair|"
+        r"household|estimate|envelope)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:budget|assigned|planned|set aside|deposit|cash[- ]flow|"
+        r"due this month|today'?s calendar)\b", re.IGNORECASE),
+)
+
+
+def human_anchor_contract_problems(draft, operator_desc: str = "") -> list[str]:
+    """Check an explicit operator-requested human-anchor story contract.
+
+    This is a structural floor, not a machine claim that the story is good. It
+    prevents a semantic judge from awarding human-presence points to a
+    calculator exercise that merely adds "that stopped me." The contract is
+    active only when the operator brief names a HUMAN ANCHOR.
+    """
+    if not _HUMAN_ANCHOR_CONTRACT_RE.search(operator_desc or ""):
+        return []
+
+    pieces: list[tuple[str, str]] = [
+        ("HOOK", str(getattr(draft, "hook", "") or ""))]
+    pieces.extend(
+        (
+            str(getattr(segment, "heading", "") or f"SEGMENT {index}"),
+            str(getattr(segment, "content", "") or ""),
+        )
+        for index, segment in enumerate(
+            list(getattr(draft, "segments", ()) or ()), 1)
+    )
+    pieces.append(("OUTRO", str(getattr(draft, "outro", "") or "")))
+    narration = "\n".join(text for _, text in pieces)
+
+    requested = _NAMED_ANCHOR_RE.search(operator_desc or "")
+    expected_name = requested.group(1) if requested else ""
+    anchor_name = expected_name
+    problems: list[str] = []
+
+    if not expected_name:
+        return []
+        problems.append(
+            "the script never transparently introduces a named illustrative "
+            "person with 'let's/we'll call her/him …'")
+        return problems
+    name_re = re.compile(rf"\b{re.escape(anchor_name)}\b", re.IGNORECASE)
+    if not name_re.search(narration):
+        return [
+            f"the operator requested anchor {anchor_name}, but the name never "
+            "appears in the script"
+        ]
+    occurrences = len(name_re.findall(narration))
+    if occurrences < 3:
+        problems.append(
+            f"{anchor_name} appears only {occurrences} time(s); the anchor must "
+            "return through cause, current consequence, and later turn")
+
+    section_hits = [
+        heading for heading, text in pieces if name_re.search(text)
+    ]
+    if len(section_hits) < 3:
+        problems.append(
+            f"{anchor_name} appears in only {len(section_hits)} section(s); "
+            "a name pasted onto one calculation is not a carried story")
+    if not name_re.search(pieces[0][1]):
+        problems.append(
+            f"{anchor_name} is absent from the hook even though this video's "
+            "operator brief explicitly requires the human stake there")
+
+    example_index = next(
+        (
+            index for index, (heading, _) in enumerate(pieces)
+            if "EXAMPLE" in heading.upper()
+        ),
+        None,
+    )
+    if example_index is not None and not any(
+            name_re.search(text) for _, text in pieces[example_index + 1:]):
+        problems.append(
+            f"{anchor_name} disappears after the worked example; the later "
+            "recalculation must return to the same household")
+
+    anchor_contexts: list[str] = []
+    for _, text in pieces:
+        for match in name_re.finditer(text):
+            anchor_contexts.append(
+                text[max(0, match.start() - 220):match.end() + 300])
+    anchored_text = "\n".join(anchor_contexts)
+    detail_groups = sum(
+        bool(pattern.search(anchored_text))
+        for pattern in _ANCHOR_DETAIL_GROUPS)
+    if detail_groups < 2:
+        problems.append(
+            "the anchor carries fewer than two ordinary life-detail groups "
+            "(work routine, household bill/prop, or current budget plan)")
+
+    all_scenes = list(getattr(draft, "hook_scenes", ()) or [])
+    for segment in list(getattr(draft, "segments", ()) or []):
+        all_scenes.extend(list(getattr(segment, "scenes", ()) or []))
+    all_scenes.extend(list(getattr(draft, "outro_scenes", ()) or []))
+    shooting_text = narration + "\n" + "\n".join(
+        str(getattr(scene, "visual_prompt", "") or "")
+        for scene in all_scenes)
+    details_match = _HUMAN_ANCHOR_DETAILS_RE.search(operator_desc or "")
+    if details_match:
+        required_details = [
+            item.strip()
+            for item in details_match.group(1).split("|")
+            if item.strip()
+        ]
+
+        def _detail_norm(value: str) -> str:
+            return re.sub(
+                r"\s+", " ",
+                re.sub(r"[-_/]+", " ", value.casefold()),
+            ).strip()
+
+        normalized_shooting = _detail_norm(shooting_text)
+        missing_details = [
+            detail for detail in required_details
+            if _detail_norm(detail) not in normalized_shooting
+        ]
+        if missing_details:
+            problems.append(
+                "the requested recurring anchor details are absent from VO "
+                "and storyboard: " + ", ".join(missing_details))
+    return problems
 
 
 def dimension_rubric() -> str:
     """Per-dimension scoring bands injected into the critic prompt."""
-    return f"""═══ SCORE ON 8 VO DIMENSIONS ({sum(VO_DIMS.values())}pts) + 2 PRODUCTION DIMENSIONS ({sum(PROD_DIMS.values())}pts) ═══
+    return f"""═══ SCORE ON {len(VO_DIMS)} VO DIMENSIONS ({sum(VO_DIMS.values())}pts) + {len(PROD_DIMS)} PRODUCTION DIMENSIONS ({sum(PROD_DIMS.values())}pts) ═══
 Return one CriticDimension per name below (use these EXACT names and max_score).
 
 ── VO GROUP ({sum(VO_DIMS.values())}pts) ──
@@ -205,38 +420,126 @@ Return one CriticDimension per name below (use these EXACT names and max_score).
    figure never changes between scenes; any math shown must actually work). Deduct hard for:
    an uncited precise number, a source named without a year, figures that contradict each
    other, or hedged invented statistics ("some say", "experts estimate" with no source).
+   TWO LANES (do not confuse them): the FACT lane above is evidence-bound. The
+   JUDGMENT lane — opinions, interpretations, and professional common knowledge
+   voiced AS the narrator's own read ("my read is…", "bills parked in committee
+   usually stay parked — that's the pattern, not a statistic") — is NOT an
+   accuracy violation and must NOT be deducted here, PROVIDED it attaches no
+   specific uncited number, date, percentage, or named-entity fact. Judgment is
+   scored under editorial_courage. A judgment dressed as a statistic ("87% of
+   bills die in committee" with no source) IS an accuracy violation.
    {VO_DIMS['accuracy_trust']}: every claim sourced+dated, math airtight. 8-12: 1-2 uncited or undated numbers.
    0-7: any invented/contradictory figure.
-2. clarity_65plus (max {VO_DIMS['clarity_65plus']}) — plain English for a smart 68-year-old who hates being
+2. spoken_presence (max {VO_DIMS['spoken_presence']}) — THE ANTI-AI-SLOP DIMENSION. This script is
+   SPOKEN by a person who has a self, not an essay read aloud. Score the SIX mechanics
+   that separate "a friend telling you something" from "correct content narrated":
+   (a) COMPANIONSHIP — "we"/"let's" travelling together through the material, not a
+       lecturer addressing an audience ("let's run this one together", "so where does
+       that leave us?");
+   (b) REACTION — the narrator REACTS to their own facts before moving on ("$7,760 —
+       that stopped me too", "and here's the part that annoys me"). A figure stated and
+       abandoned with no human response is the single strongest AI tell in this niche;
+   (c) INVITATION — imperatives that make the viewer do something in their head
+       ("picture the booth", "look at this number for a second", "try this");
+   (d) MOUTH-LANGUAGE — contractions, short fragments, spoken connectives ("so", "but
+       here's the thing", "honestly"). Deduct hard for essay register: balanced clauses,
+       em-dash-heavy periodic sentences, participial stacking — writing that reads well
+       on paper but sounds like a document when spoken;
+   (e) SIGNPOSTING ALOUD — the narrator says where we are and where we're going ("that's
+       the history — now the part that costs money");
+   (f) FELT METAPHOR — at least one metaphor aimed at sensation, not just structure
+       (a scar that aches vs. merely "a two-lane toll booth").
+   Do NOT award points by counting "let's", "honestly", questions, contractions,
+   metaphors, or reaction phrases. Those are surface clues and can be stuffed.
+   Full credit requires a recognisable THESIS, a fair COUNTERPOINT, and at least
+   two moments where the narrator responds to a specific fact with an
+   interpretation that advances the argument. The reactions must be adjacent
+   to the facts they interpret; generic attitude sprinkled elsewhere does not count.
+   EMPATHY ORDER: when the script corrects a misconception or fear, it must
+   legitimize the feeling FIRST ("it does make sense to wonder...") and then
+   correct it. Instructing the viewer to set a feeling aside before the math
+   ("put that fear to one side") is a register failure in this niche — deduct.
+   EARNED SUBSCRIBE CONTRACT: near the close, one short spoken invitation must
+   connect subscribing to the channel promise the viewer just experienced
+   (such as reading the fine print together). ONE brief self-aware
+   like/algorithm aside is ALLOWED when it is honest and tied to the video's
+   value (cohort winners use exactly this; e.g. "mildly embarrassing to ask,
+   but true") — but a generic CTA, algorithm begging, a second subscribe,
+   invented friendship, or fabricated authority does not count and costs
+   spoken-presence points.
+   The final audience question must still be the last spoken line; no second
+   CTA or spoken next-video tease follows it.
+   {VO_DIMS['spoken_presence']}: 5-6 mechanics present and natural, no essay register anywhere.
+   6-8: 3-4 mechanics, occasional written-not-spoken passage.
+   3-5: mostly correct prose, narrator has no visible self.
+   0-2: reads like a well-sourced article being read out — REJECT-worthy on this channel.
+3. clarity_65plus (max {VO_DIMS['clarity_65plus']}) — plain English for a smart 68-year-old who hates being
    patronized. One idea per sentence; every term of art (RMD, IRMAA, provisional income)
    defined in one plain clause on first use; concrete dollar examples over abstractions;
    NO baby-talk, NO "seniors like you". Deduct for jargon runs, nested conditionals,
    or a condescending register.
-3. hook_quality (max {VO_DIMS['hook_quality']}) — winner pattern from the competitor cohort: one concrete
-   consequence with a REAL number in the first 15 seconds ("Claiming at 62 instead of 67
-   costs this retiree $612 every month, for life"). Deduct for vague dread, greeting
-   openers, or a hook number that is not sourced later.
-4. retention_structure (max {VO_DIMS['retention_structure']}) — open loops resolved on time, chaptered
+4. hook_quality (max {VO_DIMS['hook_quality']}) — does the opening earn the next 30 seconds?
+   SCORE ON STAKE AND SPECIFICITY, NOT ON A SHAPE. Full marks: the viewer learns
+   within the first breaths what is at risk for someone like them, in concrete
+   terms, and every figure named in the hook is sourced later in the script.
+   Deduct for: a greeting opener; vague dread with nothing concrete; a promise the
+   body never keeps; a hook number that is never explained.
+   WHAT THIS RUBRIC NO LONGER CLAIMS. Two earlier versions carried competitor
+   "findings" as scoring instructions — first stopwatch targets ("first number by
+   ~27s", "first dollar by ~79s"), then an opening SHAPE ("event or promise, never
+   a maybe" / "abstract condition = the losing shape"). Both came from a 19-video
+   pilot. On the full cohort — velocity-based labels, matched pairs, bootstrap CI,
+   effect size, cross-channel agreement — NOTHING about openings reached
+   rule-grade. The shape reading survives only as a qualitative observation in the
+   craft playbook, and an observation must not be scored. Do NOT deduct for an
+   opening that begins with a condition rather than an event, and do NOT deduct on
+   timing in either direction.
+5. retention_structure (max {VO_DIMS['retention_structure']}) — open loops resolved on time, chaptered
    structure a viewer can rewatch one section of, hook promises paid off. Deduct −4 for a
-   hook figure the body never explains; −3 for teasing content that never arrives.
-5. actionability (max {VO_DIMS['actionability']}) — the viewer leaves with a concrete educational step
-   ("the SSA calculator shows your exact number", "this IRS form, before this date"), never
-   a personal directive. Full marks = a checklist-able takeaway per major section.
-6. anti_ai_cliche (max {VO_DIMS['anti_ai_cliche']}) — zero "delve/tapestry/it's important to note/in
+   hook figure the body never explains; −3 for teasing content that never arrives;
+   −3 for RE-ARGUING a point the script already settled (the same tension restated
+   across sections is padding, not retention — each chapter must add a new fact,
+   consequence, or audience segment). A single reveal scheduled aloud in the hook
+   and paid off late with an explicit callback is strong craft when present, but
+   its absence is not a deduction — do not demand one universal retention shape.
+   Do not demand one universal example shape. A compact calculation, document
+   walkthrough, anonymous household, recurring human anchor, timeline, contrast,
+   or no worked example can all earn full credit when they serve the argument.
+   Only score a recurring human-anchor contract when the per-video OPERATOR BRIEF
+   explicitly asks for one. A fabricated client, agency action,
+   tax/Medicare/spousal effect, or other consequence outside supplied evidence
+   is a trust failure, not retention craft.
+6. actionability (max {VO_DIMS['actionability']}) — the viewer leaves with a concrete educational step
+   supported by the supplied evidence, never a personal directive. A worked
+   worksheet using sourced thresholds and ratios can be actionable; never invent a calculator,
+   tool, form, deadline, or required input that is absent from the verified evidence pack.
+   Full marks = a checklist-able educational takeaway per major section.
+7. anti_ai_cliche (max {VO_DIMS['anti_ai_cliche']}) — zero "delve/tapestry/it's important to note/in
    conclusion", no corporate filler, no mechanical counting as the BODY's spine.
    EXEMPT: one numbered checklist in the CLOSING section is this channel's
    format (the tangible-utility pattern its winners share) — never penalise it.
-7. niche_compliance (max {VO_DIMS['niche_compliance']}) — finance fatal rules (see FATAL RULES above):
+8. niche_compliance (max {VO_DIMS['niche_compliance']}) — finance fatal rules (see FATAL RULES above):
    guarantees, price predictions, promised outcomes, uncited Social Security claims,
    advisor-persona claims → 0-2 per the rules.
-8. pacing_compliance (max {VO_DIMS['pacing_compliance']}) — scene word caps + prosody targets
-   (~180 wpm register: short sentences, normal adult pace — never slowed "for seniors").
+9. editorial_courage (max {VO_DIMS['editorial_courage']}) — THE REWARD DIMENSION (operator mandate
+   2026-08-01: "I need an advisor, a friend sharing viewpoints — not a stiff
+   news bulletin"). Full marks require BOTH, anywhere in the script:
+   (a) at least one CONTESTABLE POSITION — an opinion a reasonable viewer could
+       push back on, voiced as the narrator's own read ("my read is…", "I'm
+       rooting for the simplification"), not hedged into mush; and
+   (b) at least one moment of PLAY — wit, a coined metaphor, a wry aside, a
+       short human digression that serves the story.
+   JUDGMENT-lane statements (see accuracy_trust's two-lane note) are welcome
+   and belong here; a recurring channel metaphor reused across videos is a
+   brand asset, never repetition. {VO_DIMS['editorial_courage']}: both present, genuinely risky or
+   charming. 2-3: one of the two. 0-1: nothing a viewer could disagree with —
+   the stiff-bulletin failure mode this channel is explicitly steering out of.
 
 ── PRODUCTION GROUP ({sum(PROD_DIMS.values())}pts) ──
-9. visual_concreteness (max {PROD_DIMS['visual_concreteness']}) — every scene names a filmable, specific
+10. visual_concreteness (max {PROD_DIMS['visual_concreteness']}) — every scene names a filmable, specific
    visual: the actual form (SSA-44), a statement close-up, a dated letter. Deduct for
    "worried senior stock photo" placeholders.
-10. data_visualization (max {PROD_DIMS['data_visualization']}) — every load-bearing number appears
+11. data_visualization (max {PROD_DIMS['data_visualization']}) — every load-bearing number appears
    on screen with its source; comparisons call for a CHART visual. IMPORTANT: this
    channel has a REAL chart renderer (matplotlib, audited against the fact ledger) —
    a visual note naming a "chart" IS the correct, intended staging and must be
@@ -260,7 +563,7 @@ def json_template() -> str:
         "═══ REQUIRED JSON OUTPUT ═══\n"
         "{\n"
         f'  "total_score": <sum of all 10 dimension scores>,\n'
-        f'  "voiceover_score": <sum of the 8 VO dimensions, max {sum(VO_DIMS.values())}>,\n'
+        f'  "voiceover_score": <sum of the {len(VO_DIMS)} VO dimensions, max {sum(VO_DIMS.values())}>,\n'
         f'  "production_score": <sum of the 2 PRODUCTION dimensions, max {sum(PROD_DIMS.values())}>,\n'
         '  "approved": false,\n'
         '  "dimensions": [' + vo + prod + "\n  ],\n"

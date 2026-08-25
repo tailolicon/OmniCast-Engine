@@ -4,6 +4,12 @@
 > Thay vai trò của `IMPLEMENTATION_DELTA.md` (đã xoá vì lỗi thời nặng — báo Phase 4–7 "chưa build" trong khi đã build).
 > **QUY TẮC:** mỗi khi đổi code (thêm/sửa module, đổi hành vi) phải cập nhật file này trong cùng PR. Khi nghi ngờ → tin code, không tin doc thiết kế.
 >
+> _2026-08-09 khuya (**INGEST BILIBILI nội địa** — reup nhận link bilibili.com: BV…/av…/b23.tv/?p=N. Package `ingest/bilibili/` thuần httpx: WBI signing thuần Python (vector chuẩn khớp), DASH m4s → ffmpeg mux, `SESSDATA` tùy chọn cho 1080p; runner tự dispatch theo URL qua `ingest/detect.py`; `reup_jobs.source_platform` tự stamp; Kho phim quét nguồn được cả 合集/分P/space-collection Bilibili, tập planned snap job theo `BV…_pN`. Chi tiết: §2 REUP **Vòng 5**.)_
+>
+> _2026-08-09 tối (**KHO PHIM đa nền tảng** — trả lời "video này thuộc series nào, series nào thiếu tập so với nguồn, tập nào đã đăng lên kênh nào" cho reup rải YouTube/TikTok/Facebook: package `library/` + 4 bảng vault.db + backfill quét video tồn đọng + sync hợp tập Douyin + đối soát YouTube + tab UI `/series` "Kho phim" + form Reup gắn series/tập. Chi tiết: §2 mục REUP **Vòng 4**.)_
+>
+> _2026-08-01 (Script skeleton v1 từ cohort 19 transcript: phân tích 12 yếu tố khung xương 3 nhóm winner/control → `output/research/senior_wealth_us/skeleton/group_{A,B,C}*.md`, tổng hợp vào Dossier §7. Encode vào 3 tầng: `channels/senior_wealth_us.json` (brand_voice/hook_format: empathy-trước-math, system-là-villain, artifact spec, scheduled reveal), `agents/writer.py` `_build_finance_system_prompt` (khối STRUCTURE AND DELIVERY viết lại theo skeleton: forward-motion-only, metered numbers, staccato verdict, disagree-with-document, in-system domino, kicker 5 câu), `agents/rubrics/finance_explainer.py` (EMPATHY ORDER deduct; cho phép MỘT self-aware like-aside; retention −3 cho re-arguing settled point). Script mẫu handcrafted đạt chuẩn mới: `variants/skeleton_v3_final.txt` (bản chốt, ~1909 từ ≈ 10.6', 0 machine flags — áp delta từ 42 transcript top all-time fetch qua Chrome extension: double-reveal, cascade 3 tầng 1 con số, concession-before-pivot; Dossier §7.1) thay `skeleton_v2_handcrafted.txt` (giữ làm bản trung gian) + `skeleton_v2_evidence_additions.json` (7 entry SSA mới đã verify quote — root cause script cũ lặp/silo là evidence pack 9 entry từ 1 trang duy nhất; brief sau này PHẢI cấp domino-pack đa fact). `_refs/` +11 repo AI-video (ArcReel, StoryGen-Atelier, Orkas, seedance-2.0, Jellyfish, waoowaoo, LocalMiniDrama, AIComicBuilder, short-video-factory, VideoLingo, KiraAP). **Veo3 pipeline MỚI: `media/veo_pipeline.py`** — scene→clip serial, Flow (browser, free credit) trước → GeminiVideoProvider (veo-3.0/3.1 API) fallback sticky-demotion (lỗi credit/login/api-key = demote cả run, lỗi transient = thử lại provider ở clip sau), capability preflight kiểu ArcReel (duration clamp 4/6/8, ref-image⇒8s), tail-frame carry-forward kiểu LocalMiniDrama (ffmpeg -sseof; tự skip khi provider là Flow vì Flow convert() chưa nhận image), negative tail text provider-neutral. Wire vào `render_real_video.py --motion veo`: preflight fail → chạy thẳng API; clip fail → scene đó tự degrade về still/text card thay vì chết cả run (trước đây sys.exit(2) khi thiếu credit). Test: `tests/media/test_veo_pipeline.py` 17 pass. Bước sau (chưa làm): Flow image→video first-frame (bật `FLOW_ACCEPTS_IMAGE`), FLF interpolation-chain kiểu StoryGen khi có last-frame API. **Fix pipeline từ run thật đầu tiên trên topic news (HR 8344):** `editorial_angle._CLAIM_VERBS` thiếu toàn bộ modal (would/could/may/must…) → mọi thesis dạng điều kiện về dự luật chưa qua đều bị bác "no assertive verb" 2 lần rồi REJECT; đã thêm modal + động từ claim thường gặp + regression test (`tests/unit/test_editorial_angle.py::test_a_conditional_thesis_about_an_unpassed_bill_is_a_claim`, 22 pass). News-peg topic + evidence govinfo: `output/research/senior_wealth_us/news_hr8344/` (angle.json, brief.txt, evidence_pack.json, script tay `script_news_v1.txt` 6.5' 0-flags làm chuẩn so sánh với bản pipeline sinh). **Fix 2+3 (đã verify qua run thật):** `--duration-min` override cho run_phase2 → `inputs.target_duration_min` → brief (floor 2100→1200 hoạt động, run 4 draft 1.023→1.210 từ thay vì độn gấp đôi); `--angle-file` giờ truyền `EditorialAngle.from_dict` vào `WriterAgent.execute` bỏ qua planner (trước đó planner re-plan ghi đè angle operator → video news 0 bill facts). Trạng thái 4 run: run2 approved 86 nhưng 0 news; run4 revision CÓ đủ bill facts (8344/Murphy/2000 Act/effective date, 8') nhưng critic bác 69 (spoken_presence 6/12, mất chất người khi nhét facts). Đã tới điểm diminishing returns (code note: round 3+ tụt điểm) → giao Codex GPT-5.6-Sol audit 4 candidate vs transcript đối thủ hàng đầu (`news_hr8344/CODEX_AUDIT.md`). **Vòng "mở làn JUDGMENT" (user mandate: cần cố vấn-bạn, không cần bản tin):** (a) writer contract thêm khối TWO LANGUAGE LANES (FACT ledger-audit vs JUDGMENT được cấp phép: quan điểm/hiểu biết nghề numberless/chơi chữ/brand running-bits) + OPINION EARLY; (b) rubric thêm dimension thưởng `editorial_courage` 4đ (spoken 12→10, clarity 10→9, anti_ai 5→4; tổng 70 giữ nguyên, 95 test pass) — thiếu quan điểm cãi được = mất điểm; (c) accuracy_trust được dặn không phạt làn judgment; (d) **kênh evidence operator mới** `--evidence-file` → `merge_operator_evidence()` (evidence_research.py): refetch + verify từng entry fail-closed rồi nhập pack, sống sót qua official-SSA fast-path vốn vứt news evidence; luật entry: số-trong-claim ⊆ quote, value phải trên trang, ledger máy chỉ đọc trường value → value phải mang số chủ chốt. **Kết quả run 10: ACCEPTED 91/100, production_ready, ledger máy 7/7 không cần LLM fallback, editorial_courage 4/4, đủ bill facts** — sản phẩm `20260801_1823_congress_*`. Chuỗi 10 run debug: modal verbs → duration floor → angle passthrough → dup-topic resume → judgment license → operator evidence → claim⊆quote → values-cho-ledger → '2027' inference → GREEN.)_
+>
 > _Last verified against code: 2026-07-09 tối (Xưởng v2: Discovery chỉ hiện topic queued có điểm, click topic → chi tiết brief + dedup-check + nút Tạo script (topic action API); Xưởng = WIP (loại sản phẩm đã upload — publish ghi youtube_id vào meta.json), Thư viện tab "Đã đăng"/"Tất cả"; board sản phẩm badge trạng thái chữ + nhảy đúng bước; backend junk-guard topic vault (dọn 12 rác) + phase2 tra vault lấy brief khi topic chỉ định. Bundle `index-DRL826G3.js` + restart, verify API OK. Chi tiết: SPEC_ScriptQuality_vfact.md §Xưởng v2.)_
 >
 > _Trước đó cùng ngày (Xưởng product-centric: Studio.tsx thêm product-picker dropdown ở header Script/Render + panel "Sản phẩm trong xưởng" với chip trạng thái S/R/D từng sản phẩm; bước Script hiển thị debate live + script.txt sản phẩm; bước Duyệt inline approve/reject; panel Thumbnail chọn/tạo batch Flow. Build `webui_v2/assets/index-Co_0pVM0.js` + RESTART app → backend endpoints Thumb Studio (`/api/thumbs/*`, `/thumbs`), observability, STRICT steps, claude_first flow ĐÃ SỐNG — verify curl 200. Chi tiết: SPEC_ScriptQuality_vfact.md.)_
@@ -30,6 +36,254 @@
 
 ## 2. Đã build — theo khu vực (module thật)
 
+- **REUP VIDEO TRUNG QUỐC — nền móng (2026-08-08, WS8):** hai stack ngoài được đưa vào
+  package, chưa nối thành đường chạy end-to-end. (1) **`ingest/douyin/`** — facade
+  `fetch_video(url, DouyinIngestConfig) -> DouyinAsset` trên `_vendor/` (52 file vendor từ
+  `jiji262/douyin-downloader`, MIT): ký `a_bogus`/`X-Bogus` thuần Python, giải short-link
+  `v.douyin.com`, chọn URL không watermark (ưu tiên CDN `douyinvod` trực tiếp vì endpoint
+  `/aweme/v1/play/` 302 hay rơi vào node PCDN chết), `video_quality="highest"` dò bản gốc
+  uploader trước thang transcode. Tắt SQLite riêng của upstream (vault.db là SSOT) và bước
+  transcribe OpenAI của nó (trùng ASR của reup). Đường lấy path file: `download_manifest.jsonl`
+  — `DownloadResult` chỉ trả counter. (2) **`reup/`** — 65 file port từ `Tool_Reup_Douyin`
+  (core/project/media/asr/translate/subtitle/tts/audio/ops/exporting), bỏ `ui/` PySide6;
+  `core/jobs.py` viết lại headless (`Callback` thay Qt Signal, `ThreadPoolExecutor` thay
+  `QThreadPool` — mặc định `min(4, cpu)` vì stage ffmpeg/ASR/TTS nặng, có RLock cho state).
+  Mang theo Contextual Translation V2 zh→vi (scene planner → semantic pass → dialogue
+  adaptation → semantic QC → review gate), lane `narration_fast_v2` có budget governor,
+  speaker binding + voice policy theo nhân vật/quan hệ. (3) **`reup/runner.py`** —
+  `run_reup_job()` chain 10 stage download→probe→extract_audio→asr→translate→subtitles→
+  tts→voice_track→mixdown→export, có `stop_after` để dừng soi bản dịch trước khi tốn TTS;
+  `build_reup_settings()` dựng settings reup in-memory từ config OmniCast (không đụng
+  `%APPDATA%/ReupVideo`). (4) **`reup/vault_link.py`** — bảng `reup_jobs` trong vault.db
+  (SSOT vòng đời job); job crash ghi `failed` + lỗi. (5) **`api/reup_routes.py`** —
+  `POST /api/reup/run` (nền, trả job_id) + `/jobs` + `/jobs/{id}` + `/voices` + `/health`,
+  mount try-block riêng, media ở `/reupmedia`. (6) **`reup_douyin.py`** CLI.
+  (7) **TTS tiếng Việt**: `media/providers/tts_vieneu.py` (VieNeu v3.2.4, 14 giọng preset
+  + clone) đăng ký `vieneu` trong registry; `voice_router.py` có pool VN + chọn giọng
+  deterministic theo channel_id, Edge làm fallback.
+  (8) **CapCut/TikTok + full ByteDance TTS (2026-08-08, cập nhật API thật):**
+  `media/capcut_voices.py` catalog curated + merge **Voice.json 129 giọng** (vendored
+  [K07VN/capcut-tts-api](https://github.com/K07VN/capcut-tts-api) tại
+  `media/providers/_vendor/capcut_tts_api/`). `providers/tts_capcut.py` gọi **CapCut
+  common_task TTS thật** (`editor-api-sg.capcutapi.com`) → poll status `succeed` →
+  tải `speech_url` CDN; fail/tắt API → Volcengine (khi có key) → Edge.
+  Spec: `capcut:BV074_streaming`, `capcut:BV421_vivn_streaming`, `capcut:en_us_002`.
+  Env: `CAPCUT_TTS_ENABLED` (default 1), `CAPCUT_TTS_DEVICE_JSON`, `CAPCUT_TTS_TIMEOUT`.
+  (8a) **Fallback âm thầm + đứt kết nối đã vá (2026-08-08):** job dub 362 dòng khai báo
+  `capcut:BV074_streaming` nhưng ra 100% `edge:vi-VN-HoaiMyNeural` — provider nuốt lỗi
+  API rồi thay giọng từng dòng một, artifact không ghi lại gì (phát hiện bằng độ dài
+  clip: CapCut 2.088s vs Edge 3.168s cho cùng câu). Thêm `CAPCUT_TTS_STRICT=1` →
+  fail ngay dòng 1 thay vì render xong 8 phút video sai giọng, và `CAPCUT_TTS_RETRIES`
+  (default 4, backoff 2/4/8/16s) cho `ConnectionResetError 10054` — 362 request tuần tự
+  thì đứt mạng là chuyện thường, lỗi vĩnh viễn (`TTSInvalidSpeaker`) vẫn fail ngay.
+  Bẫy CLI: `reup_douyin.py --voice` mặc định `"Mai Anh"` **ghi đè `voice_id` của preset**,
+  nên phải truyền full spec `--voice capcut:BV074_streaming`.
+  API `GET /api/voices/capcut` (+ alias TikTok). **Volcengine seed-tts-2.0 full catalog
+  102 speakers** nạp từ `media/data/doubao2_voices.json` →
+  `GET /api/voices/volcengine` + `/api/voices?include_volcengine=1` (default).
+  Preview `capcut:` đi thẳng provider (không pre-resolve sang Edge nữa).
+  (8b) **Dataset clone giọng Việt của CapCut (2026-08-08):** `scripts/capcut_clone_dataset.py`
+  — 3 giọng VN thật (Cô Gái Hoạt Ngôn / Nguồn nhỏ ngọt ngào / Thanh niên Tự Tin) chỉ
+  có trên server ByteDance, nên tool dùng `reup/capcut/draft.py` để app CapCut tự synth:
+  `draft` ghi 200 câu (`assets/voice_clone/vi_200_lines.txt`) thành project CapCut →
+  operator bấm *Generate speech* 1 lần/draft → `collect` đọc audio ngược, ffmpeg trim +
+  mono 24kHz, sinh `train.list` (GPT-SoVITS) + `metadata.csv` (F5-TTS) + QC report vào
+  `output/voice_clone/<slug>/`. Quy trình: `implementation/docs/VOICE_CLONE_CapCut.md`.
+  **Đường chính = CapCut editor API** (lệnh `api`, SDK `_refs/capcut-tts-api`,
+  `editor-api-sg.capcutapi.com`, ký request + RSA thuần Python, không cần login):
+  1 lệnh sinh trọn 200 câu, không mở app. `Voice.json` cho tên thật của 3 giọng —
+  `BV074_streaming`=Cô Gái Hoạt Ngôn, `BV421_vivn_streaming`=Nhỏ Ngọt Ngào,
+  `BV075_streaming`=Thanh Niên Tự Tin (BV074/BV075 đã có sẵn trong `capcut_voices.py`).
+  2 bẫy: `generate_speech()` của SDK luôn timeout vì chờ status `"success"` còn API trả
+  `"succeed"`; `speech_url` nằm trong `payload` = JSON lồng JSON.
+  **Đường draft (ghi vào draft rồi bấm trong app) = BLOCKED:** đã lái CapCut 9.1.0.3879
+  thật — nút *Generate speech* sáng + hiện `credits needed 0 / left 650` nhưng bấm KHÔNG
+  sinh audio (1 clip lẫn 40 clip, giọng Free lẫn Pro). Trên đường đó đã vá 1 bug thật
+  trong `reup/capcut/draft.py`: mọi segment share chung `sticker_animation` trong
+  `extra_material_refs` khiến CapCut báo "This text does not support text-to-speech"
+  (**luồng dub WS8 cũng dính bug này**).
+  **Lưu ý kiến trúc:** KHÔNG gộp schema reup vào vault.db — `ProjectDatabase.get_project()`
+  là `SELECT * FROM projects LIMIT 1` (`project/database.py:554`), tức code giả định
+  1 project/1 DB; mỗi job giữ `project.db` riêng, vault.db chỉ giữ `reup_jobs`.
+  **ĐÃ CHẠY THẬT (2026-08-08)** trên `douyin.com/jingxuan?modal_id=7671126668437720356`
+  (《红魔猩猩》, 8'20"): tải 309 MB 1080p không watermark → ASR 362 câu → dịch contextual
+  V2 zh→vi trong 16 phút qua `claude-cli` (0đ token), **81/362 câu tự gắn cờ chờ duyệt**.
+  Bản dịch tự sửa lỗi ASR bằng ngữ cảnh (`人生`→"giọng nói", `实验星星`→"sinh vật thí nghiệm",
+  `阿豪`→"A Hào" Hán-Việt). 5 lỗi thật đã vá trong lúc chạy: cookie chống bot (thêm
+  `ingest/douyin/cookie_bootstrap.py` dùng Playwright lấy `ttwid` ẩn danh — repo vendor chỉ
+  ĐỌC cookie chứ không tự tạo được), `sync_playwright` trong event loop, UNIQUE index sai
+  trên `reup_jobs.project_id`, nhãn cache-key bị dùng làm model id, và resume chạy lại ASR.
+  Bổ sung: `--resume`, cache-check cho ASR + bản dịch (resume giờ vài giây thay vì 20+ phút),
+  checkpoint từng scene, và **cổng duyệt chặn trước TTS** (`allow_pending_review`/`--force`).
+  UI có bảng đối chiếu Trung↔Việt + duyệt tại chỗ + panel nhân vật/xưng hô + artifact.
+  **Vòng 2 (cùng ngày):** căn tốc độ đọc theo luật `pyvideotrans` — trước đó 90% câu bị
+  tua nhanh mỗi câu một hệ số (max 3.22×); giờ `audio/rate_align.py` + `media/retime.py`
+  giữ giọng đều ≤1.2× và giãn video gánh phần dư, có dịch lại timeline phụ đề + bù sai số
+  `setpts` bằng `tpad` (lệch còn 6ms) + giãn cả tiếng nền theo cùng hệ số. Thêm
+  `translate/title.py` (dịch tiêu đề + hashtag), `providers/tts_volcengine.py` (seed-tts-2.0
+  của ByteDance — engine sau lưng CapCut, cần key), `providers/tts_capcut.py` (spec
+  `capcut:<id>` → **CapCut API thật** via vendored K07VN/capcut-tts-api; fail → Volcengine
+  → Edge), và `reup/tts/router_engine.py` —
+  **trước đó `reup/tts/factory.py` chỉ biết `sapi`+`vieneu` nên cả registry provider của
+  OmniCast không dùng được trong job lồng tiếng.** Đo trực tiếp: VieNeu Mai Anh cho video
+  10:30 / 48kHz / 362-362 ổn định, Edge cho 14:50 / 24kHz / chết ở clip 255 → **mặc định
+  là VieNeu**. Giọng CapCut SAMI (`capcut:BV074_streaming`…) đã gọi API editor SG được
+  (verified live 2026-08-08); bulk production vẫn nên ưu tiên VieNeu/Volcengine có SLA.
+
+  **Vòng 3 — LỚP PHỦ KÉO-THẢ (2026-08-09):** `reup/media/overlay.py` + trang
+  `frontend_v2/…/ReupOverlayEditor.tsx` + 3 route (`GET /jobs/{id}/frame`,
+  `GET|PUT /jobs/{id}/overlays`, `POST /jobs/{id}/overlays/preview`). User tự kéo/chỉnh
+  kích thước vùng che chữ Trung (blur/pixelate/box, có `opacity`), logo góc, watermark mờ
+  chạy vòng chống ăn cắp, cỡ chữ phụ đề, và **kéo cả vị trí phụ đề** —
+  `subtitle_anchor_from_fraction()` quy điểm thả về 9 neo ASS + lề, hệ quy chiếu
+  **384×288** (mặc định libass khi file ASS không khai `PlayRes`, nên FontSize 12 mới vừa
+  mắt trên 1080p). Thứ tự filter cố định: **resolution → cover → `ass=` → logo → roaming**
+  (che TRƯỚC khi in phụ đề, nếu không blur sẽ nhoè luôn chữ Việt; đổi lại phụ đề được phép
+  nằm đè lên vùng che). Config lưu `overlays.json` cạnh project + mirror sang
+  `presets/styles/default_ass_style.json` (file mà `subtitle/export.py` đọc — không mirror
+  thì cỡ chữ chọn trong UI không bao giờ tới video). **Bẫy cache đã vá:**
+  `build_hardsub_stage_hash()` trước đây không tính lớp phủ → đổi vùng che rồi xuất lại sẽ
+  **trả về file cũ tức thì, không có vùng che** (đã tái hiện: hash tính lại khớp đúng
+  manifest cũ `fb27ede…`). Nay thêm `OverlayConfig.render_fingerprint()` vào key, và chỉ
+  thêm khi có lớp thật sự vẽ ra pixel — job không dùng lớp phủ giữ nguyên cache cũ.
+  **Chi phí xuất đo thật** trên video 9'16" 1080p30: **195s = 3,25 phút (2,85× realtime)**;
+  lớp phủ gần như miễn phí (cùng lát 45s: chỉ phụ đề 10,1s → +1 vùng che 10,5s → +roaming
+  11,1s) vì burn-in phụ đề vốn đã bắt re-encode h.264. Xem thử 1 khung: ~0,5s.
+  **Mặc định theo kênh:** lớp phủ vốn chỉ sống trong project của từng video (và job reup
+  chưa từng gắn kênh — form thiếu ô chọn). Nay form có ô **Kênh**, mặc định lưu vào
+  `channels/<id>.json` khoá `reup_overlays` (không tạo store mới), runner seed từ kênh lúc
+  bootstrap, `load_config(root, channel_file)` fallback cho job cũ, và nút "Lưu làm mặc định
+  kênh" để promote có chủ đích (vùng che thường đặc thù từng video). Thêm
+  `POST /jobs/{id}/export` — xuất lại chỉ mỗi bước export (sinh lại `.ass` theo style hiện
+  tại rồi burn lớp phủ), vì trước đó bấm Lưu xong **không có đường nào ra video**.
+  **Lệch timing phụ đề (đã vá cùng ngày):** bản đầu của endpoint đó sinh lại `.ass` từ
+  `list_segments()` thay vì subtitle events đã `shift_subtitle_rows()` sang timeline giãn →
+  phụ đề kết thúc ở 8:19.75 trong khi video dài 9:15.82 (cuối phim lệch ~56s). Vá: `retime.py`
+  ghi `cache/retime/timeline.json` để dựng lại được timeline; re-export shift theo file đó với
+  `allow_source_fallback=False`; job cũ chưa có timeline thì `restyle_ass()` chỉ viết lại Style
+  trên chính `.ass` runner đã sinh (giữ nguyên timing), không có bản khớp thì trả 409.
+  **Hồ sơ tốc độ (2026-08-09):** lượt chạy đầy đủ video 9'16"/362 câu = ASR ~5ph + dịch ~16ph
+  + **TTS 39,3ph** + retime 12,3ph + mix <1ph + export 3–6,5ph. TTS chiếm hơn nửa. Đã tối ưu
+  2 chỗ: retime cắt từng câu bằng thread pool (trước đó >1000 tiến trình ffmpeg tuần tự), và
+  export qua **h264_nvenc** (`?gpu=`, checkbox trong editor, mặc định bật) — đo được 189s→75s
+  standalone, 389s→180s qua API thật. Thread-pool cho TTS VieNeu **không đáng** (đo 1,14× vì
+  model đã ăn hết CPU). Test lớp phủ 38 + retime 4 (suite: 2789 pass / 6 skip).
+  **Danh sách giọng reup đã mở (2026-08-09):** `GET /api/reup/voices` trước hardcode provider
+  `vieneu` (14 giọng) nên giọng CapCut không có đường chọn dù registry đã có; nay trả cả 9
+  engine / **277 giọng** theo `groups`, dropdown dùng `<optgroup>` và value là spec đầy đủ
+  `engine:voice_id`. **CẢNH BÁO nhập API key:** UI Hệ thống → Providers ghi vào bảng
+  `credentials` của vault, nhưng **không provider nào đọc bảng đó** — tất cả lấy từ `Settings`
+  (`env_file=implementation/.env`). Key thật phải để trong `.env`; nối vault vào Settings là
+  nợ chưa trả.
+  **Reup giao hàng vào layout chung (2026-08-09):** trước đây reup là producer duy nhất bỏ
+  video ở thư mục làm việc `output/reup/<aweme_id>/exports/` (tên file tiếng Trung, lẫn với
+  cache). `reup/publish.py` mới đặt `video.mp4` + `script.txt` + `subtitles.ass` + `meta.json`
+  vào `output/products/<kênh>/<ngày>_<slug>/` như mọi producer khác — **hard-link** để không
+  phá cache export, tra thư mục theo `source_aweme_id` để xuất lại không đẻ bản sao, job chưa
+  gắn kênh rơi vào `_chua_gan_kenh`. Gọi từ cả runner lẫn `POST /jobs/{id}/export`.
+  **Lồng tiếng song song** cho engine mạng (capcut/volcengine/edge, 4 luồng, env
+  `OMNICAST_REUP_TTS_WORKERS`; engine local giữ 1 luồng vì đo VieNeu chỉ 1,14×) — clip ghi vào
+  slot cố định, không append, vì pool trả kết quả theo thứ tự hoàn thành.
+  Suite: 2803 pass / 6 skip.
+
+  **Vòng 4 — KHO PHIM đa nền tảng (2026-08-09):** giải bài toán quản lý khi reup rải
+  nhiều kênh YouTube + TikTok + Facebook: video thuộc series nào, series thiếu tập nào
+  so với nguồn, tập nào đã đăng lên kênh nào. **Package `library/` MỚI** — 4 bảng
+  vault.db: `series`, `series_episodes` (UNIQUE(series,ep)), `platform_accounts`,
+  `episode_posts` (PK episode×account, khớp key `post_metrics` M1 để analytics nối vào).
+  Trạng thái SẢN XUẤT nằm trên tập (`planned→queued→processing→review→exported|failed`),
+  trạng thái PHÂN PHỐI nằm trên posts từng kênh — "dub rồi mà chưa đăng TikTok" thành
+  một câu SQL. `titles.py` parser số tập zh+vi (第N集/话/期 + số Hán 第十二集, Tập/EP/
+  Phần/P N, （N）, số trần cuối; chặn 1080/720/năm) + `base_title` ưu tiên 《…》;
+  `store.upsert_episode` merge fill-don't-blank để source-sync (chỉ biết aweme) và
+  backfill (chỉ biết file) đắp chung một dòng. **Backfill** (`backfill.py`): gộp
+  `reup_jobs` + `output/products/*/meta.json` (kind=reup) + workspace mồ côi (đọc
+  `download_manifest.jsonl`) theo aweme_id, gom nhóm (tác giả, base title) — nhóm
+  thiếu tác giả (meta sản phẩm không lưu author) fold vào nhóm trùng tên khi chỉ có
+  1 ứng viên; **scan chỉ đề xuất, commit mới ghi**, xung đột (ep trùng aweme khác /
+  aweme thuộc series khác / thiếu số tập) báo + bỏ qua chứ không đoán. Chạy thật trên
+  vault hiện có: 9 video → 《红魔猩猩》+《太子不睡》+ 7 job rác không title (mặc định
+  bỏ chọn trong UI). **Thiếu tập so với NGUỒN** (`source_sync.py`): series link hợp
+  tập Douyin — resolve short-link rồi **strip `modal_id` trước URLParser** (modal_id
+  ép type=video), `get_mix_detail`+`get_mix_aweme` cursor-paginate với guard
+  cursor-stall như MixDownloader; tập nguồn chưa có thành dòng `planned` mang sẵn
+  source_url; `missing_source = source_episode_count − ep_exported`. **Đối soát
+  YouTube** (`youtube_reconcile.py`): token OAuth chỉ có scope upload nên đi đường
+  API-key channels→uploads playlist→playlistItems (**có pageToken**, tới 2000 video),
+  match theo parse-tập + SequenceMatcher ≥0.6 với title/title_source, **chỉ tick khi
+  khớp cả series lẫn số tập** — mơ hồ trả về unmatched cho người, vì tick sai tệ hơn
+  bỏ sót. **Nối reup:** `POST /api/reup/run|/queue` nhận `series_id`(+`episode_no`);
+  series sai → 404 TRƯỚC khi register job; `_library_sync` chạy trong `finally` của
+  job/resume/re-export: link theo job_id → snap theo aweme_id (dòng planned tự nhận
+  job về đúng tập) → series-hint + parse tập từ title; xong stamp `series_id/episode_no`
+  vào meta.json sản phẩm. **API:** `api/library_routes.py` 20 route `/api/library/*`
+  (mount try-block riêng trong server.py). **UI:** `SeriesLibrary.tsx` route `/series`
+  "Kho phim" — bảng series (nguồn/dub/đăng YT·TT·FB/badge thiếu N tập), drawer lưới
+  tập × kênh tick tại chỗ (tick kèm link bài đăng), modal Quét nhập kho (sửa nhóm/số
+  tập/kênh rồi commit), modal Kênh đăng (+ nút Đối soát YT); form Reup thêm ô Series
+  + Số tập (tự +1 sau mỗi job). Build `webui_v2/assets/index-DF5lKhiY.js` (bundle cũ
+  `CKsiFUBW` còn nằm cạnh vì sandbox không xoá được file — vô hại, index.html đã trỏ
+  bundle mới). Test mới `tests/library/` 29 pass (parser/store/backfill — module cố ý
+  chỉ dùng stdlib nên chạy được cả 3.10). **CHƯA (chủ đích):** không tự đăng TikTok/FB
+  (chỉ ghi nhận trạng thái, đăng vẫn tay); reconcile không tự tạo tập thiếu (chỉ báo);
+  nguồn user-profile Douyin (mới hỗ trợ hợp tập/collection).
+
+  **Vòng 5 — INGEST BILIBILI nội địa (2026-08-09):** reup nhận link bilibili.com
+  (KHÔNG phải bilibili.tv quốc tế — refuse tường minh; bangumi bản quyền cũng refuse).
+  **`ingest/bilibili/` MỚI, thuần httpx** (đã là dependency, không vendor downloader):
+  khác Douyin, tường chống bot của bilibili chỉ là WBI — một công thức md5 cố định
+  (`wbi.py`; mixin key khớp vector chuẩn của tài liệu cộng đồng `ea1db124…`, test ghim
+  cả w_rid). `client.py`: parse BV/av/b23.tv/bare-id/`?p=N`; view API (không cần ký)
+  → playurl `/x/player/wbi/playurl` fnval=4048 ký WBI (fallback endpoint legacy khi ký
+  lỗi) → chọn stream: avc (codecid 7) trước hevc/av1 vì mọi consumer downstream đều
+  an toàn với avc, qn cao nhất ≤ cap 80, audio bandwidth cao nhất; video cũ chỉ có
+  `durl` thì tải progressive rồi remux; tải m4s retry qua `backup_url` + **Referer
+  bilibili.com bắt buộc** (CDN 403 nếu thiếu) → ffmpeg `-c copy` mux thành `<sid>.mp4`.
+  Anonymous bị bilibili cap ~480p — `SESSDATA` (cookies của request hoặc env
+  `BILIBILI_SESSDATA`) mở 1080p. `BilibiliAsset` trùng tên field với `DouyinAsset`
+  (`aweme_id` = `BV…` hoặc `BV…_pN` cho video nhiều phần) nên **từ stage probe trở đi
+  pipeline không biết platform tồn tại**; mp4 đã tải thì không tải lại (cache kiểu
+  manifest douyin). **Dispatch:** `ingest/detect.py` (stdlib-only, vault import được)
+  → runner rẽ nhánh ngay stage download; `vault_link.register_job` tự stamp
+  `source_platform` từ URL cho MỌI caller (API/CLI/resume — không caller nào quên được).
+  **Kho phim:** `source_sync.py` viết lại thành dispatcher — 2 lister (Douyin mix giữ
+  nguyên hành vi; Bilibili `fetch_series_entries`: video thuộc 合集 → episodes theo BV,
+  video nhiều phần → 分P thành `BV…_pN` **trùng đúng id mà fetch_video sinh** nên job
+  dub xong tự snap vào tập planned, space collection `space.bilibili.com/<mid>` + sid
+  → `seasons_archives_list` paginate) + MỘT vòng apply chung `_apply_entries`
+  (fill-don't-blank, conflict báo chứ không đoán). UI: form Reup + form series Kho phim
+  nhận link bilibili, ghi chú SESSDATA. Test +30 (`tests/ingest/test_bilibili.py`:
+  detect/parse/WBI/chọn stream/entries; `tests/library/test_source_entries.py`: apply
+  loop + dispatch bilibili + snap job theo BV) — tổng suite library+ingest 59 pass.
+  Bundle `webui_v2/assets/index-eOvAjDlt.js`. **CHƯA:** download thật chưa chạy được
+  từ sandbox (mạng chặn CDN) — cần 1 run live trên máy operator để xác nhận; bangumi
+  & bilibili.tv ngoài phạm vi (chủ đích).
+
+  **Vòng 5b — video lẻ + tạo series tại chỗ (2026-08-09, theo góp ý user):**
+  `series.kind` ('series'|'single', có ALTER migration cho DB đã tạo trước đó).
+  Bucket 'single' gom video MỘT tập: `ep_no` chỉ còn là thứ tự nội bộ —
+  `attach_job_to_episode(ep_no=None)` tự nhận slot kế tiếp cho bucket lẻ, còn
+  phim bộ thiếu số tập vẫn là lỗi cứng (tự append sẽ xếp tập 37 vào ô tập 5).
+  UI Kho phim: hàng video lẻ hiện TÊN video thay vì "Tập N", badge "video lẻ"
+  thay cột nguồn, ẩn nút quét-nguồn + cảnh báo thiếu tập. Form Reup: chọn bucket
+  lẻ thì ô số tập tự khoá ("tự xếp, khỏi đánh số") và job được gắn tập ngay lúc
+  xếp hàng (không chờ parse tiêu đề); dropdown series thêm 「➕ Tạo series mới…」
+  mở modal tạo tại chỗ (tên/loại/kênh chủ) rồi tự chọn luôn — khỏi chạy sang tab
+  Kho phim. Test 61 pass. Bundle `webui_v2/assets/index-CQURS7sb.js`.
+
+  Chi tiết: `WORKSTREAMS_ParallelUpgrade.md` §WS8.
+- **PATCH V2 ĐỢT 1 — TTS/PHỤ ĐỀ THẬT + NỐI SLOP/FLF VÀO FILM PATH (2026-08-08):** nguồn = `docs/research/V2_PATCHLIST.md` (tổng hợp 6 báo cáo Grok, đã spot-verify 38 mẫu, 0 bịa). **(1) `media/subtitle.py` VIẾT LẠI** — trước đây là stub trả 2 cue cứng `"Hello world"/"How are you"` cho MỌI input (fail âm thầm, SRT hợp lệ nhưng sai hoàn toàn). Nay là thang nguồn: `.words.json` sidecar của `tts_edge` (word-timing chính xác, miễn phí, không sai số/tên riêng như ASR) → WhisperX forced-align (nếu cài) → chia tỉ lệ theo âm tiết từ script (`timing_source="estimated"`) → **không có gì thì raise `MediaError`, cấm bịa cue**. `pack_captions()` thuần hàm: ngắt theo bề rộng dòng **15 ký tự CJK / 40 ký tự khác** (pyvideotrans `config.py:446-447`), theo dấu câu, theo khoảng lặng >0.7s, cap 150 ký tự/cue, gộp cue chớp <1s. **(2) `media/tts_normalize.py` MỚI** — normalize trước TTS (bỏ ngoặc/stage-direction/emoji, đọc thành lời `&`/`%`/`km`, gộp dấu câu lặp; **giữ láy tiếng Việt**, chỉ gộp khi lặp ≥3 lần) + `split_sentences` (terminator CJK/Urdu/Devanagari tách không cần khoảng trắng, latin `.` cần — bảo vệ "3.5") + `chunk_for_tts` (80/60/20 token kiểu CosyVoice) + **`estimate_duration` theo âm tiết** (en .225/zh .21/ja .21/ko .21 + pause dấu câu) thay `len(text.split())*0.4` — ước lượng cũ sai ~10× với CJK. Cơ chế học từ voice-pro (**GPL-3.0 → viết lại, KHÔNG copy code**) + VideoLingo. `TTSRequest` +`normalize`/`language`, `SubtitleRequest` +`text`/`words_path`/`max_line_chars`, `SubtitleResult` +`timing_source`; orchestrator truyền `script_text` xuống subtitle. **(3) NỐI DÂY FILM PATH (gap lớn nhất do audit phát hiện):** `slop.py` (anti-slop lexicon seedance, 287 dòng) và wording FLF trong `clips.py` **đã có sẵn từ lâu nhưng `film_runner.py` — pipeline DUY NHẤT render video & tiêu credit — không gọi cái nào**; chỉ `storyboard/pipeline.py` (dừng ở still, không ra video) gọi slop. Nay: `load_film_spec` lint **mọi prompt trong film.yaml trước khi tiêu 1 credit** (`_gate_prompt_slop`, blocking → `FilmError`), `gate_clips` bọc prompt qua **`flf_clip_prompt()`** (hằng `FLF_FRAME_ROLES`/`FLF_MOTION_ONLY`/`FLF_CONSTRAINTS` dùng chung với `build_clip_prompt`) — trước đó prompt clip chỉ là `f"{shot.prompt} {video_style_clause}"`, KHÔNG nói ảnh nào là first/last frame (lỗi FLF số 1 theo seedance guide). **(4) `slop.py` +2 lớp từ `filter-vocab.md`:** `IP_RISK` (celebrity/brand logo/franchise → **chặn cứng**, vì likeness sống sót qua render và thành takedown sau upload) và `FILTER_RISK` (blood/fight/knife… → **chỉ cảnh báo** kèm cách viết production, vì kênh horror cần các beat đó thật; cũng không tính vào ngưỡng mật độ). **(5) Edge-TTS retry + prosody plumbing:** `tts_edge.py` `_stream_with_retry` 3 lần/1.5s backoff (trước đây 1 blip mạng = "voice này hỏng" → router đổi SANG GIỌNG KHÁC giữa catalogue; nay retry cùng giọng trước, fallback chain để dành cho lỗi thật) + nhận `volume`; `voice_router._supported_prosody()` lọc knob theo `inspect.signature` từng provider (Edge nhận rate/pitch/volume dạng SSML, Kokoro nhận `speed` số — dict chung sẽ `TypeError`), `TTSRequest.prosody` mở đường cho per-channel delivery. **(6) `SlopClass.LAZY_MOTION`** (từ Cap Assistant I2V rule, `docs/research/V2_A2_CapVerbatim.md` §4): chặn prompt clip chỉ toàn từ vựng camera (<20% từ ngoài camera-vocab) hoặc dính lazy-phrase đích danh; **chỉ áp cho prompt clip** (`lint(..., motion=True)` từ `_gate_prompt_slop`), không áp still. KHÔNG copy nguyên công thức của Cap ("subject+interaction+physics+camera") vì mâu thuẫn nguyên tắc `clips.py` "chỉ nói cái ảnh không nói được" — giữ phần cả hai đồng ý: prompt phải nêu CÁI GÌ THAY ĐỔI. Test +86 (`test_tts_normalize.py` 26, `test_subtitle.py` 21, `test_film_prompt_contract.py` 13, `test_voice_prosody.py` 7, +12 risky-surface/lazy-motion, sửa 2 patch `_measure_duration`→`measure_duration`). Suite: **2675 pass / 6 skip** (1 fail `test_writer.py::…earned_subscribe_contract` là **lỗi CÓ SẴN** — chuỗi assert hỏng mã hoá, đã xác nhận vẫn fail khi stash hết thay đổi; đã tách task riêng).
+- **NỢ ĐÃ GHI NHẬN (chưa làm, có lý do):** trim-silence per segment (P1-3) **cố ý hoãn** — cắt đầu/cuối audio sẽ làm lệch `.words.json` (timing sinh từ audio CHƯA cắt) → phụ đề trôi; muốn làm phải dịch offset sidecar cùng lúc. Port "Master Film Director" + Unified Scene schema + Character/Style DNA từ `V2_A2_CapVerbatim.md` vào `agents/visual_director.py`/`media/prompt_builder.py` = đợt sau (tác giả Cap đã cho phép dùng nguyên văn). Prompt dịch của Cap REUP có khung né kiểm duyệt → **KHÔNG port**.
+- **STYLE-LOCK PIPELINE + FLF TỰ ĐỘNG QUA FLOW (2026-08-02, WS1 v5):** user reject demo v4 vì style frame đầu ≠ frame cuối → đo được 2 nguồn drift: endpoint stills lệch painterly (lineart-dist 0.042–0.226 vs anchor, ngưỡng good ≤0.022) và tail-carry tái nạp neural-softening (tail(F1) đã 0.22 vs head(F1) TRONG 1 clip). Fix theo repo (AIComicBuilder LAST_FRAME_STYLE_MATCHING; StoryGen fixed-anchor; Orkas verify-before-animate; ArcReel style string): (1) **`storyboard/style_lock.py` MỚI** — metric lineart contrast/luminance-normalized (grad/strong/col; sat_std report-only), `STILL_GATE=0.030`, `BOUNDARY_GATE=0.07`, `content_delta` NCC vs prev keyframe `MAX_KEYFRAME_NCC=0.985` (copy/dup=1.0000, pose-change thật 0.94–0.973 — bắt "beat không xảy ra" + stale-download), film-span report-only; 3 khối clause style cố định. (2) **`storyboard/film_runner.py` MỚI** — `film.yaml` spec → `gate_stills` (style+content, reroll bounded 3, refs=[anchor]+prev, prompt phân vai ref + MANDATORY CHANGES, file hỏng = fail-reroll không crash) → `build_plan` (edl.VideoPlan, billable đếm trước) → `gate_clips` FLF **still→still, CẤM tail-carry** + write-back plan.json từng clip → `gate_boundaries` (đo mọi mối + qa_report.json) → `assemble` (trim 2-frame FLF dedup, BGM dưới SFX, loudnorm + alimiter `level=disabled`, đo lại loudness fail-closed). (3) **`media/providers/flow_browser.py`** — FLF thật: `gen_video_flf` (slot Bắt đầu/Kết thúc qua `set_input_files`, duration, model), identity media qua **workflow API** (`projectContents.workflows`, media_id + `after_ts`) thay DOM src (URL ký lại mỗi load → từng tải ảnh CŨ 3 lần liên tiếp), `_fetch_image_bytes` getMediaUrlRedirect + **magic-bytes guard** (nhận `ftyp` = video → raise "composer sai mode, đã đốt credit"), `_set_image_mode` giờ SET MODE THẬT + verify chip không còn "Video · Ns" (composer nhớ mode server-side per project — từng gen 1 video 4s oan), `supports_last_frame=True` + `convert_flf`. `scripts/run_film_demo.py` chạy end-to-end. Test +19 (`test_style_lock.py` 8+1 real-data regression, `test_film_runner.py` 12). Live-run stills stage: gate bắt đúng K5/K6/K7 (0.042/0.211/0.226) và regen; 2 bug live (stale-download, ref-copy) bị content-gate + mắt bắt → đã vá như trên.
+- **FLF INTERPOLATION-CHAIN + SCOPE EXCLUSIONS + plan.json EDL + DEMO RUNNER (2026-08-02, WS1):** nền nghiên cứu: 13 repo `_refs` mổ bằng **Grok Build CLI** làm sub-agent (7 report + verify đối kháng + round-2 vá verbatim, ~830KB tại `docs/research/REFS_SB_*`; tổng hợp + kế hoạch: `docs/research/WS1_Storyboard_Blueprint.md` — gồm thiết kế dual-aspect Shorts 9:16 native → long 16:9 scene-plate). Code: (1) **`storyboard/clips.py`** — `ClipPlan.end_frame` + `plan_shot_chain(end_anchor=)`: clip CUỐI của mỗi chain sinh **first→last interpolation về đúng ảnh LAST chuẩn** (drift tích luỹ trong chain bị kéo về khung đã duyệt trước điểm cắt — pattern StoryGen/Jellyfish); `_scope_clauses()` đưa `beats_completed/beats_reserved` vào prompt ("Do not replay / Do not yet show" — 2 field này trước đây CHỈ gate đọc, model chưa từng thấy); provider thiếu `supports_last_frame` → hạ về i2v **có ghi chú, prompt được dựng lại** (không hứa "second image" mà không đính). (2) **`media/providers/video_gemini.py`** — `convert(last_image_path=)`, `supports_last_frame` gate theo SDK thật (`GenerateVideosConfig.model_fields` — SDK này có cả `last_frame` lẫn `reference_images`); default model nhảy `veo-3.1-generate-preview` khi có last frame (3.0 không nhận); thiếu SDK → raise sớm thay vì âm thầm bỏ end-frame. `interfaces.py` cập nhật contract. (3) **`storyboard/frames.py`** — `plan_frame_types` sửa đúng docstring của chính nó: camera STATIC nhưng CÓ `action_beats` (chủ thể động) → FIRST+LAST chứ không phải 1 ảnh KEY (trước đây shot khóa máy có hành động không có khung LAST để chain land về); `vertical_safe` (cfg `storyboard.vertical_safe`) chèn tất định dòng Staging giữ chủ thể giữa khung, tránh 1/5 trên-dưới (UI YouTube + caption, sống sót crop 3:4/1:1). (4) **`pipeline/edl.py` MỚI** — plan.json IR (re-implement Orkas MIT): segments generate|edit|compose|provided + `produced_path` write-back (resume = `pending()`), tracks narration/captions là DATA, `validate_plan` (spec theo source, overlay phải `over` primary, **double-voice**, `billable_generations` phải khớp số generate — gate C), `assess_delivery` motion_ratio vs floor promise (motion_led 0.7 — slideshow fail bằng SỐ), cảnh báo 3 segment giống liền nhau. (5) **`scripts/demo_anim_short.py`** — demo hoạt hình Short 9:16 board VIẾT TAY (0 LLM, 0 quota Claude): Miko cáo giấy × xưởng đèn lồng, 3 entity / 4 shot / 8 frame / 5 clip; **dry-run mặc định** in đủ prompt + billable trước khi tiêu; `--go` sinh thật (refsheet→frames 9:16→chain Veo FLF→plan.json). Dry-run verify: 4/4 shot đều land FLF (s3 chain 2 clip: i2v→FLF đóng), exclusions nổ đúng cảnh. Test: **+31 mới** (`test_storyboard_clips.py` 16, `test_pipeline_edl.py` 15); suite unit **2504 pass / 6 skip / 2 fail CÓ TRƯỚC thuộc WS0** (`test_writer` + `test_rejection_explains_itself` — assert nội dung prompt `agents/writer.py` mà nhánh này không sở hữu, sẽ xanh khi rebase main). **CHƯA:** chạy `--go` trả tiền (chờ user duyệt bill); nối storyboard vào `render_real_video.py` (WS4 monolith); long-composer scene-plate 16:9; đo drift tầng pixel. — image→video thật, credit gói (2026-08-01):** `output/_storyboard/demo_flow.mp4` — **24s, 1920×1080, 4 clip image→video**, mỗi clip sinh từ chính khung hình storyboard (đã ràng reference) làm **frame đầu**; 100% chuyển động, KHÔNG khung đóng băng nào; thuyết minh + Flow audio + nhạc nền. **Không dùng API trả tiền.** **Cơ chế thật, quan sát trực tiếp trong Chrome của operator qua Claude extension (user chỉ đạo: đừng tự chế, bám repo):** ở chế độ video thanh prompt mọc **hai SLOT — "Bắt đầu" (first frame) và "Kết thúc" (last frame)** — đúng cặp `first_frame`/`last_frame` mà Jellyfish gửi và `VIDEO_MODEL_CAPABILITY_START_AND_END_IMAGE` mô tả. Quy trình đúng: `set_input_files` vào `input[type=file]` ẩn để upload (miễn phí) → **CLICK SLOT "Bắt đầu"** (mở picker **gắn riêng slot đó**) → click asset (`role="option"` trong dialog) → **"Thêm vào câu lệnh"** → thumbnail thay nhãn slot. **Hai cái bẫy đã dính, đều âm thầm tụt về text→video** (trả về diễn viên khác, phòng khác): nút **"+" chung** của thanh prompt mở picker KHÔNG gắn slot nào; và badge "+" trên ô thư viện cũng vậy. **UI khác nhau theo profile:** profile Playwright cùng tài khoản render thanh prompt CŨ (chỉ có "+", không có slot) trong khi Chrome thật có bản mới — nên automation phải **phát hiện slot và từ chối sinh khi không thấy**, thay vì đốt credit vào clip không điều kiện. Giá: **12 tín dụng / clip 8s** (6s rẻ hơn). **Sai lầm đã sửa của chính tôi:** lượt trước sinh **text→video**, vứt bỏ toàn bộ chuỗi 22 ảnh reference — đúng thứ "script to video" mà các repo tham chiếu tránh; user bắt đúng lỗi này. Toàn bộ đường UI + hợp đồng API ghi trong `media/providers/flow_api.py`.
+- **VIDEO DEMO CÓ VEO THẬT + 3 BUG CHẶN ĐƯỜNG (2026-08-01):** `output/_storyboard/sb_289516e2bff9/demo_veo.mp4` — **2'41, 1920×1080, 9 cảnh**, trong đó **cảnh 0/6/8 là video Veo sinh thật** từ chính khung hình đã ràng reference (`veo-3.1-fast-generate-preview`, 6s/clip), 6 cảnh còn lại là khung tĩnh có chuyển động máy; kèm thuyết minh edge-TTS + nhạc nền CC-BY. **Veo GIỮ ĐƯỢC NHÂN VẬT**: clip cảnh 0 vẫn đúng Minh (mặt, áo sơ mi xanh nhạt), đúng hẻm đêm, ô cửa bếp sáng phía sau — tức chuỗi reference sống sót qua cả bước ảnh→video. **3 bug chặn, đều chỉ live run mới lộ:** (1) `video_gemini.py` dựng `types.Image(data=…)` nhưng model của google-genai **cấm field lạ** → chết validation TRƯỚC khi gửi request; đúng field là `image_bytes`. Nghĩa là **đường image→video của repo chưa từng chạy lần nào**. (2) Poll dùng `client.operations.get_videos_operation(...)` đã bị SDK gỡ (gộp về `operations.get`) → `AttributeError` ngay lần poll đầu, tức là **sau khi generation đã submit và đã tính tiền**. (3) `veo-3.0-generate-001` không tồn tại trên key này — hỏi `models.list()` thì chỉ có `veo-3.1-{generate,fast-generate,lite-generate}-preview`. **Cutter mở rộng:** `animatic.py` nhận `clips={shot_id: mp4}` — cảnh nào có clip thì dùng clip, hết clip thì **giữ frame cuối** cho đủ độ dài thoại (loop sẽ lộ ngay khi khán giả thấy lặp động tác), clip lỗi thì tự lùi về ảnh tĩnh kèm note. **Bug thuyết minh bị cắt (đã vá):** bản `demo_film.mp4` đầu tiên clamp mỗi cảnh ≤20s nên **cắt cụt 3 câu, mất ~24 giây thoại giữa chừng**; trần 20s nay chỉ là NGƯỠNG BÁO ("cảnh này ôm nhiều hơn một beat, nên tách"), không bao giờ cắt lời. **Đường Flow (credit gói) — chặn ở reCAPTCHA:** bắt được body thật của `POST /v1/projects/{id}/flowMedia:batchGenerateImages` và thấy `clientContext.recaptchaContext.token` (reCAPTCHA Enterprise) đi kèm MỌI request sinh media. Python không mint được token đó; chỉ page mint được — chính là lý do bridge của tobyflow đòi "phải có tab Flow đang mở". Thiết kế chạy-trong-page của `flow_api.py` vẫn đúng hướng, chỉ cần thêm bước gọi `grecaptcha.enterprise.execute`. Cũng xác nhận UI Flow **đã đổi**: không còn `button[role=tab][id$=-trigger-VIDEO]` nên `flow_browser._set_video_mode` hỏng — bug đang tồn tại của đường Flow, chưa vá.
+- **`media/providers/flow_api.py` — BRIDGE tới backend thật của Flow (2026-08-01, tự dựng):** mục tiêu là chạy video bằng **credit gói Google AI (1050, đã đọc số dư thật)** thay vì API pay-as-you-go — hai đồng hồ tính tiền HOÀN TOÀN TÁCH RỜI mà trước đó tôi nhầm là một. **Đã dò ra và VERIFY LIVE:** (1) **auth** — `GET https://labs.google/fx/api/auth/session` (cookie phiên) trả `access_token` 416 ký tự, chính là bearer cho `https://aisandbox-pa.googleapis.com`; (2) **REST 200 thật**: `/v1/flow/appConfig`, `/v1/flow/models/statuses`, `/v1/flow/userSettings`; (3) **model key sống**: `veo_3_1_quality`, `veo_3_1_fast`, `veo_3_1_lite`, `abra`. **Quyết định thiết kế: mọi request phát TỪ TRONG PAGE** (`page.evaluate` + `fetch`) chứ không từ Python — page đã mang sẵn origin/cookie/header đúng nên không có khâu bơm token nào để làm sai, và **token không bao giờ rời trình duyệt** (token lọt vào log hay traceback là rò credential; cách rẻ nhất để chắc chắn không xảy ra là không bao giờ giữ nó). **Nguồn tri thức:** `_refs/tobyflow` (sản phẩm của user, user cho phép dùng) cho biết **từ vựng cần tìm** — `FlowApiAdapter._computeVideoGenType` liệt kê 5 genType, trong đó `start_end_frame_2_video`/endpoint `video_start_end` chính là FLF; nhưng endpoint thật KHÔNG nằm trong tobyflow (nó chỉ là mặt trước, đẩy lệnh qua `chrome.runtime.sendMessage` sang extension bridge riêng `heieobedadlfdkppgagnhfakcdapbfka`, không có trong `_refs/` và không cài trên máy). Nên endpoint được dò từ **chính bundle client của Flow**: quét toàn bộ `<script src>` bằng Playwright, tìm ra host `aisandbox-pa.googleapis.com` + bảng thủ tục `generateImage / generateVideo / generateVideoFirstFrame / generateVideoWithReferences / **generateVideoWithInterpolation** / generateVideoEditVideo / extendVideo / uploadMedia`. **`generateVideoWithInterpolation` = first+last frame → video**, đúng thứ storyboard cần để cắt cảnh liền mạch. Cũng đọc được schema `uploadMedia`: `{mediaCategory, mimeType, rawBytes(base64), storeUserMediaEnabled}` → `{uploadMediaGenerationId}`. **CHƯA CALIBRATE:** body chính xác của các call upload/generate. `is_calibrated()` trả **False** và `upload_image()`/`generate_video()` **raise có thông điệp** thay vì đoán bừa — body sai đánh vào endpoint sinh video thì hoặc 400, hoặc tệ hơn là thành công và tiêu credit vào thứ không ai yêu cầu. Đường ngõ cụt đã loại trừ: `/api/trpc/media.*` KHÔNG phải bề mặt thật (batch tắt; không batch thì 404 "No mutation-procedure") — các tên đó là biến schema trong bundle. **Bước còn lại:** 1 lần capture network trong lúc sinh thật để ghim payload; trở ngại hiện tại là selector tab VIDEO của `flow_browser._set_video_mode` bị chặn click (Flow đổi UI), cần vá trước.
+- **`storyboard/animatic.py` — storyboard thành PHIM (2026-08-01):** 9 khung tĩnh của board `sb_289516e2bff9` → **`animatic.mp4` 1920×1080@30, 36s, 1080 frame, h264 2.9 Mbps**. Chuyển động KHÔNG do gu thẩm mỹ mà **suy từ chính `Shot.movement`** đã khoá trong record (DOLLY_IN/ZOOM_IN đẩy vào 1.0→1.18, DOLLY_OUT ngược lại, PAN/TILT/TRACK/CRANE trượt theo trục, STATIC vẫn trôi 3% vì khung đứng yên tuyệt đối đọc thành slideshow); nếu animatic chạy khác record thì thứ đạo diễn duyệt không phải thứ pipeline video sẽ được bảo làm. Transition đọc từ `Shot.transition` map sang `xfade` (`fade`/`dissolve`/`wiperight`), token lạ → cắt thẳng (transition tự bịa là thay đổi không ai yêu cầu); toàn cut thì dùng concat demuxer `-c copy` thay vì re-encode 9 clip để lấy 0 dissolve. Upscale 2× trước `zoompan` vì zoompan bước zoom theo pixel nguồn nguyên, tỉ lệ 1:1 sẽ giật vài frame một. Thời lượng lấy `Shot.duration_s` clamp 2–8s. Best-effort: thiếu ffmpeg / thiếu khung → phim ngắn hơn + note, không crash. **ĐÂY LÀ ANIMATIC, KHÔNG PHẢI VIDEO SINH RA** — không khung nào chứa chuyển động mà ảnh chưa có sẵn; đường Veo image→video (`GeminiVideoProvider.convert`, `media/veo_pipeline.py`) đã tồn tại nhưng CHƯA nối vào storyboard và chưa chạy thật lần nào.
+- **BUG NGHIÊM TRỌNG: `build_frames` xoá sạch ảnh đã trả tiền (2026-08-01, phát hiện khi dựng animatic):** `build_all_frames` tạo `Frame` MỚI với `image_path=""`, nên **mỗi lần dựng lại prompt là mất toàn bộ ảnh đã render** và lần render sau mua lại từ đầu. Triệu chứng cực kín: board vẫn `approved`, số frame vẫn đúng, chỉ có `image_path` rỗng trong DB — chính tôi đã trả tiền 2 lần cho 9 khung mà không nhận ra cho tới khi animatic báo "no rendered frame" 9 lần. Vá bằng `_carry_render`: `rendered_prompt` KHÔNG đổi → giữ nguyên `image_path`/`approved`/`attempts`; prompt ĐÃ đổi → bỏ ảnh (giữ lại sẽ để một bức hình không còn khớp chữ bên dưới nó) **kèm note nói rõ phải render lại**, vì đó là chi phí thật chứ không phải chuyện im lặng. Verify: prompt không đổi giữ 9/9 + `attempts` nguyên; prompt đổi bỏ 9/9 kèm note. Thêm `relink` thủ công cho board demo để không mua lại lần thứ ba.
+- **LIVE RUN TRẢ TIỀN #1 — storyboard end-to-end qua Gemini thật (2026-08-01, board `sb_289516e2bff9`):** kịch bản drama ~700 từ → **10 entity / 9 shot / 22 ảnh reference sheet / 9 khung hình**, board kết thúc `approved` 0 hard 1 warn. ~41 ảnh Gemini 2.5 Flash Image (gồm 9 khung render lại sau khi vá) ≈ **$1.6** + LLM ≈ $0.05. **ĐÂY LÀ BẰNG CHỨNG CHẤT LƯỢNG ĐẦU TIÊN** — mọi verify trước đó dùng provider stub. **Kết quả ĐO ĐƯỢC:** (a) **nhất quán nhân vật GIỮ ĐƯỢC** qua các lần sinh độc lập — Minh ở cảnh 0 (trong xe, đêm) và cảnh 5 (bàn bếp) cùng cấu trúc mặt, cùng râu, cùng áo sơ mi xanh nhạt xắn tay; (b) **nhất quán BỐI CẢNH cũng giữ được** — cảnh 3 và cảnh 5 nhận ra rõ là cùng căn bếp (tường gạch men viền hoa, cửa sổ trên bồn rửa, cửa gỗ có ô kính trên, móc đồng bên phải); (c) reference sheet đa góc khớp nhau nhờ anchor-conditioning (view 2/3 sinh có đính view 1). **5 LỖI THẬT chỉ live run mới lộ, đã vá hết:** (1) **phong bì JSON** — model trả `entities` là **dict keyed theo tên**, dùng `shot_number` rồi **bỏ hẳn `index`**, gộp cast vào một list `subjects`, mô tả nhân vật nằm rải trong trait rời (`approx_age`/`build`/`hair`/`face`) chứ không phải `description`, và viết `screen_direction` bằng văn xuôi ("Minh faces right"). Vá bằng `model_validator(mode="before")` trong `schemas.py`: nhận dict→list, alias index (fallback **vị trí mảng**, không phải 0 — bản đầu cho cả 9 shot index 0), gộp bucket theo kind, dựng `description` từ trait, và `_direction_token()` map văn xuôi→enum. Nguyên tắc: **dễ dãi ở phong bì, nghiêm khắc ở mọi thứ sau đó** — từ chối một extraction đúng nội dung chỉ vì sai vỏ là đốt tiền vô ích. (2) **`subjects` không được route** → toàn bộ nhân vật nằm ngoài mọi shot → **0 nhân vật nào có reference sheet**, hỏng đúng mục đích của cả package; nay `reconcile_draft` tra từng tên qua registry để định kind, location vào `location_id` chứ không chiếm slot cast. (3) **tên entity ≠ chữ người viết dùng** — extractor đặt "The ledger"/"The shophouse kitchen", writer viết "the open ledger"/"the kitchen table" nên token không ràng được; thêm `_add_bare_noun_aliases` (bỏ mạo từ đầu, **từ chối khi va chạm** — ràng nhầm tệ hơn không ràng). (4) **NEO LIÊN TỤC CHƯA BAO GIỜ TỚI MODEL** — `light_key`/`time_of_day`/`screen_direction` được trích, lưu, đối chiếu chéo… và **không đi vào prompt**; cảnh 5 khai `NIGHT/LOW_KEY` nhưng ra ảnh **ban ngày, lá xanh ngoài cửa sổ**. Gate cũng không thấy vì nó so cảnh với NHAU mà mọi cảnh đều ghi NIGHT. Thêm `continuity_line()` nối tất định như `camera_line`; render lại → cảnh 5 tối đúng plan. **Bài học: field mà renderer không đọc chỉ là field ghi lại ý định.** (5) **beat matcher quá lỏng → 7 hard toàn FALSE POSITIVE** — "Minh enters the shophouse" khớp một cảnh Minh ngồi trong xe, vì prompt đó tự nhiên có "Minh" và "shophouse" (2/3 content word). Mọi cảnh trong một scene đều dùng chung cast + bối cảnh, nên **danh từ người tham gia không định danh beat — hành động mới định danh**; nay trừ hết từ thuộc tên cast trước khi khớp, đổi recall lấy precision có chủ ý (bỏ sót = một note không ai đọc; chặn nhầm = dừng cả run vì lỗi không có thật). Sau vá: **0 hard**. **Còn lại thấy rõ trên ảnh, CHƯA vá:** mặt Minh trôi nhẹ ở cảnh 2-shot rộng (4 reference cạnh tranh, mặt nhỏ trong khung); một nhân vật phụ ở cảnh 3 ra sai người; cửa sổ vẫn đọc như ban ngày dù prompt ghi NIGHT (chỉ đỡ hơn, chưa hết); `screen_direction` toàn `unset` nên luật 180° không chạy được lần này. Suite unit: **2489 pass / 6 skip** (2 fail còn lại là WS0 writer, có trước).
+- **Vòng 2 storyboard — ANTI-SLOP + NEO LIÊN TỤC + SCOPE FIREWALL (2026-08-01, WS1):** user chất vấn "đã lấy hết tinh tuý chưa" — **câu trả lời là CHƯA**, và soát lại tìm ra 3 nhóm thiếu, đều nằm trong `_refs/seedance-2.0/references/` mà vòng 1 mới đọc 2/56 file. Đã vá: (1) **`slop.py` — linter tất định chống AI slop** theo `anti-slop-lexicon.md`: 6 lớp (empty evaluator / borrowed image-model token / tag salad / negation / adjective stacking / feel-suffix) + **bảng thay thế** (mỗi mục biến một lời khen thành thứ máy quay hoặc đồng hồ bấm giây đo được) + **chi phí theo VỊ TRÍ** — slop ở mệnh đề mở đầu đắt hơn hẳn vì attention là ngân sách, nên `blocking_findings` chặn cứng mọi hit trong mệnh đề đầu, còn 1 từ đệm ở đuôi thì chỉ cảnh báo. `opening_span()` cắt theo MỆNH ĐỀ (dấu `.,;:`, sàn 40 / trần 120 ký tự) chứ không đếm ký tự thô — bản đầu đếm thô nên gọi từ ở cuối câu ngắn là "mở đầu" (test `test_the_opening_is_a_clause_not_a_character_count` ghim). Negation + tag salad chặn **bất kể vị trí**: "no blur" gieo blur từ chỗ nào cũng gieo, còn keyword dump thì không có động từ lẫn trục thời gian để model dựng. Tag salad bắt theo HÌNH DẠNG (tỉ lệ mảnh ngắn phân tách bởi dấu phẩy + gần như không động từ), không theo danh sách từ. **Linter bắt ngay chính code vòng 1**: `image_style_prompt` của `quiet_hours_drama_us` mở đầu bằng "cinematic", và `_SHEET_RULES` trong `refsheet.py` viết "No text, no watermark, no border, no collage" — đúng negation slop; cả hai đã viết lại theo hướng khẳng định (thứ cần loại bỏ thuộc về trường negative của provider, là cơ chế khác). Lint chạy ở **thời điểm gate** (đọc `base_prompt`) nên prompt sửa tay trong UI cũng bị soát lại; prompt của FramePromptAgent cũng được dạy 4 luật này. (2) **Neo liên tục còn thiếu** — 3 dòng đầu bảng `failure-atlas.md` trước đây **không có field nào để kiểm**: `Shot` thêm `screen_direction` (enum + `OPPOSITE_DIRECTIONS`), `eyeline`, `light_key`, `time_of_day`, `motion_vector`, `sound_state`. Gate mới: **luật 180°** — hai cảnh liên tiếp CÙNG bối cảnh mà hướng di chuyển ngang đảo ngược, không khai báo axis reset → HARD (người xem đọc thành nhân vật quay đầu; toward/away KHÔNG tính vì cùng trục); **ánh sáng/thời điểm đổi trong cùng một nơi** không khai báo → HARD; **motion vector bị rơi** → WARN. Cảnh không khai hướng thì báo GỘP 1 lần cấp bảng, không spam từng cảnh. (3) **Scope firewall theo `event-density.md`** — `beats_completed`/`beats_reserved`: diễn lại beat đã xong = "Action restarts", diễn sớm beat để dành = "Future event appears early", cả hai → HARD. So khớp bằng **độ chồng lấp CONTENT WORD ≥2/3** chứ không phải substring (đạo diễn viết "she turns the ledger around", prompt viết "Lan turns the open ledger to face him"); beat dưới 3 content word bị coi là quá mơ hồ để phán, không đoán bừa. **DB migration:** `_SHOT_MIGRATIONS` + `ALTER TABLE` idempotent trong `init_storyboard_db` — `CREATE TABLE IF NOT EXISTS` là no-op trên bảng đã có, nên DB tạo trước đợt này sẽ vỡ ở SELECT đầu tiên gọi tên cột mới; **đã verify board `sb_4107b7c51c15` có sẵn trong vault sống vẫn load được** sau migration. Test: +27 (`test_storyboard_slop.py`); suite unit **2488 pass / 6 skip** (3 fail còn lại vẫn là WS0 writer, có trước). **VẪN CHƯA lấy** (đã liệt kê cho user, chưa build): FLF interpolation-chain kiểu StoryGen-Atelier (ảnh cảnh A = first frame, ảnh cảnh B = last frame của clip nối — cần đụng render pipeline); 5 field guidance của Jellyfish (`composition_anchor`, `subject_priority`, `frame_specific_guidance`, `director_command_summary`, `action_beat_phases`) + cơ chế chấm điểm ưu tiên guidance; multishot grammar (`Shot N:` trong MỘT generation, ngân sách 4-6s/shot); quy tắc "source-carries-state" của `prompt-compiler.md` (đừng mô tả lại bằng chữ thứ ảnh đính kèm đã cho thấy — `compose_rendered_prompt` hiện vẫn lặp lại tên); `retake-protocol.md` / `directing-engine.md` / `2d-anime-grammar.md` chưa đọc sâu; và **đo drift ở tầng PIXEL vẫn chưa có** (gate hiện chỉ đọc bố trí, không nhìn ảnh).
+- **`omnicast/storyboard/` — CAST REGISTRY + REFERENCE BINDING + CONTINUITY GATE (2026-08-01, WS1):** khoảng trống lớn nhất của WS1 (nhân vật đổi mặt từng frame) nay có cơ chế thật, port từ 2 repo starred: **Forget-C/Jellyfish** (Apache-2.0) và **Emily2040/seedance-2.0** (MIT). ⚠️ `waooAI/waoowaoo` là **CC BY-NC-SA (phi thương mại) — KHÔNG copy code**, chỉ đọc ý tưởng; ArcReel + short-video-factory là AGPL, cũng chỉ khái niệm. **Trước đó repo có gì:** `media/character_anchor.py` (≤3 anchor **cấp kênh**, gắn y hệt cho MỌI cảnh → 1 kênh = 1 nhân vật, người thứ 2 trôi mặt theo thiết kế), `animation/bible.py` (bible + `check_continuity` nhưng đọc từ config, chưa nối vào đường sinh ảnh), `visual_director.enrich()` (image_prompt free-text/cảnh), `veo_pipeline` (carry-forward tail-frame mù). **Cơ chế mới, 3 tầng:** (1) **Cast registry theo video** — `models.py` tách `character`/`location`/`prop`/`costume` thành entity riêng, mỗi cái có reference sheet đa góc riêng (không còn dùng chung 1 bộ anchor); `entity_id` = hash nội dung `(board, kind, tên đã fold)` nên **chạy lại cùng kịch bản thì ảnh operator đã duyệt vẫn khớp**, không bị uuid mới làm mồ côi. (2) **Token binding `binding.py`** — kỹ thuật lõi của Jellyfish: prompt viết bằng TÊN thực thể rồi thay bằng token ảnh + kèm bảng `## REFERENCE IMAGES` ánh xạ `[IMAGE n] = tên (kind)`, **cộng thêm mệnh đề role-separation của seedance** (`controls identity ONLY; ignore background, lighting… from that reference`) — không có mệnh đề này thì ảnh chân dung tặng luôn nền + ánh sáng của nó. Thay tên bằng **MỘT lượt `re.sub` trên một alternation, longest-first, quét TOÀN BỘ cast kể cả entity chưa map** (bản đầu chỉ sort trên entity đã map → `"Minh looks at Minh Anh"` ra `"[IMAGE 1] looks at [IMAGE 1] Anh"`, đẻ nhân vật ma và làm chính check unbound-name mù luôn; test `test_an_unmapped_longer_name_is_left_intact` ghim lỗi này). `binding_issues()` bắt 3 kiểu hỏng im lặng: token trỏ vào hư không / ảnh đính kèm không câu nào nhắc tới / tên cast chưa ràng ảnh. (3) **Cổng liên tục `continuity.py`** — theo Continuity QC của seedance, chia HARD (identity/wardrobe/location/prop-ownership/lineage) vs WARN-trừ-khi-khai-báo (pose/ánh sáng/hướng nhìn); **identity là cửa ĐÓNG, không declaration nào mở được** (`_DECLARATION_WORDS` cố ý không có khoá `identity`), còn wardrobe/location thì `Shot.declared_changes` xoá được cảnh báo. Trả **issue có tên + evidence**, không trả điểm số (theo tiền lệ `animation/bible.py`). **Provider:** `media/providers/image_gemini.py` mở rộng nhận `reference_images`/`reference_labels` **có thứ tự**, gửi xen kẽ `"[IMAGE 1]:", <bytes>, "[IMAGE 2]:", <bytes>, …, prompt` để nhãn nằm sát ngay ảnh nó gọi tên; **thiếu file = lỗi cứng, KHÔNG bỏ qua** (bỏ phần tử 2 sẽ đẩy phần tử 3 vào chỗ đó và re-point âm thầm mọi token phía sau); `supports_reference_images`/`max_reference_images` khai báo tường minh, `getattr(..., False)` cho provider cũ. **LLM đề xuất, code tất định quyết:** `extract.py` `reconcile_draft` ép mọi tên shot tham chiếu phải CÓ trong registry (thiếu thì tự tạo + ghi note), fold trùng chính tả, coerce enum camera, đóng lỗ index; `merge.py` chỉ áp merge khi cùng kind + confidence ≥0.75 + **evidence quote có thật trong kịch bản** (cùng thủ pháp các gate narrative), mọi từ chối thành `conflict` **chặn cửa duyệt cast** thay vì im lặng — vì merge sai là XOÁ một nhân vật, còn merge sót chỉ tốn 1 sheet thừa. **Rào duyệt người (user chốt):** `pipeline.py` dừng ở `cast_pending` và KHÔNG sinh frame nào cho tới khi người duyệt cast + ref sheet — 1 ảnh tham chiếu sai là sai ở MỌI khung hình gắn nó. Resume theo `script_hash`. **Lưu trữ:** `store.py` → bảng `sb_boards/sb_entities/sb_entity_images/sb_shots/sb_shot_entities/sb_frames` trong `vault.db` (đúng STORAGE RULE, không JSON mới), ghi nguyên-bảng trong 1 transaction. ⚠️ **Ghi chú đường dẫn:** store dùng `parents[3]` = `implementation/output/vault.db` (khớp `storage/products.py`, `agents/writer.py`, `agents/critic.py`) — **`vault/db.py` `_DEFAULT_PATH` dùng `parents[4]` trỏ vào file cũ ở root repo**; sai lệch này có TRƯỚC, chưa sửa vì mọi caller hiện tại đều truyền path tường minh và đổi default sẽ chuyển hướng ngầm tất cả. **API + UI:** `api/storyboard_routes.py` (13 route: tạo/duyệt ảnh/upload base64/vẽ lại/xử lý conflict/duyệt cast/dựng frame/render/sửa prompt+ràng lại token/cổng liên tục) mount trong **try riêng** — lần đầu để chung block với render routes, một import thiếu (`python-multipart`) đã kéo sập luôn render routes chỉ với 1 dòng print; upload nay nhận base64 nên **không thêm dependency nào**. Trang `frontend_v2/src/pages/Storyboard.tsx` (route `/storyboard`) hiện bảng ràng buộc token→ảnh của từng frame — thứ cần đọc ĐẦU TIÊN khi mặt ra sai. **Kênh mới `quiet_hours_drama_us`** (drama nhân vật, `storyboard.enabled=true`, provider gemini); 4 kênh cũ **không đổi hành vi** (`storyboard.enabled` mặc định false; `senior_wealth_us` giữ `ban_generated_images`). **Kiểm chứng:** 60 test mới (`test_storyboard_binding` 14 / `test_storyboard_continuity` 17 / `test_storyboard_registry` 21 / `test_image_gemini_references` 8) + `tests/media/` 61 pass (Gemini tương thích ngược) + **verify UI thật trên backend đang chạy**: board demo 4 entity/4 shot/6 frame, 22/22 ảnh load qua `/sbmedia`, frame hiện đúng `[IMAGE 1] Minh · nhận dạng`/`[IMAGE 2] the kitchen · bối cảnh`, cổng liên tục 0 hard 0 warn. Suite unit: **2461 pass / 6 skip**; 3 fail còn lại (`test_writer`, `test_spoken_presence_rubric`, `test_rejection_explains_itself`) là **CÓ TRƯỚC, thuộc WS0** (writer.py đang có 841 dòng sửa dở chưa commit) — đã xác minh bằng cách gỡ tạm channel mới, 3 fail vẫn nguyên. **CHƯA làm:** chưa có run trả tiền thật nào qua Gemini (mọi verify dùng provider stub) → **chưa có bằng chứng chất lượng ảnh/độ đồng nhất mặt thật**; chưa nối storyboard vào `render_real_video.py`/`veo_pipeline` (frame first/last đã sinh đúng định dạng để nối nhưng đường ống chưa cắm); Flow chưa hỗ trợ per-scene ordered refs (ingredients là 1 bộ toàn cục) nên chỉ dùng được đường degradation có báo cáo.
+- **`escalation_ladder` + auditor recalibration — 2026-08-22 (kênh creepy làm lại từ đầu, lập trường user: "nhớ như in", không nhận thật/không nhận bịa):** 17 vòng 0 sản phẩm; gốc rễ đọc bằng mắt: mọi plan là MỘT CẢNH (schema chỉ có setup→threat→escape→ending) + planner rập khuôn chính nó ("hắn biết X trước khi tôi nói" để thoả `distinguishing_turn`). Đo 12 truyện triệu view: trung vị 21 lần leo thang, 5%→>50%. Thêm `NarrativeStoryPlan.escalation_ladder` (4–7 bậc) vào schema/planner/writer(theo thứ tự)/preflight(<4 bậc bác) — kết quả vòng 6–10: **trope 53%→0**. Ba lỗ hổng auditor vá: ladder vào `plan_story_text` (không thì trích bậc → evidence_quote fail → mất attempt), ladder là LOCKED FIELD trong hợp đồng freshness, `channel_promise` lên đầu planner/writer (trước chỉ critic). Preflight friction gỡ: cold_open >28 từ cắt thay vì bác; N=1 ép `evidence_allowance=none`; prompt nêu ngân sách evidence theo N. **`_repair_plan` chết với N=1** ("mọi truyện bị phản đối" luôn đúng) → repair chưa từng chạy ở chế độ truyện đơn; sửa: luật chỉ áp khi ≥2 truyện. Contract `human_behavior` sửa 3 lần, mỗi lần kiểm corpus trước: (a) "delay by keeping SIGNAL ambiguous" thay "do dự"; (b) judge WHETHER they act, không phải tối ưu (125/147 đối thủ có hành động tự trách); (c) ở lại sau tín hiệu phủ-nhận-được là thể loại (top-20 trung vị 5 lần tự trấn an, rời đi trung vị 32%, 59/147 không bao giờ). Cổng trope ĐÚNG: `scripts/audit_calibration.py` cho 6/6 tiền đề triệu view đối thủ qua. Công cụ: `scripts/plan_only.py` (+`OMNICAST_NARRATIVE_PLAN_ONLY`, `--stories N`), `scripts/build_premise_bank.py`, `scripts/fetch_corpus_captions.py`, `analytics/skeleton.py` (SKELETON_BOUNDS theo kênh, có trần lẫn sàn). Model roles dùng chung 3 launcher (`config/narrative_roles.py`); parser JSON bỏ câu dẫn (`claude_cli.extract_json`); `voice_rules` list→str → `planner_schema_retry` 4/4→0. Test: +~60 (ladder 13, pronoun 13, roles 7, plan-only 7, budget 10, voice_rules 6, retract 6, json 10, skeleton 16). Suite 3118 pass; 1 fail `test_writer` nhánh khác. Chưa có script qua toàn bộ cổng — cửa còn lại là escape/bậc cuối, repair vừa bật.
 - **`premise_freshness_gate` + field `distinguishing_turn`: đóng hợp đồng ĐỘ MỚI của premise ở plan-time (2026-07-20 chiều):** Batch 1239 chạy **3 topic HOÀN TOÀN MỚI** (airport shuttle 79, hotel front desk 74, medical courier 82) — cả ba cùng chết một điểm: **originality 6/10** trong khi sàn per-dimension là `ceil(10*0.65)=7`. Critic nói cùng một câu ở cả 3 bản: *"familiar premise… none of the three variations pushes past its genre default"*, *"familiar 'unexplained log line' and 'truck tailgating' tropes without a distinguishing twist"*. Đo trên corpus: originality mode = 7 (28/67 run) tức sàn ĐẠT ĐƯỢC, nhưng từ 19/07 tụt hẳn xuống 6 — **không phải premise-space cạn theo topic** (3 topic mới đều 6), mà là lỗi hệ thống. Nguyên nhân gốc: (a) originality được cố ý miễn trừ khỏi hợp đồng grounded-issue (fix mall 20/07, `narrative_pipeline.py` ~6094) nên **không có đường repair nào** — chấm 6 là chết chắc, không ai sửa được; (b) toàn bộ máy chống-trope chỉ ration **ambiguous/watcher slot**, trong khi profile BẮT BUỘC ≥2/3 story là human threat → premise human (xe bám đuôi, nhóm người đòi cooler ở cửa xe, khách giật vô-lăng) đi thẳng tới prose không qua một cửa nào. Fix: thêm field `distinguishing_turn` (4-25 từ, mỗi story một cái, khác nhau) buộc plan **gọi tên cái mà bản stock của chính premise đó KHÔNG có**; gate deterministic `_premise_freshness_errors` từ chối clause rỗng/quá ngắn/quá dài/trùng nhau/**chỉ chép lại chính field `threat`** (ngưỡng echo 0.8 token). Kèm: HUMAN-THREAT STOCK LIST trong plan prompt (6 hình dạng mặc định của thể loại, được phép dùng nhưng phải khai turn), category `trope` của plan-audit nay áp cho human threat và đọc `distinguishing_turn`, writer prompt nhận turn dưới nhãn "WHAT MAKES THIS ONE NOT THE STOCK VERSION" + yêu cầu nó phải XẢY RA trên trang chứ không phải narrator bình luận. Không ép template: gate chỉ đòi *có* một điểm khác biệt, không quy định nó là gì. Opt-in qua profile (`premise_freshness_gate=True` cho `true_horror_strict_v1`). Test: 9 test mới trong `tests/unit/test_craft_upgrades.py`; fixture lịch sử `true_dread_20260717.json` được gắn nhãn turn theo tinh thần `honest_labels` sẵn có. Suite: **1424 passed, 6 skipped**.
 - **Gate `stylometric_shared_phrase`: bắt tic lặp nguyên văn theo HÌNH DẠNG, không theo danh sách (2026-07-20):** Autopsy 10 script gần nhất: **8/10** bị critic trừ điểm vì cùng MỘT lớp lỗi — hai narrator dùng chung một cụm từ nguyên văn: `"hands loose at his sides"` tả hai người đàn ông không liên quan (front desk 1346, **74/100**), scaffold quyết định `"I decided right then/there I wasn't..."`, công thức mở màn `"I drive/run the overnight ___"` (medical courier 1239), cụm tay-lái dùng chung (0719). Nguyên nhân gốc: 5 check stylometric hiện có đều là **whitelist tên-từng-tic**, mỗi cái thêm vào SAU khi bắt được live — critic cứ tìm ra biến thể mới mà whitelist không thể thấy; gate thô `cross_story_repeated_phrase` chỉ bắt trùng **10 từ** nên cụm 5 từ lọt hết. Fix: khớp **hình dạng** thay vì liệt kê instance — mọi run 5 từ trùng nguyên văn giữa 2 story đều fail, quote **toàn bộ** run tối đa (mở rộng 2 chiều) và **mọi** occurrence trong story (bài học cũ: quote nửa vời làm repair sửa nhầm nửa câu). Hai cần precision, đo bằng cách **replay trên corpus 66 script thật** của kênh: (a) miễn trừ vocabulary domain lấy từ plan đã khoá (`topic_promise`/`setting`/`narrator_profile`) — 3 tài xế shuttle phải được quyền nói "the overnight shuttle van"; (b) ngưỡng **≥3 content word** (bỏ stopword + domain) — ngưỡng 2 bắt nhầm thành ngữ thao tác mà hai người làm cùng nghề tự nhiên trùng nhau ("and put it in park", "the stairs two at a time", "i stood there a second"), ngưỡng 3 chỉ giữ cụm MIÊU TẢ mà hai narrator không thể trùng nhau nguyên văn. Kết quả replay: **fire 9/66 script** (gồm đúng defect gốc "hands loose at his sides" + 1 run trùng **17 từ** liền), và **0/2 script đã released** — không có false-positive trên bản đã duyệt. Hard-fail nhưng recoverable (local rephrase, đi vào repair wave, không deadlock). Test: 5 test mới trong `tests/unit/test_stylometric_texture_gate.py` (bắt cross-story / lặp trong-cùng-một-story là habit riêng của narrator đó nên bỏ qua / chuỗi function-word không fire / domain vocab miễn trừ / thành ngữ thao tác không fire / quote mọi occurrence / recoverable qua repair wave); fixture `_clean` phải dệt seed vào từng filler unit vì chính filler cũ là cụm trùng cross-story (giữ nguyên 6 từ/unit để không đụng gate độ dài). Suite: **1415 passed, 6 skipped**.
 - **Planner contract retry: nhận diện lỗi ĐỘ DÀI, không chỉ thiếu field (2026-07-20):** 3 run chết cùng một kiểu qua 4 batch (`20260719_2049[2]`, `20260720_0313[2]`, `20260720_0602[1]`) — `1 validation error for CompilationPlan / stories.N.continuity_ledger: entries must be concise (<=24 words)`, với `planner=4 / planner_schema_retry=4` và **0 call writer**: cả 2 lượt thử bị đốt trước khi ai đọc concept. Nguyên nhân gốc: contract retry của **planner** chỉ liệt kê DANH SÁCH FIELD BẮT BUỘC rồi bảo "Return the SAME plan with every required field present" — nhưng khi lỗi là ledger dài quá 24 từ thì field đã đủ cả, nên planner gửi lại **đúng nguyên văn entry quá dài** và chết lần hai. Đây là **cùng lớp lỗi với fix cũ ngày 2026-07-17** đã áp cho `plan_repair` (`narrative_pipeline.py:5035` — "If a continuity_ledger entry is too long, shorten that entry's wording to 24 words or fewer") nhưng **chưa bao giờ áp cho nhánh planner anh em**. Fix: contract retry của planner nay nói rõ nếu validator báo lỗi LENGTH/FORMAT thay vì thiếu field thì field đã đủ — gửi lại y nguyên sẽ fail lần nữa — và phải rút entry xuống ≤24 từ (kể cả prefix) mà không mất fact, giữ đúng prefix, giữ tính unique, giữ ≥3 fact word sau prefix ("cắt tính từ, không cắt fact"). Test: `test_the_schema_retry_names_a_ledger_length_violation_not_just_fields` + `test_a_shortened_ledger_entry_on_retry_saves_the_concept` (`tests/unit/test_narrative_release_integrity.py`). Suite: **1408 passed, 6 skipped**.
@@ -623,6 +877,212 @@ pillar OK**; đề cử: "Working and Receiving Social Security (The New Rules f
 Còn lại của Phase B→C: chạy 1 script e2e thật qua rubric mới + ledger (cần quota
 LLM), Shorts system (Phase C), benchmark gate vs golden set.
 
+## 4f. FLAGSHIP video e2e #1 — render-stage autopsy (2026-07-27)
+
+Script stage ĐÓNG (build `20260727_0226…`: 88/100 approved, ledger 25/25 PASSED,
+15 finding codex đã xử). Render v1 lộ **hố hệ thống**: video 15.4 phút ra toàn
+text-card. Autopsy + nâng cấp engine (mỗi finding = luật vĩnh viễn + test,
+`tests/unit/test_render_footage_pipeline.py`, 11 test):
+
+1. **`visual_style` không khớp preset → fallback "editorial" IM LẶNG** —
+   `clean_trust` (kênh senior_wealth_us) không có trong `_STYLE_MAP`.
+   Fix: map `clean_trust→dark_finance` + warn to khi style khai báo mà không khớp.
+2. **Kênh `footage` bị bỏ qua toàn bộ visual pipeline** — điều kiện build
+   storyboard chỉ xét image-provider/veo/--all-stock; kênh footage không có
+   provider → board=None → không router/chart/stock. Fix: điều kiện thêm
+   `_style_policy is not None`.
+3. **generated_image không provider trên kênh stock-first** → coerce sang
+   stock_video (query derive từ cell/heading) thay vì text card.
+4. **STRICT gate mới cho kênh footage**: >10% shot thiếu visual thật → fail
+   với danh sách query (mở rộng guarantee cũ của --all-stock).
+5. **Nhánh chart lần đầu chạy thật lộ 3 bug**: (a) NameError `_json` trong
+   `_render_chart_cell` (đọc ledger); (b) chart "rate shorthand" ($1-per-$2 →
+   bars [1,2]) và (c) chart trộn đơn vị ([24480, 2]) / bars trang trí
+   ([100,100]) — 3 luật degenerate-spec mới chặn TRƯỚC audit, degrade sang
+   stock; số thật không nguồn vẫn abort fail-closed (exit 86).
+6. Board cell 34 (chart 50%-vs-33% LLM tự suy diễn, ledger không nguồn +
+   misleading vs whole-check practice) → mổ tay sang stock, audit trail
+   `board_edits.json` trong product dir.
+
+Pre-flight scan 160 cell: 8 chart PASS-render thật (28, 84-85, 139, 141-142,
+148-149), 0 cell còn abort. Render v2d đang chạy full footage pipeline.
+V1 text-card đã lưu `_v1_editorial/` làm chứng cứ. Suite unit 2192 pass.
+
+**Vòng 2 (v2e→v3b, cùng ngày):** v2e ra video footage thật (15.4 phút, 407MB,
+108 stock + 8 chart + 13 web) nhưng autopsy frame lộ: overlay nướng text NỘI BỘ
+lên mọi shot ("SCENE 38/160" + mô tả storyboard "calendar birthday circled" làm
+headline) và đè/làm tối chart thật. Fix engine: (8) kênh footage CẤM
+render_text_overlay (heading = prompt nội bộ, không phải copy cho khán giả) —
+blank overlay khi không subtitle; (9) kênh senior bật `render.subtitle=true`
+(khán giả 60-75 cần chữ to; whisper word-synced captions burn cuối). Đổi style
+→ storyboard cache key đổi → board REGEN → lộ tiếp 2 lớp chart rác mới:
+[24480,50]/[65160,33] (phần trăm suy diễn cạnh đô-la) và fabrication thật
+([65160,67200] — 67200 là limit tự bịa). Fix engine: (10) refactor guards thành
+`_chart_spec_degenerate()` + luật ratio ≥100x (bar nhỏ = 0 pixel); (11) **CHART
+PRE-FLIGHT toàn board trước acquisition** — audit mọi chart cell 1 lượt, in đủ
+danh sách rồi mới exit 86 (trước đây mỗi phát hiện tốn 1 vòng 10 phút); (12)
+cell 34/48 board mới mổ tay → stock (board_edits.json rounds[]). Test:
+tests/unit/test_render_footage_pipeline.py = 16 test.
+
+**Vòng 3 (v3b→v3c):** v3b THÀNH CÔNG về cấu trúc — overlay sạch (không còn
+scene-counter/heading nội bộ), caption word-synced trắng viền đen đọc rõ,
+8 chart hiển thị nguyên vẹn, end-screen outro chuẩn. Autopsy tiếp lộ 3 lớp:
+(13) Ken Burns crop mép chart ("Under Full Retirement Age"→"er Full…") →
+motion_idx −1 = static full-frame, route mọi bg `*_chart.png`; (14) **bug
+web_shot**: mockup nhúng screenshot qua file:// URI trong trang set_content
+(origin about:blank) — Chromium chặn subresource file:// → khung browser TRẮNG
+nhưng vẫn báo thành công → fix data-URI base64 + verify naturalWidth>0, fail
+đúng nghĩa để fallback stock; (15) visual_match_qc trên 160 shot: avg 8.05,
+18 shot < 5 (2 mâu thuẫn ngữ nghĩa thật: "nothing collected" trên cảnh thu phí
+toll, fact-sheet SSA ra ảnh thẻ tín dụng; còn lại generic/lệch beat) → mổ 21
+cell (query cụ thể + 2 kinetic stat có nguồn ledger $24,480/$2,040),
+board_edits.json rounds[]. 18 test. v3c đang render.
+
+**Vòng 4 (v3c→v3d) — BUG PHÁT ÂM SỐ (nghiêm trọng, ảnh hưởng MỌI kênh từ khi
+có fine-sync):** QC v3c avg 7.88 lộ caption "760 of your own benefit" cạnh
+kinetic stat $7,760 → truy ngược: KHÔNG phải lỗi caption — nhánh ENUMERATION
+của `split_into_shots` đếm dấu phẩy PHẦN NGHÌN như phần tử liệt kê → regex
+split cắt "$40,000"→"$40"+"000," và "$7,760"→"$7"+"760" NGAY TẠI shot boundary
+→ **TTS đọc sai số tiền** trên kênh tài chính. Fix (16): comma chỉ là separator
+khi theo sau là whitespace (cả _enum_re lẫn split) — hook giữ nguyên
+"$7,760"/"$40,000", enumeration thật vẫn cắt montage; 160 shot → 154 (6 shot
+cắt-sai gộp). Lưu ý: video cũ money/chronicles/dread có thể dính cùng lỗi
+(chưa xử — các kênh đó đang hold). (17) web_shot data-URI chạy sống: 2 web-shot
+có nội dung thật. (18) storyboard chart-mode prompt cấm tường minh giá trị suy
+diễn (50%-từ-$1-per-$2, limit tương lai, đếm dân số) — giảm roulette board.
+(19) bài mổ board chuyển sang narration-keyed patches (bền qua regen). Board
+mới 154 shot: 6 chart PASS, 7 auto-guard, 4 audit-fail mổ tay → 0 fail.
+19 test. v3d render với shot số-an-toàn. Audio verify bằng whisper trên video
+final: "$7,760…$24,480" và "$2,040…$5,430" đọc liền mạch đúng ngữ cảnh. (20)
+QC v3d lần 1 ra điểm rác (avg 5.69, "black screen"/"crypto charts") — nguyên
+nhân: 154-shot render đè lên _assets 160-shot, 6 file scene_15x cũ còn sót →
+QC dựng timeline 160 shot → frame map sai giờ. Fix: renderer purge artifact
+per-shot vượt số shot hiện tại trước khi compose + test. Bài học tổng: mọi
+consumer glob work-dir phải được bảo vệ khỏi artifact vòng trước. 20 test.
+
+**HỘI TỤ RENDER (v3f, 27/07):** QC timeline sạch avg 8.05 (residue chủ yếu =
+judge literal phạt ẩn dụ toll-booth cố ý — giữ per REV2). Vá 5 beat tệ nhất
+narration-keyed → v3e; lỗi cuối (clip Certificate-of-Adoption lorem giả trên
+beat birth-certificate) → v3f. Audio whisper TOÀN video: 17/17 con số tiền
+nguyên vẹn. Codex render audit R1 (451k token, đọc cả 154 cell + 8 chart PNG +
+code):** REQUEST_CHANGES 4 Major + 2 Minor — TẤT CẢ ĐÃ SỬA (21→25 luật/test):
+(21) **chart worked-example gắn nhãn "SSA 2025/2026" = misattribution** → luật
+audit mới: giá trị chỉ được phủ bởi entry hypothetical ⇒ source PHẢI khai
+example; truy gốc ra lỗ hổng ledger: $24,480 (số trung tâm!) không có entry
+nguồn độc lập — đã thêm entry SSA 2026 COLA fact sheet, gate re-pass 25/25;
+sources trả đúng: 4 chart limit thật = "SSA 2026", 2 chart ví dụ = "Worked
+example (hypothetical benefit)". (22) chart_spec ngủ trên cell non-chart bị
+preflight XOÁ (chống tái kích hoạt data bịa). (23) stat_label cũng bị audit
+(số lọt qua label bypass gate). (24) cờ `ban_generated_images` per-channel
+đóng cả 2 đường AI-image kể cả khi có provider (senior_wealth_us = true).
+(25) chart_gen: giá trị tiền "$24,480" thay "24480", trục có phân cách, nguồn
+16pt góc trên phải, bottom-margin 0.17 tránh vùng caption; visual_match_qc giữ
+ĐỦ danh sách dưới ngưỡng (hết truncate 20); board_edits gắn sha256 digest.
+2 test flaky event-loop (đo tick dưới tải render) hạ ngưỡng nhị phân >4.
+Suite 2210+ pass. v4 đang render → QC final → codex verify round.
+
+**Codex VERIFY R1 (239k token): REQUEST_CHANGES — 2 Major + 3 Minor, đã sửa
+tiếp (26-30):** (26) **lỗ hổng collision**: $2,040 vừa là limit thật vừa là
+benefit ví dụ — pool token toàn cục cho phép chart ví dụ mượn danh SSA → luật
+mới: giá trị collision không có real-only anchor trong cùng chart ⇒ bắt buộc
+khai example (test behavioral với đúng ca $2,040/$5,430/$1,428); (27) QC gắn
+`video_sha256` vào report (hết "one render behind" vô hình); (28) patch-apply
+refactor thành `_apply_board_patches()` test behavioral + fail-CLOSED khi
+board_patches.json hỏng (STRICT); (29) `board_final.json` + sha256 persist
+cạnh product (audit trail trói vào board THẬT render); (30) purge chart PNG
+cũ mỗi run (artifact set không mơ hồ). 28 test pipeline. v5 render → QC v5
+(có digest) → codex verify R2.
+
+**KHÂU RENDER ĐÓNG (27/07): CODEX VERIFY R3 = APPROVE.** Đường đi R2→R3:
+board_final persist quá sớm → `_persist_final_board()` POST-acquisition (test
+behavioral) + sidecar .sha256 + meta.json binding; chart-fallback ghi downgrade
+vào cell → board khai 10 chart = 10 PNG render (chỉ số trùng khớp, codex xác
+nhận); luật collision bắt thêm chart HOOK mượn danh SSA → "Worked example —
+SSA 2026 formula" (21 patch). **Bản chốt v5d: QC avg 8.23, below 12, 0 lỗi
+thật còn lại (residue = judge variance, codex xác nhận non-blocking), hash
+trói 3 tầng (QC↔video, board↔sidecar↔meta).** Tổng khâu render: ~30 luật
+engine + 29 test pipeline + board_patches.json (21 quyết định giám tuyển
+narration-keyed) + suite 2210+ xanh. Codex tổng chi: 4 vòng ≈ 926k token.
+Kế tiếp: packaging title/thumb theo §10 + title-playbook → giao user video +
+fact_ledger.md (YMYL human review) → Shorts system → benchmark gate.
+
+## 4g. HỌC TỪ ĐỐI THỦ THẬT SỰ — phiên 27/07 (sau khi user bác bỏ video #1)
+
+> User bác video #1 dù codex APPROVE: "script như bản copy rẻ tiền góp nhặt trên
+> mạng… chả áp dụng gì từ đối thủ". Kiểm chứng: playbook tiêm vào writer chỉ có
+> **436 từ toàn khái niệm phổ thông** ("plant an open loop", "conversational but
+> urgent") — thứ LLM nào cũng tự biết; phần cụ thể duy nhất là danh sách
+> "DO NOT COPY verbatim". Đúng như user nói: writer tự nghĩ.
+
+**Đã làm (mỗi phần có test):**
+- `analytics/craft_forensics.py` (5 test) — đọc caption CÓ TIMESTAMP của cohort,
+  đo beat map thật: winner nói "you" ở giây 2.2 (control 6.4), số đầu ở 27.2s
+  (control 20.6 — winner KHÔNG vội), **đô-la đầu ở 78.8s vs control 232.8s**,
+  nhịp số sau đó 6.5s. Tự bắt lỗi đo: regex "money" tính cả phần trăm trong khi
+  nhãn ghi "dollar figure" → sửa, khác biệt còn mạnh hơn.
+- `analytics/craft_playbook.py` — compiler v2: beat map + **exemplar thật có
+  attribution** (câu mở của 6 winner + 6 control để đối chiếu hình dạng) + luật
+  cấm chép + cảnh báo "cohort ấm nhờ người thật trên hình, kênh mình faceless —
+  đừng copy độ khô". Playbook trong vault **3.272 → 8.557 ký tự**.
+- Rubric sửa theo BẰNG CHỨNG (không theo giả định của tôi): luật cũ bắt "số
+  trong 15 giây đầu" — winner thật để tới 27s, nửa phút đầu dành cho TÌNH HUỐNG.
+  hook_quality viết lại: mở bằng SỰ KIỆN/LỜI HỨA, không bằng "might/could".
+- `agents/rubrics/finance_explainer.py`: chiều mới **`spoken_presence` 12đ** +
+  detector máy 6 cơ chế (companionship/reaction/invitation/mouth-language/
+  signpost/felt-metaphor), chuẩn hoá theo độ dài, chỉ áp cho bản ≥400 từ
+  (5 test). Script cũ bị cap 6/12; script mới đạt 11/12.
+- Writer: dạy 6 cơ chế kèm ví dụ ✗/✓ + **sửa mâu thuẫn trọng tài** (writer được
+  dạy chào hỏi trong khi gate finance phạt greeting → kênh finance dùng COLD OPEN
+  bắt buộc mở bằng NGƯỜI, niche khác giữ nguyên).
+- **A/V forensics lần đầu chạy trên video đối thủ** (`av_fetch` vá: dùng
+  `python -m yt_dlp` khi CLI không trên PATH — vẫn subprocess nên giữ wall-clock
+  timeout): winner shot median **4.9s vs control 10.8s**, dissolve **2%** (cắt
+  thẳng!), im lặng 15%, motion 69% drift/26% static, chữ trên ~54% khung hình.
+- `analytics/edit_profile.py` (6 test) + renderer đọc profile: **tắt fade 0.15s
+  trên mọi shot** (house habit chưa ai đối chiếu — cohort cắt thẳng), beat_words
+  suy từ shot median đo được.
+- Discovery quy mô đầy đủ: **280 video metadata** (7 kênh × 40). NotebookLM
+  URL-first `scripts/notebooklm_scale_280.py` đang nạp 280 nguồn (state machine
+  resume-safe, profile đăng nhập cũ). Caption corpus 280 đang tải song song.
+- Script v3 sinh trên playbook mới: **87/100 APPROVED, production_ready=True**
+  ngay lần đầu (bản trước phải mổ mới lên 90).
+
+### Audit ngoài (operator, 27/07): REQUEST_CHANGES — đã sửa 6/6 nhóm lỗi
+
+Auditor bác kết luận "đã học từ 280 video": cohort bias, source contamination,
+overclaim. **Kiểm định lại bằng thống kê chuẩn: KHÔNG chỉ số nào đạt rule-grade.**
+Sửa theo từng điểm:
+
+1. **Overclaim trong edit_profile** — "winners re-frame gấp đôi" bị chính dữ liệu
+   bác (cuts/min: winner 2.77 vs control 3.04); "no whooshes/wipes" (SFX chưa
+   phân loại), "pauses không bị nhạc lấp" (non-speech audio chưa đo), "text hỗ
+   trợ giọng liên tục" (chỉ là edge-density proxy). Viết lại toàn bộ directive
+   theo đúng giới hạn đo được + ghi rõ "NOT measured".
+2. **Chặn đường tác động production**: `EditProfile.is_production_grade`
+   (≥3 kênh, ≥10 matched pair) + gate trong renderer. Hiện in
+   `NOT applied — 0/3 channels, 0/10 pairs`, không đụng fade/beat_words.
+3. **Ngưỡng median-15% → thống kê thật**: bootstrap CI 95% loại trừ 0 +
+   Cliff's δ ≥0.147 + cùng chiều ở ≥3 kênh → 3 bậc `rule/hypothesis/no_signal`.
+   Test Simpson's paradox: pooled lệch nhưng 2 kênh ngược chiều ⇒ KHÔNG lên rule.
+4. **Nhãn winner sai phương pháp** → `analytics/cohort_labels.py`: views/day
+   trên video đã settled (≥21 ngày), tách Shorts/long-form, matched control
+   cùng kênh–cùng format–gần duration/ngày đăng, control không tái sử dụng.
+   Kết quả: 40W/56C, **40 matched pair trên 5 kênh** (trước: raw views vs median).
+5. **Source contamination**: artifact tách theo `runs/{notebook_key}/responses`;
+   trạng thái nguồn 3 bậc `ui_indexed → transcript_verified → evidence_usable`
+   + `verify_sources()` hỏi từng nguồn để chứng minh có transcript thật (trước
+   đây đếm số dòng UI rồi gọi tất cả là "indexed"); `evidence_summary()` tách
+   "UI hiển thị" khỏi "được phép làm bằng chứng".
+6. **Citation không thuộc câu trả lời**: `capture_citations` scope vào
+   `response_container.last` thay vì quét cả trang (trước: 36/40 citation trùng
+   vị trí giữa 3 câu hỏi khác nhau, citation đầu trỏ video không được hỏi).
+
+**Kết quả sau khi sửa (trung thực):** 111 video long-form đo được
+(23W/29C) → **0 rule, 6 hypothesis**. Trần hiện tại là caption coverage: chỉ 2
+kênh có đủ cả winner lẫn control (cần ≥3). Playbook compiler giờ in
+"RULES: NONE" thay vì bịa mục tiêu. Test mới: `test_cohort_labels.py` (7),
+`test_evidence_grading.py` (5), `test_edit_profile.py` (7) — suite 2241 pass.
+
 ## 5. Chỉ mục tài liệu (cái nào tin được)
 
 | Doc | Loại | Tin tiến độ? |
@@ -643,6 +1103,12 @@ LLM), Shorts system (Phase C), benchmark gate vs golden set.
 | AGENTS.md | ✅ **Đã dọn** (gỡ khối prompt-injection) — pointer sạch về CLAUDE.md/STATUS | Có (pointer) |
 | AI_WORKFLOW.md | 🟡 Quy trình build (test-first, định tuyến Opus/Sonnet/Haiku) — hợp lệ, KHÔNG phải tiến độ | Có (quy trình) |
 | video_analysis.md | 🟡 Phân tích 1 video mẫu (script/voice/pacing + hướng dẫn tái dựng) — style-reference hữu ích, giữ | Có (tham khảo) |
+| docs/research/V2_{A1,A2,B1,B2,C,D}_*.md | ✅ Báo cáo chiến dịch V2 (Grok harvest _refs, 2026-08-04; đã spot-verify 38 mẫu — 0 bịa; C = kho tra cứu 46k dòng) | Có (nghiên cứu) |
+| docs/research/V2_PATCHLIST.md | ✅ **ACTIVE** — PATCH LIST xếp hạng P0/P1/P2 tổng hợp từ 6 báo cáo V2, chờ user duyệt phạm vi | Có (kế hoạch patch) |
+| docs/research/V3_D1_DouyinDownload.md | ✅ Harvest lớp tải Douyin (4 repo; ký a_bogus, endpoint, URL không watermark, 15 cạm bẫy) — 2026-08-08, đã spot-verify API vs code | Có (nghiên cứu) |
+| docs/research/V3_D2_ReupPipeline.md | ✅ Harvest pipeline dịch/lồng tiếng zh→vi từ `Tool_Reup_Douyin` (prompt, ngưỡng QC, luật xưng hô, tham số TTS/mix) — 2026-08-08, **chưa đọc/verify hết** | Có (nghiên cứu, chưa verify) |
+| WORKSTREAMS_ParallelUpgrade.md §WS8 | ✅ **ACTIVE** — luồng reup video Trung Quốc (trạng thái + việc còn lại) | Có (kế hoạch) |
+| implementation/docs/VOICE_CLONE_CapCut.md | ✅ **ACTIVE** — quy trình lấy dataset clone 3 giọng Việt của CapCut qua draft (2026-08-08) | Có (quy trình) |
 
 > `spec.md` đã **xoá** (meta/template "Phase 72–81 / Spec delta / VIBECODER", không khớp OmniCast).
 

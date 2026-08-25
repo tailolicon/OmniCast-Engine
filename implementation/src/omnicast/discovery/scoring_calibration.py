@@ -93,19 +93,13 @@ def shadow_row(scored) -> dict:
     }
 
 
-def _num(value) -> float | None:
-    """Coerce a harvested field to a float, or None if it is not a number.
-
-    Harvest files are JSONL written by long-running jobs: truncated lines,
-    `"n/a"` and nulls are normal. Raising on them turned a malformed line into
-    a crashed report instead of a counted, declared drop."""
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    return None if out != out else out
+# The SHARED coercion. This module used to carry its own, and it diverged in
+# exactly the two ways `shared/numbers.py` was written to stop: `"1e400"` came
+# back as `inf` (which then reached the report as `mean_delta: -inf` and broke
+# strict JSON), and `10**400` raised `OverflowError` straight out of
+# `summarize`, aborting the whole calibration report. `scorer._num`'s docstring
+# describes that exact hole as already fixed — one module over, it was live.
+from omnicast.shared.numbers import num as _num  # noqa: E402
 
 
 def correlation_ratio(xs: list[float], ys: list[float], bins: int = 5) -> float | None:

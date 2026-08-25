@@ -14,6 +14,7 @@ const S = "viewBox='0 0 28 28' fill='none' stroke='currentColor' stroke-width='2
 const ICONS: Record<string, string> = {
   dashboard: `<svg ${S}><path d='M4.5 13.5 14 5.5l9.5 8'/><path d='M7 12.5V22h14v-9.5' fill='#ffd0ee'/>${eye(11,17.5)}${eye(17,17.5)}${blush(9,18.5)}${blush(19,18.5)}</svg>`,
   studio: `<svg ${S}><rect x='4' y='9.5' width='20' height='13' rx='3' fill='#e0d4ff'/><path d='M4.5 12.5 23.5 9.5'/><path d='M9 9.7l-1.2 2.8M14 9.2l-1.2 2.8M19 9l-1.2 2.8'/>${eye(11,17)}${eye(16,17)}${blush(9,18)}${blush(18,18)}</svg>`,
+  storyboard: `<svg ${S}><rect x='3.5' y='6' width='9' height='7.5' rx='1.6' fill='#e0d4ff'/><rect x='15.5' y='6' width='9' height='7.5' rx='1.6' fill='#cdeeff'/><rect x='3.5' y='16.5' width='9' height='5.5' rx='1.6' fill='#fff0c9'/><rect x='15.5' y='16.5' width='9' height='5.5' rx='1.6' fill='#ffd0ee'/>${eye(6.5,10)}${eye(9.5,10)}${blush(5,11.2)}${blush(11,11.2)}</svg>`,
   library: `<svg ${S}><rect x='5.5' y='5.5' width='5' height='17' rx='1.6' fill='#cdeeff'/><rect x='11.5' y='5.5' width='5' height='17' rx='1.6' fill='#ffd0ee'/><path d='M17.6 6.4l4 .9-3 15.6-4-.9z' fill='#fff0c9'/></svg>`,
   channels: `<svg ${S}><path d='M14 8.5 10 4.5M14 8.5l4-4'/><rect x='4' y='8.5' width='20' height='14' rx='3.5' fill='#d3f7ea'/>${eye(11,15)}${eye(17,15)}${blush(9,16)}${blush(19,16)}</svg>`,
   scheduler: `<svg ${S}><circle cx='14' cy='15' r='8' fill='#ffe0d0'/><path d='M6 6.5 9 8.6M22 6.5l-3 2.1'/><path d='M14 15V11M14 15l3 1.5'/>${blush(9.5,16)}${blush(18.5,16)}</svg>`,
@@ -28,6 +29,7 @@ const ICONS: Record<string, string> = {
   calendar: `<svg ${S}><rect x='4.5' y='6.5' width='19' height='16' rx='4' fill='#ffd0ee'/><path d='M4.5 11.5h19'/><path d='M9.5 4v4M18.5 4v4'/>${eye(11,16.5)}${eye(17,16.5)}<path d='M12.2 19q1.8 1.2 3.6 0'/></svg>`,
   key: `<svg ${S}><circle cx='9.5' cy='11' r='5' fill='#fff0c9'/><path d='M13.5 14.5 22 23M18.5 19.5l3-3'/>${eye(8,10.5)}${eye(11,10.5)}<path d='M8.4 13q1.1 .8 2.2 0'/></svg>`,
   wrench: `<svg ${S}><path d='M18.5 5a5.5 5.5 0 0 0-5 7.8L5 21.3a2.3 2.3 0 0 0 3.2 3.2l8.6-8.4a5.5 5.5 0 0 0 7-6.6l-3.6 3.5-3-.9-.9-3 3.5-3.5A5.6 5.6 0 0 0 18.5 5z' fill='#e0d4ff'/></svg>`,
+  film: `<svg ${S}><path d='M4.5 9.5 22.6 5l1 3.9L5.5 13.4z' fill='#e0d4ff'/><path d='M9.3 8.3l1.5 3M14.5 7l1.5 3M19.7 5.7l1.5 3'/><rect x='4.5' y='13' width='19' height='9.5' rx='2.6' fill='#ffd0ee'/>${eye(11, 17.5)}${eye(17, 17.5)}<path d='M12.6 19.6q1.4 1 2.8 0'/>${blush(8.8, 18.6)}${blush(19.2, 18.6)}</svg>`,
 };
 
 // Solid brand glyphs (white fill, for colored platform tiles).

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Scene Review — OmniCast</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',system-ui,sans-serif; }
+  body { background:#faf7fd; color:#2a2438; padding:18px; }
+  h1 { font-size:20px; margin-bottom:4px; } .sub { color:#8a80a0; font-size:13px; margin-bottom:14px; }
+  .wrap { display:grid; grid-template-columns: 1fr 360px; gap:16px; max-width:1500px; }
+  .stage { background:#000; border-radius:14px; overflow:hidden; position:relative; aspect-ratio:16/9; }
+  .stage video, .stage img { width:100%; height:100%; object-fit:contain; background:#000; }
+  .overlay { position:absolute; left:0; right:0; bottom:0; padding:10px 16px;
+             background:linear-gradient(transparent, rgba(0,0,0,.75)); color:#fff; font-size:15px; }
+  .stat { position:absolute; left:20px; bottom:64px; color:#ffd147; font-weight:800; font-size:34px;
+          text-shadow:0 2px 8px rgba(0,0,0,.8); display:none; }
+  .controls { display:flex; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap; }
+  button { border:0; border-radius:10px; padding:9px 16px; font-weight:700; cursor:pointer;
+           background:#efe9f8; color:#4a3f66; }
+  button.primary { background:#ec53b0; color:#fff; }
+  button.ok { background:#22b07d; color:#fff; } button.bad { background:#e23b3b; color:#fff; }
+  .idx { font-weight:800; color:#7a5fd0; }
+  .panel { background:#fff; border:1.5px solid #e8e0f4; border-radius:14px; padding:14px; }
+  .panel h3 { font-size:14px; color:#7a5fd0; margin-bottom:8px; }
+  textarea, input { width:100%; border:1.5px solid #e0d8ee; border-radius:8px; padding:8px;
+                    font-size:13px; margin-bottom:8px; background:#fdfcff; }
+  textarea { min-height:84px; resize:vertical; }
+  .meta { font-size:12px; color:#8a80a0; margin-bottom:8px; line-height:1.5; }
+  .timeline { display:flex; gap:8px; overflow-x:auto; padding:12px 2px; margin-top:14px; }
+  .card { flex:0 0 150px; border-radius:10px; overflow:hidden; cursor:pointer; position:relative;
+          border:2.5px solid transparent; background:#fff; box-shadow:0 1px 4px rgba(80,60,120,.12); }
+  .card.active { border-color:#ec53b0; }
+  .card img { width:150px; height:84px; object-fit:cover; display:block; background:#241f31; }
+  .card .n { font-size:10px; padding:5px 6px; color:#5a5070; height:44px; overflow:hidden; }
+  .card .b { position:absolute; top:4px; left:4px; background:rgba(20,16,30,.75); color:#fff;
+             font-size:10px; font-weight:700; padding:1px 6px; border-radius:99px; }
+  .card .m { position:absolute; top:4px; right:4px; width:10px; height:10px; border-radius:99px; }
+  .m.ok { background:#22b07d; } .m.bad { background:#e23b3b; }
+  .kind { display:inline-block; font-size:10px; font-weight:700; padding:1px 8px; border-radius:99px;
+          background:#efe9f8; color:#7a5fd0; margin-left:6px; }
+</style>
+</head>
+<body>
+<h1>Scene Review <span class="kind" id="prodname">__PRODUCT__</span></h1>
+<div class="sub">Rough-cut: cảnh + giọng đọc thật nối liên tục — duyệt xong mới Render. Sửa query/đánh dấu ngay tại chỗ.</div>
+<div class="wrap">
+  <div>
+    <div class="stage">
+      <video id="vid" muted playsinline></video>
+      <img id="img" style="display:none">
+      <div class="stat" id="stat"></div>
+      <div class="overlay" id="cap"></div>
+    </div>
+    <audio id="aud"></audio>
+    <div class="controls">
+      <button class="primary" id="play">▶ Phát liên tục</button>
+      <button id="prev">⟨ Trước</button>
+      <button id="next">Sau ⟩</button>
+      <span>Cảnh <span class="idx" id="pos">–</span></span>
+      <span id="kindlab" class="kind"></span>
+      <span style="flex:1"></span>
+      <button class="ok" id="mok">✓ Đạt</button>
+      <button class="bad" id="mbad">✗ Không đạt</button>
+    </div>
+    <div class="timeline" id="tl"></div>
+  </div>
+  <div class="panel">
+    <h3>Cảnh đang xem</h3>
+    <div class="meta" id="meta"></div>
+    <h3>Đổi footage (stock query)</h3>
+    <input id="q" placeholder="vd: senior man working hardware store">
+    <button class="primary" id="refetch">↻ Tải footage mới</button>
+    <div class="meta" id="editmsg" style="margin-top:8px"></div>
+    <h3 style="margin-top:12px">Ghi chú cho Claude</h3>
+    <textarea id="note" placeholder="Lý do không đạt / muốn đổi gì…"></textarea>
+    <button id="savenote">Lưu ghi chú</button>
+  </div>
+</div>
+<script>
+const P = "__PRODUCT__", api = p => `/api/scene-review/${P}/${p}`;
+let scenes = [], cur = 0, playing = false;
+const $ = id => document.getElementById(id);
+
+async function load() {
+  const r = await fetch(api("scenes")); const d = await r.json();
+  scenes = d.scenes;
+  const tl = $("tl"); tl.innerHTML = "";
+  scenes.forEach((s, k) => {
+    const c = document.createElement("div"); c.className = "card"; c.id = "card" + k;
+    const poster = s.has_asset ? api("asset/" + k) + "#t=0.5" : "";
+    c.innerHTML = `<div class="b">#${k}</div>` +
+      (s.mark ? `<div class="m ${s.mark}"></div>` : "") +
+      (s.asset_kind === "stock"
+        ? `<img loading="lazy" data-vid="${api("asset/" + k)}">`
+        : `<img loading="lazy" src="${s.has_asset ? api("asset/" + k) : ""}">`) +
+      `<div class="n">${s.narration.slice(0, 72)}</div>`;
+    c.onclick = () => show(k, false);
+    tl.appendChild(c);
+  });
+  lazyPosters();
+  show(0, false);
+}
+
+function lazyPosters() {
+  document.querySelectorAll("img[data-vid]").forEach(el => {
+    const v = document.createElement("video");
+    v.src = el.dataset.vid; v.muted = true; v.preload = "metadata";
+    v.addEventListener("loadeddata", () => {
+      v.currentTime = 0.4;
+      v.addEventListener("seeked", () => {
+        const c = document.createElement("canvas");
+        c.width = 300; c.height = 168;
+        c.getContext("2d").drawImage(v, 0, 0, 300, 168);
+        el.src = c.toDataURL("image/jpeg", .7); v.remove();
+      }, { once: true });
+    }, { once: true });
+  });
+}
+
+function show(k, autoplay) {
+  cur = Math.max(0, Math.min(scenes.length - 1, k));
+  const s = scenes[cur];
+  document.querySelectorAll(".card").forEach(c => c.classList.remove("active"));
+  const card = $("card" + cur);
+  card.classList.add("active");
+  card.scrollIntoView({ inline: "center", behavior: "smooth" });
+  $("pos").textContent = `${cur} / ${scenes.length - 1}`;
+  $("kindlab").textContent = s.asset_kind + (s.visual_type ? " · " + s.visual_type : "");
+  $("cap").textContent = s.narration;
+  $("meta").innerHTML =
+    `<b>#${cur}</b> [${s.heading}]<br>query: <i>${s.stock_query || "—"}</i>` +
+    (s.chart_title ? `<br>chart: ${s.chart_title} <i>(${s.chart_source})</i>` : "") +
+    (s.stat_number ? `<br>stat: ${s.stat_number} ${s.stat_label}` : "");
+  $("q").value = s.stock_query || "";
+  $("stat").style.display = s.stat_number ? "block" : "none";
+  $("stat").textContent = s.stat_number ? `${s.stat_number} ${s.stat_label}` : "";
+  const vid = $("vid"), img = $("img"), aud = $("aud");
+  if (s.has_asset && s.asset_kind === "stock") {
+    img.style.display = "none"; vid.style.display = "block";
+    vid.src = api("asset/" + cur); vid.loop = true;
+  } else {
+    vid.style.display = "none"; img.style.display = "block";
+    img.src = s.has_asset ? api("asset/" + cur) : "";
+  }
+  aud.src = api("tts/" + cur);
+  if (autoplay) { vid.play().catch(()=>{}); aud.play().catch(()=>{}); }
+  else { aud.pause(); vid.pause(); }
+}
+
+$("aud").addEventListener("ended", () => {
+  if (playing && cur < scenes.length - 1) show(cur + 1, true);
+  else { playing = false; $("play").textContent = "▶ Phát liên tục"; }
+});
+$("play").onclick = () => {
+  playing = !playing;
+  $("play").textContent = playing ? "⏸ Dừng" : "▶ Phát liên tục";
+  if (playing) show(cur, true); else { $("aud").pause(); $("vid").pause(); }
+};
+$("prev").onclick = () => show(cur - 1, playing);
+$("next").onclick = () => show(cur + 1, playing);
+async function mark(m) {
+  await fetch(api(`scene/${cur}/mark`), { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mark: m, note: $("note").value }) });
+  scenes[cur].mark = m;
+  const card = $("card" + cur);
+  card.querySelector(".m")?.remove();
+  card.insertAdjacentHTML("beforeend", `<div class="m ${m}"></div>`);
+}
+$("mok").onclick = () => mark("ok");
+$("mbad").onclick = () => mark("bad");
+$("savenote").onclick = () => mark(scenes[cur].mark || "bad");
+$("refetch").onclick = async () => {
+  $("editmsg").textContent = "Đang tải footage mới…";
+  const r = await fetch(api(`scene/${cur}/visual`), { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stock_query: $("q").value }) });
+  if (r.ok) { $("editmsg").textContent = "✓ Đã thay — xem lại cảnh."; show(cur, false); }
+  else { $("editmsg").textContent = "✗ " + (await r.json()).detail; }
+};
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") show(cur + 1, playing);
+  if (e.key === "ArrowLeft") show(cur - 1, playing);
+  if (e.key === " " && e.target.tagName !== "TEXTAREA" && e.target.tagName !== "INPUT") {
+    e.preventDefault(); $("play").click();
+  }
+});
+load();
+</script>
+</body>
+</html>

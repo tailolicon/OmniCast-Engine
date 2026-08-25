@@ -92,6 +92,39 @@ def _runtime_flag(env_name: str, settings_attr: str, settings) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _build_unit_pipeline_for_audit(channel_id: str):
+    """A pipeline wired only far enough to run plan_audit.
+
+    Built for scripts/audit_calibration.py, which asks whether the trope gate
+    would reject the competitor videos this channel is measured against. That
+    question needs the REAL auditor with the REAL role config — reimplementing
+    the prompt in a script would measure a different gate and prove nothing.
+    """
+    from pathlib import Path as _P
+
+    from omnicast.agents.narrative_pipeline import NarrativeUnitPipeline
+    from omnicast.config.narrative_quality import SCRIPT_PROFILE_REGISTRY
+    from omnicast.config.settings import get_settings
+
+    settings = get_settings()
+    vault_path = _P(__file__).resolve().parents[3] / "output" / "vault.db"
+    roles = _narrative_role_clients(settings, vault_path=vault_path)
+    return NarrativeUnitPipeline(
+        planner_llm=roles["planner"], writer_llm=roles["writer"],
+        plan_repair_llm=roles["plan_repair"], patch_llm=roles["patch"],
+        critic_llm=roles["critic"], plan_audit_llm=roles["plan_audit"],
+        annotation_llm=roles["annotation"],
+        annotation_fallback_llm=roles["annotation_fallback"],
+        compliance_llm=roles["compliance"],
+        compliance_escalation_llm=roles["compliance_escalation"],
+        critic_fallback_llm=roles["critic_fallback"],
+        plan_audit_escalation_llm=roles["plan_audit_escalation"],
+        release_challenger_llm=roles["challenger"],
+        quality_strategy=SCRIPT_PROFILE_REGISTRY["true_horror_strict_v1"],
+        judge_mode=roles["judge_mode"], model_roles=roles["model_roles"],
+    )
+
+
 def _narrative_role_clients(
     settings,
     *,
@@ -307,7 +340,7 @@ def _needs_length_only_fill(draft, feedback, brief, revise_below: int) -> bool:
 
     words = len(_canonical_spoken(draft).split())
     floor = spoken_word_floor(getattr(brief, "target_duration_min", None))
-    under_length = words < int(floor * 0.9)
+    under_length = words < floor
     quality_passes = (
         feedback.total_score >= revise_below
         and feedback.voiceover_score >= VO_PASS
@@ -317,19 +350,366 @@ def _needs_length_only_fill(draft, feedback, brief, revise_below: int) -> bool:
     return bool(not feedback.approved and under_length and quality_passes)
 
 
-def _script_result_rank(result, brief) -> tuple[bool, bool, int, int, int]:
+def _needs_visual_only_repair(
+    feedback,
+    evidence_problems: list[str],
+    editorial_problems: list[str],
+) -> bool:
+    """Route only truly visual failures to the voiceover-locked director."""
+    return bool(
+        not feedback.approved
+        and not evidence_problems
+        and not editorial_problems
+        and feedback.voiceover_score >= 53
+        and feedback.production_score < 23
+    )
+
+
+def _apply_evidence_gate(feedback, draft, evidence_pack):
+    """Make verified-source conflicts a hard Writer-route rejection.
+
+    The semantic critic once gave accuracy credit to a stale 2024 threshold in
+    a 2026 script. This deterministic gate reads both digit and spoken-number
+    forms and runs before a critic verdict can become release authority.
+    """
+    if evidence_pack is None:
+        return feedback, []
+    from omnicast.agents.evidence_research import (
+        gate_draft_against_pack,
+        gate_draft_claims_against_pack,
+        gate_draft_visuals_against_pack,
+    )
+
+    problems = list(dict.fromkeys(
+        gate_draft_against_pack(draft, evidence_pack)
+        + gate_draft_claims_against_pack(draft, evidence_pack)
+        + gate_draft_visuals_against_pack(draft, evidence_pack)
+    ))
+    if not problems:
+        return feedback, []
+
+    dimensions = list(getattr(feedback, "dimensions", ()) or ())
+    repaired_dimensions = []
+    accuracy_cut = 0
+    for dimension in dimensions:
+        if dimension.name == "accuracy_trust":
+            new_score = min(int(dimension.score), 4)
+            accuracy_cut = int(dimension.score) - new_score
+            detail = " | ".join(problems[:3])
+            existing = (dimension.feedback or "").rstrip()
+            suffix = (
+                " Deterministic evidence gate found claims outside verified "
+                "boundaries: "
+                + detail
+            )
+            dimension = dimension.model_copy(update={
+                "score": new_score,
+                "feedback": (
+                    existing
+                    if "Deterministic evidence gate found" in existing
+                    else existing + suffix
+                ).strip(),
+            })
+        repaired_dimensions.append(dimension)
+    voiceover = max(
+        0, int(getattr(feedback, "voiceover_score", 0)) - accuracy_cut)
+    production = int(getattr(feedback, "production_score", 0))
+    reason = (
+        "HARD GATE (verified evidence): " + " | ".join(problems[:6]))
+    fix = (
+        "Fix every deterministic evidence-boundary problem exactly. Use only "
+        "E-anchor rule values and mechanisms; invented inputs belong only in a "
+        "a backstage EXAMPLE segment; no fixed spoken framing is required.")
+    return feedback.model_copy(update={
+        "dimensions": repaired_dimensions,
+        "voiceover_score": voiceover,
+        "total_score": min(100, voiceover + production),
+        "approved": False,
+        "rejection_reasons": list(dict.fromkeys(
+            list(feedback.rejection_reasons) + [reason])),
+        "specific_fixes": list(dict.fromkeys(
+            [fix]
+            + [f"Evidence boundary: {problem}" for problem in problems]
+            + list(feedback.specific_fixes))),
+    }), problems
+
+
+def _apply_skeleton_gate(feedback, draft, channel_id: str = ""):
+    """Cut spoken_presence when the draft is measurably not a spoken script.
+
+    The operator's complaint about the approved build — bulletin, flat, no self
+    — turned out to be measurable against 133 competitor captions: our drafts
+    ran a fifth of the cohort's first-person presence and half its
+    sentence-length variety. Two rounds of putting that finding in the brief as
+    prose changed one metric out of nine, because a 5,000-word steering
+    document is a suggestion and a gate is not.
+
+    Only the three measured FLOORS act here (see skeleton.SKELETON_FLOORS).
+    The other thirteen structural metrics stay advisory on purpose: a script
+    forced to hit every cohort median is an imitation of the average video in
+    the niche, and the instruction was not to cost the writer its creativity.
+    """
+    from omnicast.agents.critic import _canonical_spoken
+    from omnicast.analytics.skeleton import skeleton_problems
+
+    problems = skeleton_problems(_canonical_spoken(draft), channel_id)
+    if not problems:
+        return feedback, []
+
+    dimensions, cut = [], 0
+    for dimension in list(getattr(feedback, "dimensions", ()) or ()):
+        if dimension.name == "spoken_presence":
+            capped = int(dimension.score) // 2
+            cut = int(dimension.score) - capped
+            existing = (dimension.feedback or "").rstrip()
+            dimension = dimension.model_copy(update={
+                "score": capped,
+                "feedback": (existing + " Measured against the cohort: "
+                             + " ".join(p.split(";")[0] for p in problems)
+                             ).strip(),
+            })
+        dimensions.append(dimension)
+    voiceover = max(0, int(getattr(feedback, "voiceover_score", 0)) - cut)
+    # FAIL CLOSED, because a penalty is not containment. The first version of
+    # this gate only cut points: a draft breaching two of the three floors
+    # scored 87, lost 5, and shipped at 82 as production_ready — which is the
+    # same script the operator rejected on sight, now with a deduction
+    # attached. The floors sit at half to three quarters of the cohort median
+    # precisely so that clearing them is not a demand to be average.
+    return feedback.model_copy(update={
+        "dimensions": dimensions,
+        "voiceover_score": voiceover,
+        "total_score": min(100, voiceover + int(
+            getattr(feedback, "production_score", 0))),
+        "approved": False,
+        "rejection_reasons": list(dict.fromkeys(
+            list(feedback.rejection_reasons)
+            + ["HARD GATE (spoken skeleton): " + " | ".join(
+                p.split(";")[0] for p in problems)])),
+        "specific_fixes": list(dict.fromkeys(
+            list(problems) + list(feedback.specific_fixes))),
+    }), problems
+
+
+def _apply_human_anchor_gate(feedback, draft, operator_desc: str):
+    """Fail closed when an explicit human-anchor editorial contract is absent.
+
+    The semantic critic approved a script that responded to figures with
+    "that stopped me" but ignored the requested recurring hypothetical
+    household entirely. This gate checks only observable contract delivery;
+    the critic still judges whether the resulting story is any good.
+    """
+    from omnicast.agents.rubrics.finance_explainer import (
+        human_anchor_contract_problems,
+    )
+
+    problems = human_anchor_contract_problems(draft, operator_desc)
+    if not problems:
+        return feedback, []
+
+    repaired_dimensions = []
+    retention_cut = 0
+    for dimension in list(getattr(feedback, "dimensions", ()) or ()):
+        if dimension.name == "retention_structure":
+            new_score = min(int(dimension.score), 2)
+            retention_cut = int(dimension.score) - new_score
+            existing = (dimension.feedback or "").rstrip()
+            suffix = (
+                " Hard editorial contract failed: "
+                + " | ".join(problems[:3]))
+            dimension = dimension.model_copy(update={
+                "score": new_score,
+                "feedback": (
+                    existing
+                    if "Hard editorial contract failed" in existing
+                    else existing + suffix
+                ).strip(),
+            })
+        repaired_dimensions.append(dimension)
+
+    voiceover = max(
+        0, int(getattr(feedback, "voiceover_score", 0)) - retention_cut)
+    production = int(getattr(feedback, "production_score", 0))
+    reason = "HARD GATE (human anchor): " + " | ".join(problems)
+    fixes = [
+        "Deliver the named, explicitly hypothetical human anchor exactly as "
+        "the operator brief specifies. Carry the same person through at least "
+        "three sections; a reaction phrase or a name beside one calculation "
+        "does not satisfy the contract.",
+        *[f"Human-anchor contract: {problem}" for problem in problems],
+    ]
+    return feedback.model_copy(update={
+        "dimensions": repaired_dimensions,
+        "voiceover_score": voiceover,
+        "total_score": min(100, voiceover + production),
+        "approved": False,
+        "rejection_reasons": list(dict.fromkeys(
+            list(feedback.rejection_reasons) + [reason])),
+        "specific_fixes": list(dict.fromkeys(
+            fixes + list(feedback.specific_fixes))),
+    }), problems
+
+
+def _apply_operator_editorial_feedback(feedback, feedback_text: str):
+    """Route an explicit operator/reviewer rejection back to Writer once.
+
+    This is not a permanent hard gate: the supplied notes describe the resumed
+    draft. The revised draft is judged again by the critic and deterministic
+    release gates. Keeping it one-shot avoids an impossible gate that rejects
+    even after every requested edit has been made.
+    """
+    raw = str(feedback_text or "").strip()
+    if not raw:
+        return feedback, []
+    fixes = [
+        line.lstrip("-*0123456789. ").strip()
+        for line in raw.splitlines()
+        if line.strip()
+        and not line.strip().upper().startswith(
+            ("OPERATOR EDITORIAL REVIEW", "VERDICT"))
+    ]
+    fixes = list(dict.fromkeys(fix for fix in fixes if fix))
+    if not fixes:
+        fixes = [raw]
+    reason = (
+        "OPERATOR EDITORIAL REVIEW: the resumed draft was rejected after "
+        "manual read-through; apply every supplied editorial fix.")
+    return feedback.model_copy(update={
+        "approved": False,
+        "rejection_reasons": list(dict.fromkeys(
+            list(feedback.rejection_reasons) + [reason])),
+        "specific_fixes": list(dict.fromkeys(
+            fixes + list(feedback.specific_fixes))),
+    }), fixes
+
+
+def _load_resume_draft(
+    writer,
+    resume_from: str,
+    *,
+    products_root: Path,
+    channel_id: str,
+    topic: str,
+    variant_id: str = "",
+):
+    """Load a rejected raw variant without trusting an arbitrary filesystem path."""
+    product_dir = Path(resume_from).resolve()
+    root = products_root.resolve()
+    if root != product_dir and root not in product_dir.parents:
+        raise ValueError(
+            "resume_from must stay inside this channel's products directory")
+    meta_path = product_dir / "meta.json"
+    variants_dir = product_dir / "variants"
+    if not meta_path.is_file() or not variants_dir.is_dir():
+        raise ValueError("resume_from is not an OmniCast product directory")
+    import json
+
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    if meta.get("channel") != channel_id:
+        raise ValueError("resume_from belongs to a different channel")
+    if str(meta.get("topic", "")).strip().casefold() != topic.strip().casefold():
+        raise ValueError("resume_from belongs to a different topic")
+    raw_files = sorted(
+        variants_dir.glob("variant_*.raw.txt"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not raw_files:
+        raise ValueError("resume_from has no raw Writer variant")
+    requested_variant = str(variant_id or "").strip()
+    best_variant = requested_variant or str(
+        meta.get("best_variant") or "").strip()
+    preferred = [
+        path for path in raw_files
+        if path.name.startswith(f"variant_{best_variant}_score")
+    ]
+    if requested_variant and not preferred:
+        raise ValueError(
+            f"resume variant {requested_variant!r} is absent from product")
+    raw_path = preferred[0] if preferred else raw_files[0]
+    base = raw_path.name.removesuffix(".raw.txt")
+    json_path = variants_dir / f"{base}.json"
+    variant_meta = (
+        json.loads(json_path.read_text(encoding="utf-8"))
+        if json_path.is_file() else {}
+    )
+    variant_id = str(variant_meta.get("variant_id") or "resume")
+    draft = writer._parse_draft(
+        raw_path.read_text(encoding="utf-8"),
+        variant_id,
+        topic,
+        version=2,
+    )
+    angle = variant_meta.get("editorial_angle")
+    if isinstance(angle, dict) and angle:
+        draft = draft.model_copy(update={"editorial_angle": angle})
+    return draft, raw_path
+
+
+def _variant_text_path(vdir, result):
+    """The file this result was written to, without trusting its score.
+
+    Live run 2026-08-03 died here: the skeleton gate lowered a draft's score
+    after its variant file had been written, and the rejection branch went
+    looking for `variant_claude_revised_score70.txt` while the file on disk
+    said 72. Prefer the path recorded at write time; fall back to matching the
+    variant id so products written before that field existed still resolve.
+    """
+    from pathlib import Path as _Path
+
+    recorded = str(getattr(result, "variant_path", "") or "")
+    if recorded and _Path(recorded).exists():
+        return _Path(recorded)
+    exact = _Path(vdir) / f"variant_{result.variant_id}_score{result.final_score}.txt"
+    if exact.exists():
+        return exact
+    matches = sorted(
+        _Path(vdir).glob(f"variant_{result.variant_id}_score*.txt"),
+        key=lambda p: p.stat().st_mtime, reverse=True)
+    if matches:
+        return matches[0]
+    raise FileNotFoundError(
+        f"no variant text for {result.variant_id!r} in {vdir} "
+        f"(looked for the recorded path, score {result.final_score}, "
+        f"then any score)")
+
+
+def _script_result_rank(
+    result,
+    brief,
+) -> tuple[bool, bool, int, bool, int, int, int]:
     """Rank outputs without letting a short hard-gate failure win on score."""
     from omnicast.agents.critic import _canonical_spoken
     from omnicast.models.script import spoken_word_floor
 
     words = len(_canonical_spoken(result.final_draft).split())
     floor = spoken_word_floor(getattr(brief, "target_duration_min", None))
-    length_ok = words >= int(floor * 0.9)
+    length_ok = words >= floor
     # Among usable drafts, quality score wins. If every draft is under-length,
     # prefer the one closest to usable instead of shipping a 500-word fragment
     # merely because its subjective score is five points higher.
     primary = int(result.final_score) if length_ok else words
-    return bool(result.approved), length_ok, primary, int(result.final_score), words
+    evidence_problems = list(
+        getattr(result, "evidence_problems", ()) or ())
+    # LENGTH OUTRANKS EVIDENCE CLEANLINESS, and only here — approval is
+    # unaffected, because _apply_evidence_gate already forces approved=False
+    # on any draft with problems. This ordering decides which REJECTED
+    # candidate is reported and iterated on.
+    #
+    # With the evidence terms ahead of `length_ok`, a fragment won by being too
+    # short to be wrong: run 2026-08-03 selected a 128-word outline scoring
+    # 27/100 over a complete 2,111-word draft scoring 66, because the outline
+    # made too few claims to trip a boundary. Fewer opportunities to err is not
+    # a quality signal, and a 128-word candidate cannot be edited into a video.
+    return (
+        bool(result.approved),
+        length_ok,
+        not evidence_problems,
+        -len(evidence_problems),
+        primary,
+        int(result.final_score),
+        words,
+    )
 
 
 # ── Built-in steps ────────────────────────────────────────────────────────────
@@ -461,7 +841,14 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     from omnicast.config.settings import get_settings
     from omnicast.config.channel import ChannelProfileLoader
     from omnicast.config.niches import get_niche_config
-    from omnicast.models.script import ScriptDraft, ScriptSegment, TopicBrief, TopicSource
+    from omnicast.models.script import (
+        CriticFeedback,
+        ScriptDraft,
+        ScriptSegment,
+        TopicBrief,
+        TopicSource,
+        spoken_word_floor,
+    )
     from omnicast.agents.writer import WriterAgent
     from omnicast.agents.critic import CriticAgent
     from omnicast.agents.thinking import ThinkingAgent
@@ -475,7 +862,10 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     vault_path = impl_root / "output" / "vault.db"
     from omnicast.vault import db as vault_db
     vault_db.init_db(vault_path)
-    if vault_db.topic_has_script_product(channel_id, topic, vault_path):
+    if (
+        vault_db.topic_has_script_product(channel_id, topic, vault_path)
+        and not str(inputs.get("resume_from") or "").strip()
+    ):
         raise RuntimeError(f"Topic already has a script/product: {topic}")
 
     settings = get_settings()
@@ -500,6 +890,7 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     pain_in = (inputs.get("pain_point") or "").strip()
     angle_in = (inputs.get("content_angle") or "").strip()
     next_topic = (inputs.get("next_topic") or "").strip()
+    _operator_desc = str(inputs.get("operator_desc") or "")
 
     # Cross-video anti-repetition: feed the channel's recent names/motifs FORWARD
     # so the writer invents fresh ones (closes the loop the fingerprint guard opens).
@@ -530,7 +921,12 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         market=channel.market,
         source=TopicSource.MANUAL,
         angle="pain_hook",
-        target_duration_min=channel.target_duration_min,
+        # Per-run override: a news-frame video is naturally ~6-8 minutes; the
+        # channel default (14) forced a 2,100-word floor that doubled a 1,149-
+        # word draft with repetition (live run 2026-08-01). spoken_word_floor
+        # still enforces the 8-minute mid-roll platform minimum underneath.
+        target_duration_min=int(
+            inputs.get("target_duration_min") or channel.target_duration_min),
         brand_voice=channel.brand_voice,
         channel_id=channel.channel_id,
         sub_niche=channel.sub_niche,
@@ -552,7 +948,20 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         ] if p],
     )
 
-    llm_claude = _llm_client("anthropic", db_path=vault_path)
+    _finance_claude = (
+        (getattr(niche_cfg, "rubric_id", "") or "")
+        == "finance_explainer_v1"
+    )
+    _finance_effort = (
+        os.environ.get("OMNICAST_FINANCE_CLAUDE_EFFORT", "medium").strip()
+        if _finance_claude else None
+    )
+    llm_claude = _llm_client(
+        "anthropic",
+        db_path=vault_path,
+        cli_effort=_finance_effort,
+        role="finance_script_pipeline" if _finance_claude else "",
+    )
     llm_pro = _llm_client("deepseek", model=settings.deepseek_pro_model, db_path=vault_path)
     llm_flash = _llm_client("deepseek", model=settings.deepseek_flash_model, db_path=vault_path)
     # SPEED/COST (measured 2026-07-08: ~34min/$0.27 per script, ~20 LLM calls):
@@ -564,6 +973,66 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     # - run_tournament False: 2 variants are already scored by Critic — the extra
     #   Elo pairwise call added latency and once ranked a 66 ABOVE an 84.
     llm_writer = _llm_client("deepseek", model=settings.deepseek_chat_model, db_path=vault_path)
+
+    # ── PRE-WRITING EVIDENCE (finance/YMYL, fail-closed) ───────────────────
+    # A post-writing ledger can bind a number to a URL the model remembers; it
+    # cannot prove that URL exists or contains the claim. Fetch and verify the
+    # primary pages before an EditorialAngle commits the video to a thesis.
+    _evidence_pack = None
+    if (getattr(niche_cfg, "rubric_id", "") or "") == "finance_explainer_v1":
+        from omnicast.agents.evidence_research import (
+            EvidenceResearchAgent,
+            evidence_for_topic,
+        )
+
+        _prog("Researching primary sources", 12, detail=topic[:60])
+        _live(
+            "EvidenceResearch (claude): proposing primary sources, then "
+            "fetching and verifying the pages…",
+            "agent_start")
+        _evidence_pack, _evidence_cache_used = await evidence_for_topic(
+            EvidenceResearchAgent(llm=llm_claude),
+            topic,
+            impl_root / "output" / "research" / channel_id
+            / "evidence_pack_current.json",
+        )
+        brief = brief.model_copy(update={
+            "evidence_points": _evidence_pack.writer_points(),
+            "source_urls": [entry.source_url for entry in _evidence_pack.entries],
+        })
+        _research_dir = impl_root / "output" / "research" / channel_id
+        _research_dir.mkdir(parents=True, exist_ok=True)
+        (_research_dir / "evidence_pack_current.json").write_text(
+            _evidence_pack.model_dump_json(indent=2), encoding="utf-8")
+        _live(
+            f"Evidence {'cache revalidation' if _evidence_cache_used else 'research'}: "
+            f"{len(_evidence_pack.entries)} primary-source claims verified; "
+            f"{len(_evidence_pack.rejected)} rejected",
+            "gate")
+        # Operator-supplied evidence (run_phase2 --evidence-file): refetched and
+        # quote-verified with the same fail-closed checks, then appended. This
+        # survives the official-SSA-pack fast path, which otherwise discards
+        # news evidence for earnings-test topics (live failure 2026-08-01).
+        _op_evidence = str(inputs.get("evidence_file") or "").strip()
+        if _op_evidence:
+            from omnicast.agents.evidence_research import (
+                merge_operator_evidence,
+            )
+            _n_before = len(_evidence_pack.entries)
+            _evidence_pack = await merge_operator_evidence(
+                _evidence_pack, _op_evidence)
+            brief = brief.model_copy(update={
+                "evidence_points": _evidence_pack.writer_points(),
+                "source_urls": [
+                    entry.source_url for entry in _evidence_pack.entries],
+            })
+            (_research_dir / "evidence_pack_current.json").write_text(
+                _evidence_pack.model_dump_json(indent=2), encoding="utf-8")
+            _live(
+                f"Operator evidence: {len(_evidence_pack.entries) - _n_before} "
+                f"entries verified and merged from {_op_evidence}; "
+                f"rejected list now {len(_evidence_pack.rejected)}",
+                "gate")
 
     _channel_brand_top = {
         "brand_voice": getattr(channel, "brand_voice", "") or "",
@@ -590,6 +1059,7 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     )
     _flow = os.environ.get("OMNICAST_SCRIPT_FLOW", _default_flow).strip().lower()
     _narrative_result = None
+    _evidence_gate_problems: list[str] = []
     if _flow == "unit_first":
         if niche_cfg.content_format != "narrative":
             raise ValueError("unit_first currently requires a narrative channel strategy")
@@ -761,12 +1231,76 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     elif _flow == "claude_first":
         _cw = WriterAgent(llm=llm_claude)
         _cc = CriticAgent(llm=llm_pro)
-        _prog("Writer (Claude) drafting", 30, detail=topic[:60])
-        _live("Writer (claude-sonnet): drafting full script with prosody…", "agent_start")
-        drafts = await _cw.execute(
-            brief, num_variants=1, niche_cfg=niche_cfg,
-            audience=_audience_top, channel_brand=_channel_brand_top)
-        d0 = drafts[0]
+        _resume_from = str(inputs.get("resume_from") or "").strip()
+        if _resume_from:
+            _prog("Resuming rejected draft", 30, detail=topic[:60])
+            d0, _resume_raw_path = _load_resume_draft(
+                _cw,
+                _resume_from,
+                products_root=impl_root / "output" / "products" / channel_id,
+                channel_id=channel_id,
+                topic=topic,
+                variant_id=str(inputs.get("resume_variant") or "").strip(),
+            )
+            _live(
+                f"Resumed {d0.word_count}-word raw Writer variant from "
+                f"{_resume_raw_path.parent.parent.name}; current parser and "
+                "release gates will be applied",
+                "agent_done",
+            )
+        else:
+            _prog("Writer (Claude) drafting", 30, detail=topic[:60])
+            _live(
+                "Writer (claude-sonnet): drafting full script with prosody…",
+                "agent_start",
+            )
+            # An operator-supplied angle (run_phase2 --angle-file) arrives as a
+            # dict and BYPASSES the EditorialAnglePlanner. Before this, the
+            # validated angle was only pasted into the brief as prose, the
+            # planner re-planned on top of it, and the writer followed the
+            # planner — a news video about H.R. 8344 shipped with zero bill
+            # facts (live run 2026-08-01).
+            _angle_override = None
+            _angle_raw = inputs.get("editorial_angle")
+            if isinstance(_angle_raw, dict) and _angle_raw.get("thesis"):
+                from omnicast.agents.editorial_angle import (
+                    EditorialAngle as _EA,
+                )
+                _angle_override = _EA.from_dict(_angle_raw)
+                _live(
+                    "EditorialAngle: operator angle supplied — planner "
+                    "bypassed, writer bound to it",
+                    "gate")
+            drafts = await _cw.execute(
+                brief, num_variants=1, niche_cfg=niche_cfg,
+                audience=_audience_top, channel_brand=_channel_brand_top,
+                editorial_angle=_angle_override)
+            d0 = drafts[0]
+        if _evidence_pack is not None:
+            from omnicast.agents.evidence_research import (
+                normalize_draft_evidence_numbers,
+                sanitize_ssa_earnings_draft,
+            )
+            d0, _local_repairs = sanitize_ssa_earnings_draft(
+                d0, _evidence_pack)
+            if _local_repairs:
+                _angle_before_repair = dict(
+                    getattr(d0, "editorial_angle", {}) or {})
+                d0 = _cw._parse_draft(
+                    _cw._draft_to_script_text(d0),
+                    d0.variant_id,
+                    topic,
+                    version=d0.version,
+                )
+                if _angle_before_repair:
+                    d0 = d0.model_copy(update={
+                        "editorial_angle": _angle_before_repair})
+                _live(
+                    f"Applied {len(_local_repairs)} reviewed scene-level "
+                    "evidence/editorial repairs before scoring",
+                    "gate",
+                )
+            d0 = normalize_draft_evidence_numbers(d0, _evidence_pack)
         _live(f"Draft ready — {d0.word_count} spoken words, "
               f"{sum(len(s.scenes) for s in d0.segments) + len(d0.hook_scenes) + len(d0.outro_scenes)} scenes",
               "agent_done")
@@ -774,16 +1308,100 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         _live("Critic (deepseek-v4-pro): scoring draft…", "agent_start")
         fb = await _cc.execute(d0, brief, niche_cfg=niche_cfg,
                                channel_brand=_channel_brand_top)
+        fb, _draft_evidence_problems = _apply_evidence_gate(
+            fb, d0, _evidence_pack)
+        fb, _draft_anchor_problems = _apply_human_anchor_gate(
+            fb, d0, _operator_desc)
+        fb, _ = _apply_skeleton_gate(fb, d0, channel_id)
+        fb, _draft_operator_problems = _apply_operator_editorial_feedback(
+            fb, str(inputs.get("editorial_feedback") or ""))
+        _evidence_gate_problems.extend(_draft_evidence_problems)
         _live(f"Critic: {fb.total_score}/100 (VO {fb.voiceover_score}/70, "
               f"prod {fb.production_score}/30){' — APPROVED' if fb.approved else ''}",
               "critic_score", score=fb.total_score)
         best_draft, best_fb = d0, fb
+        _claude_results = [DebateResult(
+            variant_id="claude_initial", final_draft=d0,
+            final_score=fb.total_score, approved=fb.approved,
+            converged=True, rounds=[], final_feedback=fb,
+            evidence_problems=list(_draft_evidence_problems),
+            exit_reason="claude_first_initial")]
         # Revise threshold (OMNICAST_REVISE_BELOW, default 82). The revise pass
         # re-emits the WHOLE script (~10-15k output tokens ≈ $0.15-0.25) — it is
         # the single biggest cost lever. Lower the bar for cheap mode; an
         # APPROVED draft always skips regardless.
         _revise_below = int(os.environ.get("OMNICAST_REVISE_BELOW", "82"))
-        if _needs_length_only_fill(d0, fb, brief, _revise_below):
+        if _needs_visual_only_repair(
+            fb,
+            _draft_evidence_problems,
+            list(_draft_anchor_problems) + list(_draft_operator_problems),
+        ):
+            from omnicast.agents.critic import (
+                _canonical_spoken as _locked_voiceover,
+            )
+
+            _prog(
+                "VisualDirector repairing storyboard",
+                72,
+                detail="voiceover locked; visual/SFX only",
+            )
+            _live(
+                "VisualDirector (deepseek-flash): replacing generic visuals "
+                "without touching one word of narration…",
+                "agent_start",
+            )
+            _visual_draft = await VisualDirectorAgent(llm=llm_flash).execute(
+                d0,
+                brief,
+                niche_cfg=niche_cfg,
+                visual_fixes=fb.visual_fixes,
+                channel_brand=_channel_brand_top,
+            )
+            if (
+                _locked_voiceover(_visual_draft)
+                != _locked_voiceover(d0)
+            ):
+                logger.error(
+                    "VisualDirector changed locked voiceover; discarding output")
+                _visual_draft = d0
+            _visual_fb = await _cc.execute(
+                _visual_draft,
+                brief,
+                niche_cfg=niche_cfg,
+                channel_brand=_channel_brand_top,
+            )
+            _visual_fb, _visual_evidence_problems = _apply_evidence_gate(
+                _visual_fb, _visual_draft, _evidence_pack)
+            _visual_fb, _visual_anchor_problems = _apply_human_anchor_gate(
+                _visual_fb, _visual_draft, _operator_desc)
+            _evidence_gate_problems.extend(_visual_evidence_problems)
+            _live(
+                f"Visual-repaired draft scored {_visual_fb.total_score}/100"
+                f"{' — APPROVED' if _visual_fb.approved else ''}",
+                "critic_score",
+                score=_visual_fb.total_score,
+            )
+            _claude_results.append(DebateResult(
+                variant_id="claude_visual",
+                final_draft=_visual_draft,
+                final_score=_visual_fb.total_score,
+                approved=_visual_fb.approved,
+                converged=True,
+                rounds=[],
+                final_feedback=_visual_fb,
+                evidence_problems=list(_visual_evidence_problems),
+                exit_reason="claude_first_visual",
+            ))
+            if (
+                (_visual_fb.approved and not fb.approved)
+                or _visual_fb.total_score > fb.total_score
+            ):
+                best_draft, best_fb = _visual_draft, _visual_fb
+        elif (
+            not _draft_anchor_problems
+            and not _draft_operator_problems
+            and _needs_length_only_fill(d0, fb, brief, _revise_below)
+        ):
             from omnicast.agents.critic import _canonical_spoken as _canon_words
             _prog("Writer filling length", 72,
                   detail="high-quality draft — inserting only missing scenes")
@@ -791,13 +1409,27 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             d1 = await _cw.ensure_length(
                 d0, brief, niche_cfg=niche_cfg,
                 channel_brand=_channel_brand_top, audience=_audience_top)
+            if _evidence_pack is not None:
+                d1 = normalize_draft_evidence_numbers(d1, _evidence_pack)
             if len(_canon_words(d1).split()) > len(_canon_words(d0).split()):
                 fb1 = await _cc.execute(
                     d1, brief, niche_cfg=niche_cfg,
                     channel_brand=_channel_brand_top)
+                fb1, _draft_evidence_problems = _apply_evidence_gate(
+                    fb1, d1, _evidence_pack)
+                fb1, _draft_anchor_problems = _apply_human_anchor_gate(
+                    fb1, d1, _operator_desc)
+                fb1, _ = _apply_skeleton_gate(fb1, d1, channel_id)
+                _evidence_gate_problems.extend(_draft_evidence_problems)
                 _live(f"Length-filled draft scored {fb1.total_score}/100"
                       f"{' — APPROVED' if fb1.approved else ''}", "critic_score",
                       score=fb1.total_score)
+                _claude_results.append(DebateResult(
+                    variant_id="claude_length", final_draft=d1,
+                    final_score=fb1.total_score, approved=fb1.approved,
+                    converged=True, rounds=[], final_feedback=fb1,
+                    evidence_problems=list(_draft_evidence_problems),
+                    exit_reason="claude_first_length"))
                 if (fb1.approved and not fb.approved) or fb1.total_score > fb.total_score \
                         or (fb1.total_score == fb.total_score and
                             len(_canon_words(d1).split()) > len(_canon_words(d0).split())):
@@ -809,19 +1441,53 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             d1 = await _cw.revise(
                 d0, fb, brief, niche_cfg=niche_cfg,
                 channel_brand=_channel_brand_top, audience=_audience_top)
+            from omnicast.agents.critic import _canonical_spoken as _canon_words
+            from omnicast.models.script import spoken_word_floor as _word_floor
+
+            _revision_words = len(_canon_words(d1).split())
+            _revision_floor = _word_floor(brief.target_duration_min)
+            if _revision_words < _revision_floor:
+                _live(
+                    "Revision is under-length; applying one bounded scene-insertion "
+                    "patch before re-scoring…",
+                    "agent_start")
+                _filled = await _cw.ensure_length(
+                    d1, brief, niche_cfg=niche_cfg,
+                    channel_brand=_channel_brand_top, audience=_audience_top)
+                if len(_canon_words(_filled).split()) > _revision_words:
+                    d1 = _filled
+            if _evidence_pack is not None:
+                d1 = normalize_draft_evidence_numbers(d1, _evidence_pack)
             fb1 = await _cc.execute(d1, brief, niche_cfg=niche_cfg,
                                     channel_brand=_channel_brand_top)
+            fb1, _draft_evidence_problems = _apply_evidence_gate(
+                fb1, d1, _evidence_pack)
+            fb1, _draft_anchor_problems = _apply_human_anchor_gate(
+                fb1, d1, _operator_desc)
+            fb1, _ = _apply_skeleton_gate(fb1, d1, channel_id)
+            _evidence_gate_problems.extend(_draft_evidence_problems)
             _live(f"Revision scored {fb1.total_score}/100"
                   f"{' — APPROVED' if fb1.approved else ''}", "critic_score",
                   score=fb1.total_score)
+            _claude_results.append(DebateResult(
+                variant_id="claude_revised", final_draft=d1,
+                final_score=fb1.total_score, approved=fb1.approved,
+                converged=True, rounds=[], final_feedback=fb1,
+                evidence_problems=list(_draft_evidence_problems),
+                exit_reason="claude_first_revised"))
             if fb1.total_score > fb.total_score or (fb1.approved and not fb.approved):
                 best_draft, best_fb = d1, fb1
-        logger.info("pipeline.script: claude_first flow",
-                    score=best_fb.total_score, approved=best_fb.approved)
-        results = [DebateResult(
-            variant_id="claude", final_draft=best_draft,
-            final_score=best_fb.total_score, approved=best_fb.approved,
-            converged=True, rounds=[], exit_reason="claude_first")]
+        _best_claude = max(
+            _claude_results, key=lambda result: _script_result_rank(result, brief))
+        logger.info(
+            "pipeline.script: claude_first flow",
+            score=_best_claude.final_score,
+            approved=_best_claude.approved,
+            selected=_best_claude.variant_id,
+        )
+        # Keep every scored attempt. Besides making rejected runs auditable, this
+        # lets the shared ranker prefer a full-length 77 over an under-length 79.
+        results = _claude_results
     else:
         # Measured horror A/B (2026-07-15): merge+expand+fresh-score cost extra
         # calls yet produced a 920-word cliché-heavy draft that did not beat the
@@ -882,6 +1548,9 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     from omnicast.storage import products as _products
     product_dir = _products.new_product_dir(channel_id, topic)
     vdir = _products.variants_dir(product_dir)
+    if _evidence_pack is not None:
+        (product_dir / "evidence_pack.json").write_text(
+            _evidence_pack.model_dump_json(indent=2), encoding="utf-8")
 
     def _scene_dict(seg_heading: str, sc) -> dict:
         """Full scene serialization INCLUDING prosody (pace/pause_after_ms/
@@ -910,9 +1579,13 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         txt += d.outro
         base = f"variant_{r.variant_id}_score{r.final_score}"
         (vdir / f"{base}.txt").write_text(txt, encoding="utf-8")
+        # Remember where it went. The score in the name is a label; it must
+        # never be the only way back to the file.
+        r.variant_path = str(vdir / f"{base}.txt")
         (vdir / f"{base}.json").write_text(_json.dumps({
             "variant_id": r.variant_id, "score": r.final_score, "approved": r.approved,
             "hook": d.hook, "outro": d.outro, "scenes": _all_scene_dicts(d),
+            "editorial_angle": getattr(d, "editorial_angle", {}) or {},
             "channel_id": channel_id, "topic": topic,
         }, indent=2, ensure_ascii=False), encoding="utf-8")
         # Raw LLM output — the only way to diagnose whether the model actually
@@ -958,6 +1631,9 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
                 channel_brand=_channel_brand)
             _fb2 = await _critic.execute(
                 _polished, brief, niche_cfg=niche_cfg, channel_brand=_channel_brand)
+            _fb2, _polished_anchor_problems = _apply_human_anchor_gate(
+                _fb2, _polished, _operator_desc)
+            _fb2, _ = _apply_skeleton_gate(_fb2, _polished, channel_id)
             logger.info("pipeline.script: claude polish",
                         before=best.final_score, after=_fb2.total_score,
                         kept=_fb2.total_score > best.final_score)
@@ -971,6 +1647,8 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
                 "variant_id": "polished", "score": _fb2.total_score,
                 "approved": _fb2.approved, "hook": _polished.hook,
                 "outro": _polished.outro, "scenes": _all_scene_dicts(_polished),
+                "editorial_angle": (
+                    getattr(_polished, "editorial_angle", {}) or {}),
                 "channel_id": channel_id, "topic": topic,
             }, indent=2, ensure_ascii=False), encoding="utf-8")
             if getattr(_polished, "raw_content", ""):
@@ -978,7 +1656,11 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
                     _polished.raw_content, encoding="utf-8")
             # Keep the polish if it scores higher OR if it turns an unapproved
             # winner into an approved one (approval > a couple raw points).
+            # The polish pass replaces the draft and the score; the verdict that
+            # goes with them has to travel too, or a rejection report explains
+            # a script that is no longer the one on disk.
             if _fb2.total_score > best.final_score or (_fb2.approved and not best.approved):
+                best.final_feedback = _fb2
                 best.variant_id = "polished"
                 best.final_draft = _polished
                 best.final_score = _fb2.total_score
@@ -991,13 +1673,101 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             _narrative_result.model_dump(mode="json", exclude={"draft"}),
             indent=2, ensure_ascii=False), encoding="utf-8")
 
+    # Final provider-independent evidence veto for every finance flow. The
+    # claude_first branch runs this before revision as well; this second check
+    # prevents debate/polish/future flows from bypassing it.
+    if _evidence_pack is not None:
+        from omnicast.agents.evidence_research import (
+            normalize_draft_evidence_numbers,
+        )
+        best.final_draft = normalize_draft_evidence_numbers(
+            best.final_draft, _evidence_pack)
+        _final_fb = getattr(best, "final_feedback", None)
+        if _final_fb is None and getattr(best, "rounds", None):
+            _final_fb = max(
+                best.rounds,
+                key=lambda round_: round_.feedback.total_score,
+            ).feedback
+        if _final_fb is not None:
+            _final_fb, _final_evidence_problems = _apply_evidence_gate(
+                _final_fb, best.final_draft, _evidence_pack)
+            _final_fb, _final_anchor_problems = _apply_human_anchor_gate(
+                _final_fb, best.final_draft, _operator_desc)
+            _final_fb, _ = _apply_skeleton_gate(_final_fb, best.final_draft, channel_id)
+            _evidence_gate_problems.extend(_final_evidence_problems)
+            best.evidence_problems = list(_final_evidence_problems)
+            best.anchor_problems = list(_final_anchor_problems)
+            if _final_evidence_problems or _final_anchor_problems:
+                best.final_feedback = _final_fb
+                best.final_score = _final_fb.total_score
+                best.approved = False
+
+    _final_anchor_problems = list(dict.fromkeys(
+        list(getattr(best, "anchor_problems", []) or [])
+    ))
+    if _final_anchor_problems:
+        (product_dir / "editorial_contract_gate.json").write_text(
+            _json.dumps({
+                "passed": False,
+                "contract": "human_anchor",
+                "problems": _final_anchor_problems,
+            }, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    # Attempt history is useful in live logs, but the product-side gate report
+    # must describe the SELECTED final draft only.  Accumulating errors from an
+    # earlier draft made a repaired candidate look as if it still contained
+    # claims that were no longer present.
+    _final_product_evidence_problems = list(dict.fromkeys(
+        list(getattr(best, "evidence_problems", []) or [])
+    ))
+    if _final_product_evidence_problems:
+        (product_dir / "evidence_gate.json").write_text(_json.dumps({
+            "passed": False,
+            "problems": _final_product_evidence_problems,
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
+
     # A rejected candidate remains inspectable but is not a renderable product.
     # This gate also closes the historical claude_first/debate hole where any
     # highest-scoring draft was promoted even when Critic rejected it.
     if not best.approved:
-        _candidate = vdir / f"variant_{best.variant_id}_score{best.final_score}.txt"
+        _candidate = _variant_text_path(vdir, best)
         _needs_edit = product_dir / "needs_edit.txt"
         _needs_edit.write_text(_candidate.read_text(encoding="utf-8"), encoding="utf-8")
+        # WHY IT FAILED, NEXT TO WHAT FAILED. A rejection used to leave a score
+        # and a text file: 62/100 and no way to learn which dimension lost the
+        # points or what the critic actually said, so the only route back was
+        # to re-run the whole generation and hope. The feedback already exists
+        # in memory here; it just was never written down.
+        try:
+            _last = (max(best.rounds, key=lambda r: r.feedback.total_score).feedback
+                     if getattr(best, "rounds", None)
+                     else getattr(best, "final_feedback", None))
+            if _last is not None:
+                (product_dir / "critic_feedback.json").write_text(
+                    _json.dumps(_last.model_dump(mode="json"), indent=2,
+                                ensure_ascii=False), encoding="utf-8")
+                _md = [f"# Critic — {_last.total_score}/100 (REJECTED)",
+                       f"voiceover {_last.voiceover_score}/70 · "
+                       f"production {_last.production_score}/30", ""]
+                for _d in getattr(_last, "dimensions", []):
+                    _md.append(f"## {_d.name}: {_d.score}/{_d.max_score}")
+                    _md.append((_d.feedback or "").strip() or "(no comment)")
+                    _md.append("")
+                for _label, _items in (
+                        ("Rejection reasons", _last.rejection_reasons),
+                        ("Script fixes (→ Writer)", _last.specific_fixes),
+                        ("Visual fixes (→ VisualDirector)", _last.visual_fixes),
+                        ("Continuity issues", _last.continuity_issues)):
+                    if _items:
+                        _md.append(f"## {_label}")
+                        _md += [f"- {x}" for x in _items] + [""]
+                (product_dir / "critic_feedback.md").write_text(
+                    "\n".join(_md), encoding="utf-8")
+        except Exception as _fe_exc:  # noqa: BLE001
+            logger.warning("could not save critic feedback for the rejection",
+                           error=str(_fe_exc)[:200])
         try:
             from omnicast.llm.client import get_session_cost as _get_reject_cost
             _reject_cost = _get_reject_cost()
@@ -1028,7 +1798,7 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     # The approved script becomes the canonical product script.txt (rendered next).
     best_txt = _products.script_path(product_dir)
     best_txt.write_text(
-        (vdir / f"variant_{best.variant_id}_score{best.final_score}.txt").read_text(encoding="utf-8"),
+        _variant_text_path(vdir, best).read_text(encoding="utf-8"),
         encoding="utf-8")
     script_path = str(best_txt)
 
@@ -1045,14 +1815,232 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
 
         _script_text = best_txt.read_text(encoding="utf-8")
         _prog("Fact ledger (claim→source)", 78, detail="binding every figure to a source")
-        _live("FactLedger (claude): binding every figure to a source + year…", "agent_start")
-        _ledger = await FactLedgerAgent(llm=llm_claude).execute(
-            _script_text,
-            proof_sources=list(getattr(niche_cfg, "proof_sources", []) or []),
-            current_year=_dt.now(_tz.utc).year,
-            model_label="claude",
-        )
-        _fact_gate_report = gate_fact_ledger(_script_text, _ledger)
+        _fact_year = _dt.now(_tz.utc).year
+
+        async def _run_fact_ledger(text: str):
+            if _evidence_pack is not None:
+                from omnicast.agents.evidence_research import (
+                    fact_ledger_from_evidence_pack,
+                    gate_ledger_against_pack,
+                )
+
+                deterministic_ledger = fact_ledger_from_evidence_pack(
+                    text, _evidence_pack, current_year=_fact_year)
+                deterministic_report = gate_fact_ledger(
+                    text, deterministic_ledger, current_year=_fact_year)
+                pack_problems = gate_ledger_against_pack(
+                    deterministic_ledger, _evidence_pack)
+                if pack_problems:
+                    deterministic_report = deterministic_report.model_copy(
+                        update={
+                            "passed": False,
+                            "invalid_entries": (
+                                list(deterministic_report.invalid_entries)
+                                + pack_problems
+                            ),
+                        })
+                if deterministic_report.passed:
+                    _live(
+                        "FactLedger: bound directly from the verified evidence "
+                        "pack; no model call needed",
+                        "gate",
+                    )
+                    return deterministic_ledger, deterministic_report
+                logger.warning(
+                    "deterministic fact ledger incomplete; using LLM fallback",
+                    uncovered=deterministic_report.uncovered,
+                    invalid=deterministic_report.invalid_entries[:5],
+                    stale=deterministic_report.stale_entries[:5],
+                    orphan=deterministic_report.orphan_entries[:5],
+                )
+            _live(
+                "FactLedger (claude): binding every figure to a source + year…",
+                "agent_start",
+            )
+            ledger = await FactLedgerAgent(llm=llm_claude).execute(
+                text,
+                proof_sources=list(
+                    getattr(niche_cfg, "proof_sources", []) or []),
+                evidence_points=list(
+                    getattr(brief, "evidence_points", []) or []),
+                current_year=_fact_year,
+                model_label="claude",
+            )
+            report = gate_fact_ledger(
+                text, ledger, current_year=_fact_year)
+            if _evidence_pack is not None:
+                from omnicast.agents.evidence_research import (
+                    gate_ledger_against_pack,
+                )
+
+                pack_problems = gate_ledger_against_pack(
+                    ledger, _evidence_pack)
+                if pack_problems:
+                    report = report.model_copy(update={
+                        "passed": False,
+                        "invalid_entries": (
+                            list(report.invalid_entries) + pack_problems),
+                        "notes": (
+                            list(report.notes)
+                            + ["post-writing ledger escaped the pre-verified "
+                               "evidence pack"]),
+                    })
+            return ledger, report
+
+        _ledger, _fact_gate_report = await _run_fact_ledger(_script_text)
+
+        # One closed-loop repair: a source gate should route its exact failure
+        # back to Writer, not merely leave a needs_citations folder that requires
+        # an operator to notice and manually restate the same constraints.
+        if (
+            not _fact_gate_report.passed
+            and _flow == "claude_first"
+            and _evidence_pack is not None
+        ):
+            _missing_source_claims = [
+                entry.claim
+                for entry in _ledger.entries
+                if not (entry.source_name or "").strip()
+                or not (entry.source_url or "").strip()
+            ]
+            _fact_fixes = [
+                (
+                    "Remove or rewrite every named tool, rule detail, causal "
+                    "claim, prevalence claim, or administrative practice that "
+                    "is not explicitly supported by an E-anchor. Do not replace "
+                    "one unsupported fact with another."
+                ),
+                *[
+                    f"Unverified claim to remove or ground: {claim}"
+                    for claim in _missing_source_claims[:8]
+                ],
+            ]
+            _topic_norm = topic.lower()
+            if "social security" in _topic_norm and "withhold" in _topic_norm:
+                _fact_fixes.extend([
+                    (
+                        "Describe the special one-year rule only as E8 states: "
+                        "it can pay a full benefit for a whole month considered "
+                        "retired regardless of yearly earnings. Do not claim the "
+                        "test simply ignores all pre-filing income or switches "
+                        "wholesale from monthly to annual accounting."
+                    ),
+                    (
+                        "Do not call the full-retirement-age adjustment a refund, "
+                        "repayment, forced savings account, delayed release, or "
+                        "the same dollars paid on a later schedule. E7 supports "
+                        "only this boundary: the monthly benefit is increased "
+                        "permanently to account for months benefits were withheld."
+                    ),
+                    (
+                        "Remove unsupported audience-behavior generalizations "
+                        "such as 'most people', 'fear spreads', or people changing "
+                        "work/claiming decisions unless an E-anchor proves them."
+                    ),
+                ])
+            _repair_feedback = CriticFeedback(
+                variant_id=best.variant_id,
+                total_score=0,
+                approved=False,
+                rejection_reasons=[
+                    "Post-writing fact ledger failed closed."],
+                specific_fixes=_fact_fixes,
+            )
+            _prog(
+                "Writer repairing source boundary",
+                84,
+                detail=f"{len(_missing_source_claims)} unverified claims",
+            )
+            _live(
+                "Writer: repairing only the claims that escaped verified "
+                "evidence, then re-running every release gate…",
+                "agent_start",
+            )
+            _fact_writer = WriterAgent(llm=llm_claude)
+            _repaired = await _fact_writer.revise(
+                best.final_draft,
+                _repair_feedback,
+                brief,
+                niche_cfg=niche_cfg,
+                channel_brand=_channel_brand_top,
+                audience=_audience_top,
+            )
+            from omnicast.agents.critic import (
+                _canonical_spoken as _fact_canonical,
+            )
+
+            _repair_words = len(_fact_canonical(_repaired).split())
+            _repair_floor = spoken_word_floor(brief.target_duration_min)
+            if _repair_words < _repair_floor:
+                _filled = await _fact_writer.ensure_length(
+                    _repaired,
+                    brief,
+                    niche_cfg=niche_cfg,
+                    channel_brand=_channel_brand_top,
+                    audience=_audience_top,
+                )
+                if len(_fact_canonical(_filled).split()) > _repair_words:
+                    _repaired = _filled
+            from omnicast.agents.evidence_research import (
+                normalize_draft_evidence_numbers,
+            )
+
+            _repaired = normalize_draft_evidence_numbers(
+                _repaired, _evidence_pack)
+            _repair_critic = await CriticAgent(llm=llm_pro).execute(
+                _repaired,
+                brief,
+                niche_cfg=niche_cfg,
+                channel_brand=_channel_brand_top,
+            )
+            _repair_critic, _repair_evidence_problems = _apply_evidence_gate(
+                _repair_critic, _repaired, _evidence_pack)
+            _repair_critic, _repair_anchor_problems = _apply_human_anchor_gate(
+                _repair_critic, _repaired, _operator_desc)
+            _evidence_gate_problems.extend(_repair_evidence_problems)
+            _repair_id = "claude_fact_repair"
+            _repair_base = (
+                f"variant_{_repair_id}_score{_repair_critic.total_score}")
+            _repair_text = (
+                (_repaired.hook + "\n\n") if _repaired.hook else "")
+            for _segment in (_repaired.segments or []):
+                _repair_text += (
+                    f"[{_segment.heading}]\n{_segment.content}\n\n")
+            _repair_text += _repaired.outro
+            (vdir / f"{_repair_base}.txt").write_text(
+                _repair_text, encoding="utf-8")
+            (vdir / f"{_repair_base}.json").write_text(_json.dumps({
+                "variant_id": _repair_id,
+                "score": _repair_critic.total_score,
+                "approved": _repair_critic.approved,
+                "hook": _repaired.hook,
+                "outro": _repaired.outro,
+                "scenes": _all_scene_dicts(_repaired),
+                "editorial_angle": (
+                    getattr(_repaired, "editorial_angle", {}) or {}),
+                "channel_id": channel_id,
+                "topic": topic,
+            }, indent=2, ensure_ascii=False), encoding="utf-8")
+            if getattr(_repaired, "raw_content", ""):
+                (vdir / f"{_repair_base}.raw.txt").write_text(
+                    _repaired.raw_content, encoding="utf-8")
+            if _repair_critic.approved:
+                best.variant_id = _repair_id
+                best.final_draft = _repaired
+                best.final_score = _repair_critic.total_score
+                best.final_feedback = _repair_critic
+                best.approved = True
+                best_txt.write_text(_repair_text, encoding="utf-8")
+                _script_text = _repair_text
+                _ledger, _fact_gate_report = await _run_fact_ledger(
+                    _script_text)
+            else:
+                _fact_gate_report = _fact_gate_report.model_copy(update={
+                    "notes": (
+                        list(_fact_gate_report.notes)
+                        + [f"automatic source-boundary repair scored "
+                           f"{_repair_critic.total_score} and was rejected"]),
+                })
         (product_dir / "fact_ledger.json").write_text(_json.dumps({
             "ledger": _ledger.model_dump(mode="json"),
             "gate": _fact_gate_report.model_dump(mode="json"),
@@ -1099,6 +2087,8 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         (product_dir / "script.json").write_text(_json.dumps({
             "topic": topic, "channel_id": channel_id,
             "variant_id": best.variant_id, "score": best.final_score,
+            "editorial_angle": (
+                getattr(best.final_draft, "editorial_angle", {}) or {}),
             "scenes": _best_scenes,
         }, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -1116,17 +2106,16 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
         return len(body.split())
 
     try:
-        _TARGET_VO = 1300
-        _MAX_VO = 1500          # hard ceiling — an over-expanded script = a bloated,
-        _ACCEPT_MAX = 1700      # repetitive 18-min video + huge Flow image load.
+        _TARGET_VO = spoken_word_floor(brief.target_duration_min)
+        _MAX_VO = round(_TARGET_VO * 1.08)
+        _ACCEPT_MAX = round(_TARGET_VO * 1.15)
         cur = best_txt.read_text(encoding="utf-8") if best_txt.exists() else ""
         best_vo = _spoken_words(cur)
-        # A prosody storyboard (script.json) beats +100 words of prose: expanding
-        # rewrites prose only, which forces deleting the sidecar and the renderer
-        # loses ALL pace/pause/emphasis. If the draft already clears the 8-min
-        # floor (1200 vo words), keep the storyboard and skip the expand.
+        # A prosody storyboard is kept only when it clears THIS CHANNEL'S
+        # duration target. The old hard-coded 1,200-word exception silently
+        # accepted an 8-minute script for a 15-minute brief.
         _strict = os.environ.get("OMNICAST_STRICT", "1") != "0"
-        if (product_dir / "script.json").exists() and best_vo >= 1200:
+        if (product_dir / "script.json").exists() and best_vo >= _TARGET_VO:
             logger.info("pipeline.script: expand skipped — prosody storyboard kept",
                         vo_words=best_vo)
         elif _strict and (product_dir / "script.json").exists():
@@ -1167,6 +2156,9 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
                                from_words=best_vo, new_words=new_vo, accept_max=_ACCEPT_MAX)
         else:
             logger.info("pipeline.script: expand not needed", vo_words=best_vo)
+    except RuntimeError:
+        # STRICT length failures are release blockers, not best-effort polish.
+        raise
     except Exception as e:
         logger.warning("pipeline.script: expand skipped", error=str(e))
 
@@ -1293,9 +2285,23 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             f"{_le.get('message', '')[:120]}). Fix the script/config, or delete "
             f"{product_dir / '_repair_state.json'} to force a retry.")
 
-    def _audit_rendered_output() -> dict:
+    async def _audit_rendered_output() -> dict:
         from omnicast.media.output_audit import OutputQualityAuditor
+        from omnicast.media.visual_match_runner import run_visual_match_qc
 
+        try:
+            import json as _json
+            _channel_config = _json.loads(
+                (impl_root / "channels" / f"{channel_id}.json").read_text(
+                    encoding="utf-8"))
+        except Exception:
+            _channel_config = {}
+        await run_visual_match_qc(
+            product_dir,
+            out_mp4,
+            _channel_config,
+            impl_root / "visual_match_qc.py",
+        )
         audit = OutputQualityAuditor().inspect_product(out_mp4, product_dir)
 
         # §9 quality gates run INSIDE `inspect_product`, before the sidecar is
@@ -1400,7 +2406,7 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
                 size_mb=size_mb, visuals="all-stock", flow_degraded=False)
         except Exception:
             pass
-        audit = _audit_rendered_output()
+        audit = await _audit_rendered_output()
         _budget.record_success(_sig, "all-stock render + audit passed")
         await _auto_queue_approval()
         logger.info("pipeline.render: done", channel=channel_id, out=str(out_mp4), flow="skipped")
@@ -1456,7 +2462,7 @@ async def _step_render(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     except Exception as _me:
         logger.warning("pipeline.render: meta write failed", error=str(_me))
 
-    audit = _audit_rendered_output()
+    audit = await _audit_rendered_output()
     _budget.record_success(_sig, f"render + audit passed ({'flow' if flow_ok else 'all-stock'})")
     await _auto_queue_approval()
     logger.info("pipeline.render: done", channel=channel_id, out=str(out_mp4),

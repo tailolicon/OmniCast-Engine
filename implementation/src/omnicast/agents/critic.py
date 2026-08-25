@@ -279,8 +279,9 @@ class CriticAgent(BaseAgent):
             f"{channel_rules}"
             "You score scripts across TWO independent groups: VO quality (70pts) and "
             "Production quality (30pts). "
-            "Be harsh but precise. A script that retains 70%+ of viewers for 10 minutes "
-            "scores 80+ total. Most scripts fail — be skeptical. "
+            "Be harsh but precise. A script that plausibly retains 70%+ of viewers "
+            "through its brief-specific target duration scores 80+ total. Most "
+            "scripts fail — be skeptical. "
             "Score based on YOUTUBE PERFORMANCE, not academic quality. "
             "ALWAYS respond with valid JSON only. No markdown, no text outside JSON."
             + self._load_active_policy_rules()
@@ -412,7 +413,7 @@ class CriticAgent(BaseAgent):
             # path now re-expands to the floor.
             _words = len(_canonical_spoken(draft).split())
             _floor = spoken_word_floor(getattr(brief, "target_duration_min", None))
-            length_ok = _words >= int(_floor * 0.9)
+            length_ok = _words >= _floor
 
             # Hard gate 3 — FINANCE FATAL. A deterministic persona/guarantee/
             # advice hit is a policy violation, not a scoring matter: a capped
@@ -593,6 +594,17 @@ class CriticAgent(BaseAgent):
         # miss these — surface them as hard evidence with deduction orders) ────
         full_text = _canonical_spoken(draft).lower()
         total_words = len(full_text.split())
+        target_duration = max(
+            8, int(getattr(brief, "target_duration_min", 0) or 0))
+        duration_contract = (
+            f"\nTARGET DURATION: {target_duration} minutes | "
+            f"CURRENT SPOKEN WORDS: {total_words} "
+            f"(~{total_words / 150:.1f} minutes at 150 wpm)\n"
+            "Judge duration against this brief and the deterministic length "
+            "flag below. Do not call a script under-length or over-length when "
+            "the deterministic flag does not say so; critique repetition or "
+            "pacing by name instead.\n"
+        )
         _BANNED = [
             "keeps this channel going", "smash that", "don't forget to like",
             "in today's video", "let's dive in", "i publish every week",
@@ -612,7 +624,7 @@ class CriticAgent(BaseAgent):
         # Length flag scales with THIS brief's target (8-12+ min), never a hard
         # word count. 10% tolerance so a near-target script isn't nagged.
         _floor = spoken_word_floor(getattr(brief, "target_duration_min", None))
-        if total_words < int(_floor * 0.9):
+        if total_words < _floor:
             _tgt = max(8, int(getattr(brief, "target_duration_min", 0) or 0))
             flags.append(f"script only {total_words} spoken words (~{total_words/150:.1f} min) — "
                          f"below the {_tgt}-minute target (needs ~{_floor}+; hard mid-roll floor is 8 min)")
@@ -864,10 +876,57 @@ class CriticAgent(BaseAgent):
                 "jargon defined on first use, zero condescension toward older viewers.\n")
         else:
             _dim_and_json = _explainer_block
+        _angle_note = ""
+        if getattr(draft, "editorial_angle", None):
+            _a = draft.editorial_angle
+            _angle_note = (
+                "\n═══ PRE-WRITING EDITORIAL CONTRACT ═══\n"
+                f"THESIS: {_a.get('thesis', '')}\n"
+                f"PUSHES AGAINST: {_a.get('against', '')}\n"
+                f"FAIR COUNTERPOINT: {_a.get('counterpoint', '')}\n"
+                f"NARRATOR ATTITUDE: {_a.get('narrator_attitude', '')}\n"
+                f"PLANNED REACTION BEATS: {' | '.join(_a.get('reaction_beats', []))}\n"
+                f"WALK-AWAY: {_a.get('walk_away', '')}\n"
+                "Judge whether the script actually argues this thesis, treats "
+                "the counterpoint fairly, and places reactions next to the facts "
+                "they interpret. Merely repeating the vocabulary is not delivery.\n")
+
+        _evidence_note = ""
+        if _is_fin and getattr(brief, "evidence_points", None):
+            _verified_rows = "\n".join(
+                "- {evidence_id}: {claim}; VALUE={value}; SOURCE={source_name}; "
+                "AS_OF={as_of}; URL={source_url}".format(**{
+                    "evidence_id": item.get("evidence_id", ""),
+                    "claim": item.get("claim", ""),
+                    "value": item.get("value", "") or "(qualitative)",
+                    "source_name": item.get("source_name", ""),
+                    "as_of": item.get("as_of", ""),
+                    "source_url": item.get("source_url", ""),
+                })
+                for item in brief.evidence_points
+            )
+            _evidence_note = (
+                "\n═══ VERIFIED EVIDENCE — FACTUAL CEILING ═══\n"
+                + _verified_rows
+                + "\nTreat these entries as the complete factual ceiling for "
+                  "this draft. Penalize any precise figure, mechanism, prevalence "
+                  "claim, historical claim, automatic process, behavioral claim, "
+                  "or unsupported causal story that goes beyond them. A source "
+                  "name in a visual does not make an unsupported claim true. "
+                  "Hypothetical inputs must be explicitly labelled and must not "
+                  "masquerade as sourced rule values. A human-anchor story may "
+                  "add ordinary illustrative context, but it may not invent an "
+                  "agency letter/action, payment timing, tax or Medicare effect, "
+                  "spousal-benefit effect, or any other factual consequence "
+                  "outside these entries.\n")
+
         prompt = f"""Review this script for: {brief.title}
 Niche: {niche_key} | Market: {brief.market.value}
 Variant: {draft.variant_id}
+{duration_contract}
 {_narrative_note}
+{_angle_note}
+{_evidence_note}
 ═══ SHOOTING SCRIPT (scene-level detail) ═══
 {shooting_script}
 {pacing_warn}

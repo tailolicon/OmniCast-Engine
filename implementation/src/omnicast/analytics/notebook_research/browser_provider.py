@@ -42,6 +42,12 @@ DEADLINE_UPLOAD_PER_SOURCE = 90
 DEADLINE_INDEX_PER_SOURCE = 120
 DEADLINE_RESPONSE = 420
 RESPONSE_STABLE_CHECKS = 3
+# Sources asked about per verification question. One question per source is a
+# ~100s round-trip, so a 280-source corpus would take about eight hours to
+# check — which is not a check, it is a second project.
+VERIFY_BATCH = 10
+# Marker a caller puts where a long question may be cut into consecutive turns.
+PROMPT_SPLIT = "<<<SPLIT>>>"
 
 
 class AuthRequired(RuntimeError):
@@ -336,9 +342,13 @@ class NotebookLMWorker:
             if count >= expected and not processing:
                 stable += 1
                 if stable >= 2:
+                    # UI_INDEXED, not "indexed": all we learned is that the
+                    # app's own source counter reached the expected number.
+                    # Whether each URL actually yielded a transcript is a
+                    # different question, answered by verify_sources().
                     for s in manifest.sources:
                         if s.upload_status == "uploaded":
-                            s.upload_status = "indexed"
+                            s.upload_status = "ui_indexed"
                     manifest.save(base_dir)
                     return
             else:
@@ -358,6 +368,19 @@ class NotebookLMWorker:
         editability IS the ground-truth generation signal, so the flow is:
         wait box editable (previous turn may still run) → send → confirm
         generation started → wait until box editable again AND text stable."""
+        # A PROMPT TOO LONG TO SEND IS SENT IN PIECES. The 26-pair cohort
+        # questions (~4.6k chars) landed in the box intact — the truncation
+        # check passed — and no send path submitted them, while a ~700-char
+        # probe went out fine. Rather than binary-search a live UI for the
+        # exact submit cap, the caller marks where the question can be cut and
+        # the parts go as consecutive turns; the chat keeps its own context.
+        if PROMPT_SPLIT in prompt_text:
+            answer = ""
+            for part in [p.strip() for p in prompt_text.split(PROMPT_SPLIT)]:
+                if part:
+                    answer = self.run_prompt(part)
+            return answer
+
         box = self.find("chat_input", timeout_s=30)
         if box is None:
             raise UiDeadline("run_prompt: chat input not found")
@@ -395,6 +418,16 @@ class NotebookLMWorker:
         if prompt_text[:60] not in (got or ""):
             raise UiDeadline("run_prompt: prompt text did not land in the chat box "
                              "(wrong element matched?)")
+        # TRUNCATION IS A DIFFERENT FAILURE FROM A DEAD SEND BUTTON, and they
+        # look identical from outside: the text is visibly in the box and
+        # nothing submits. The wrong-box guard above only compares the first 60
+        # characters, so a box that accepted a prefix and dropped the rest
+        # passed it. Report the two lengths and let the caller shorten.
+        if len(got or "") + 8 < len(prompt_text):
+            raise UiDeadline(
+                f"run_prompt: chat box accepted only {len(got or '')} of "
+                f"{len(prompt_text)} characters — the prompt is over the "
+                f"input limit, not un-sendable")
         # Angular Material enables Submit only on REAL input events — a
         # programmatic fill leaves it disabled (run 6 timed out clicking a
         # disabled button). Nudge with a no-op keystroke pair, then click;
@@ -405,37 +438,64 @@ class NotebookLMWorker:
         # Enter in the chat box is the PROVEN send path (probe 2026-07-26).
         # The only button matching aria "Submit" belongs to the sources-panel
         # discovery form and sits disabled — clicking it burns the timeout.
-        clicked = False
-        send = self.find("send_button", timeout_s=2)
-        if send is not None:
-            try:
-                if send.is_enabled():
-                    send.click(timeout=5000)
-                    clicked = True
-            except Exception:
-                pass
-        if not clicked:
-            box.press("Enter")
+        # SEND IS NOT ONE ACTION, IT IS A LADDER. The 26-pair cohort prompts
+        # (~4.9k chars over 86 lines) all failed with "generation never started"
+        # while the text sat visibly in the box: the short prompts that worked
+        # before had gone out on the first rung, so nothing had ever exercised
+        # the fallbacks. Ctrl+Enter is the multi-line submit, and a second pass
+        # matters because the first Enter on a freshly filled long textarea can
+        # land while the app is still reflowing it.
+        def _attempt_send() -> None:
+            sent = False
+            snd = self.find("send_button", timeout_s=2)
+            if snd is not None:
+                try:
+                    if snd.is_enabled():
+                        snd.click(timeout=5000)
+                        sent = True
+                except Exception:
+                    pass
+            if not sent:
+                try:
+                    box.press("Control+Enter")
+                except Exception:
+                    pass
+                try:
+                    box.press("Enter")
+                except Exception:
+                    pass
+
+        def _started(window_s: float) -> bool:
+            end = time.monotonic() + window_s
+            while time.monotonic() < end:
+                try:
+                    if not box.is_editable():
+                        return True
+                except Exception:
+                    pass
+                if self._latest_response_text() != baseline:
+                    return True
+                time.sleep(1.0)
+            return False
 
         # Confirm generation actually STARTED (box disables or a new message
         # pair appears) — otherwise "stable" would trivially pass on the old
         # answer and the send failure would go unnoticed.
-        start_deadline = time.monotonic() + 45
-        started = False
-        while time.monotonic() < start_deadline:
+        _attempt_send()
+        started = _started(45)
+        if not started:
             try:
-                if not box.is_editable():
-                    started = True
-                    break
+                box.click()
+                box.press("End")
             except Exception:
                 pass
-            text = self._latest_response_text()
-            if text != baseline:
-                started = True
-                break
-            time.sleep(1.0)
+            _attempt_send()
+            started = _started(30)
         if not started:
-            raise UiDeadline("run_prompt: generation never started after send")
+            raise UiDeadline(
+                f"run_prompt: generation never started after send "
+                f"(prompt {len(prompt_text)} chars, "
+                f"{len(prompt_text.splitlines())} lines)")
 
         last, stable = "", 0
         while time.monotonic() < deadline:
@@ -448,7 +508,12 @@ class NotebookLMWorker:
             if editable and text and text == last:
                 stable += 1
                 if stable >= RESPONSE_STABLE_CHECKS:
-                    return text
+                    # The captured turn can include the question and the
+                    # reasoning trace. Every caller then parses OUR words, or
+                    # Gemini's thinking, as the answer — see the two strippers
+                    # for what that cost.
+                    return self._strip_thoughts(
+                        self._strip_prompt_echo(text, prompt_text))
             else:
                 stable = 0
                 last = text
@@ -464,13 +529,306 @@ class NotebookLMWorker:
                 continue
         return ""
 
+    @staticmethod
+    def _strip_thoughts(text: str) -> str:
+        """Drop Gemini's reasoning trace from the head of an answer.
+
+        The trace sits INSIDE the answer node. Collapsed it is two lines
+        ("Thoughts" / "expand_more"); while it is still streaming it is the
+        whole chain of thought, complete with the UI's icon words. A run that
+        captured mid-stream stored a page of "Analyzing Transcript Passages"
+        and no answer at all, and nothing downstream could tell that apart from
+        a model that had answered badly.
+        """
+        lines = (text or "").splitlines()
+        widget = {"thoughts", "expand_more", "expand_less", "neurology",
+                  "travel_explore", "edit_document", "auto_awesome"}
+        i = 0
+        if not lines or lines[0].strip().lower() != "thoughts":
+            return (text or "").strip()
+        i = 1
+        last_widget = 0
+        while i < len(lines):
+            if lines[i].strip().lower() in widget:
+                last_widget = i
+            i += 1
+        # Everything up to the final widget marker is trace; a collapsed
+        # trace makes that marker line 1 and costs nothing.
+        return "\n".join(lines[last_widget + 1:]).strip()
+
+    @staticmethod
+    def _strip_prompt_echo(text: str, prompt: str) -> str:
+        """Drop the question from the captured turn, if it came along.
+
+        THE PROMPT'S OWN VOCABULARY WAS BEING READ AS THE ANSWER. The response
+        container can hold the whole turn, question included, and the source
+        probe asks the model to reply "NO_TRANSCRIPT if that source has none".
+        Searching the captured text for NO_TRANSCRIPT therefore matched the
+        question every single time: ten live probes were recorded as "no
+        verbatim quote" while the screenshot showed a quote sitting right
+        there. Any parser that looks for a token it also SENDS has this bug.
+        """
+        body = (text or "").strip()
+        head = " ".join((prompt or "").split())[:80]
+        if not head:
+            return body
+        flat = " ".join(body.split())
+        idx = flat.find(head)
+        if idx < 0:
+            return body
+        # Cut on the ORIGINAL text using the tail of the echoed prompt, so the
+        # answer keeps its own line breaks (the batch parser needs them).
+        tail = " ".join((prompt or "").split())[-60:]
+        pos = flat.find(tail, idx)
+        if pos < 0:
+            return body
+        marker = tail.split()[-4:] if len(tail.split()) >= 4 else tail.split()
+        needle = " ".join(marker)
+        cut = body.find(needle)
+        return body[cut + len(needle):].strip() if cut >= 0 else body
+
+    @staticmethod
+    def _quote_matches_transcript(video_id: str, quote: str, timestamp: str,
+                                  vtt_dir: Path) -> tuple[bool, str]:
+        """Is this quote actually IN that video's transcript, near that time?
+
+        Checking the SHAPE of the answer (a QUOTE line, a mm:ss) proves the
+        model can follow a format, not that it read anything: a fabricated
+        quote with a fabricated timestamp passes a format check perfectly.
+        We hold 234 local VTTs — the claim is checkable, so it must be checked.
+        """
+        hits = list(Path(vtt_dir).glob(f"{video_id}*.vtt")) if vtt_dir else []
+        if not hits:
+            return False, "no local transcript to check against"
+        try:
+            from omnicast.analytics.craft_forensics import parse_vtt
+
+            lines = parse_vtt(hits[0])
+        except Exception as exc:
+            return False, f"transcript unreadable: {str(exc)[:80]}"
+        if not lines:
+            return False, "local transcript empty"
+
+        def _norm(s: str) -> str:
+            return re.sub(r"[^a-z0-9 ]", " ", s.lower())
+
+        norm_quote = " ".join(_norm(quote).split())
+        if len(norm_quote.split()) < 4:
+            return False, "quote too short to verify"
+        joined = " ".join(" ".join(_norm(ln.text).split()) for ln in lines)
+        # Auto-captions punctuate and line-break differently, so require a
+        # contiguous 5-word run from the quote rather than the whole string.
+        words = norm_quote.split()
+        window = 5
+        found_at: float | None = None
+        for i in range(len(words) - window + 1):
+            frag = " ".join(words[i:i + window])
+            if frag in joined:
+                for ln in lines:
+                    if frag in " ".join(_norm(ln.text).split()):
+                        found_at = ln.t
+                        break
+                break
+        if found_at is None:
+            return False, "quote not present in the local transcript"
+        if timestamp:
+            parts = [int(p) for p in timestamp.split(":")]
+            claimed = (parts[0] * 60 + parts[1] if len(parts) == 2
+                       else parts[0] * 3600 + parts[1] * 60 + parts[2])
+            if abs(claimed - found_at) > 90:
+                return False, (f"timestamp {timestamp} is {abs(claimed - found_at):.0f}s "
+                               f"from where the quote actually appears")
+        return True, f"quote found at {found_at:.0f}s in the local transcript"
+
+    @staticmethod
+    def _parse_batch_probe(answer: str) -> dict[int, tuple[str, str, str]]:
+        """Pull (quote, timestamp, status) per slot number out of one reply.
+
+        Tolerant on shape, strict on content: a model asked for `n| QUOTE: … |
+        AT: … | STATUS: …` will sometimes number with `1.`, wrap lines in bold,
+        or drop a slot entirely. A missing slot must read as MISSING — silently
+        skipping it would leave the source at its previous status and let an
+        unanswered question look like a passed one.
+        """
+        out: dict[int, tuple[str, str, str]] = {}
+        for raw in (answer or "").splitlines():
+            line = raw.strip().lstrip("*-• ").replace("**", "")
+            m = re.match(r"^(\d{1,3})\s*[|.)\]:]\s*(.+)$", line)
+            if not m:
+                continue
+            slot, rest = int(m.group(1)), m.group(2)
+            if "QUOTE" not in rest.upper() and "STATUS" not in rest.upper():
+                continue
+            q = re.search(r"QUOTE:\s*(.*?)(?=\s*\|\s*AT:|\s*\|\s*STATUS:|$)",
+                          rest, re.I)
+            t = re.search(r"AT:\s*(\d{1,2}:\d{2}(?::\d{2})?)", rest, re.I)
+            st = re.search(r"STATUS:\s*([A-Z_]+)", rest, re.I)
+            quote = (q.group(1).strip().strip('"“”') if q else "")
+            status = (st.group(1).upper() if st else "OK")
+            if "NO_TRANSCRIPT" in rest.upper():
+                status = "NO_TRANSCRIPT"
+            out[slot] = (quote, t.group(1) if t else "", status)
+        return out
+
+    def verify_sources(self, manifest: RunManifest, base_dir: Path,
+                       sample: int = 0, vtt_dir: Path | None = None,
+                       titles: dict[str, str] | None = None,
+                       batch: int = VERIFY_BATCH) -> dict:
+        """Promote ui_indexed → evidence_usable by ASKING about the sources.
+
+        A source count proves the row exists; it does not prove a transcript
+        was pulled.
+
+        ASKED IN BATCHES, because one question per source does not finish. A
+        probe round-trip is ~100s of UI wait, so 280 sources one at a time is
+        an eight-hour job for a step that is supposed to be a check, and the
+        operator's first reaction to watching it was the correct one. Ten
+        sources per question turns the same corpus into ~28 questions.
+
+        Batching is safe here precisely because the answer is not trusted: each
+        quote is cross-checked against THAT video's local caption file, so a
+        model that answers slot 7 with source 3's line fails slot 7. Isolation
+        was never what made the probe sound; the transcript check is.
+        """
+        targets = [s for s in manifest.sources
+                   if s.upload_status in ("ui_indexed", "indexed")]
+        if sample and sample < len(targets):
+            step = max(1, len(targets) // sample)
+            targets = targets[::step][:sample]
+        checked = verified = empty = 0
+        batch = max(1, int(batch))
+
+        for start in range(0, len(targets), batch):
+            chunk = targets[start:start + batch]
+            # ADDRESS THE SOURCE THE WAY THE APP DOES. The first live probes
+            # asked for "the source whose URL ends with <id>" and all ten came
+            # back without a quote: the source list shows TITLES, and the model
+            # has no URL index to match a suffix against.
+            lines = []
+            for n, s_ in enumerate(chunk, start=1):
+                title = (titles or {}).get(s_.video_id) or s_.remote_title
+                lines.append(f"{n}. " + (f'"{title}"' if title
+                                         else f"(source with URL ending {s_.video_id})"))
+            probe = (
+                "For EACH numbered source below, copy one verbatim line from "
+                "the middle of THAT source's own transcript.\n\n"
+                + "\n".join(lines) +
+                "\n\nAnswer with exactly one line per number, nothing else:\n"
+                "<n>| QUOTE: <8-14 words copied verbatim> | AT: <mm:ss> | "
+                "STATUS: OK\n"
+                "Use STATUS: NO_TRANSCRIPT for any source you cannot read. Do "
+                "NOT paraphrase, do NOT summarise, and never answer one number "
+                "using another source's text.")
+            try:
+                answer = self.run_prompt(probe)
+            except Exception as exc:
+                for s_ in chunk:
+                    s_.verify_note = f"probe failed: {str(exc)[:120]}"
+                    checked += 1
+                manifest.save(base_dir)
+                continue
+
+            # KEEP THE WHOLE REPLY. The per-source note truncates at 200 chars,
+            # and the first batch answered slot 1 and nothing else — a fact
+            # that took a screenshot to establish because the reply itself was
+            # never written down anywhere.
+            try:
+                dump = Path(base_dir) / "verify_replies"
+                dump.mkdir(parents=True, exist_ok=True)
+                (dump / f"batch_{start // batch:03d}.txt").write_text(
+                    (probe + "\n\n=== REPLY ===\n" + (answer or "")),
+                    encoding="utf-8")
+            except OSError:
+                pass
+            parsed = self._parse_batch_probe(answer or "")
+            # UNDER-ANSWERING IS THE MODEL'S PROBLEM, NOT THE SOURCES'. The
+            # first live batch replied about slot 1 and stopped; marking the
+            # other nine "failed" would have written our unanswered question
+            # into the record as nine dead videos. Ask once more, naming what
+            # is missing, before believing anything.
+            missing = [n for n in range(1, len(chunk) + 1)
+                       if not parsed.get(n, ("", "", ""))[0]
+                       and parsed.get(n, ("", "", ""))[2] != "NO_TRANSCRIPT"]
+            if missing and len(missing) < len(chunk) + 1:
+                nudge = ("You answered only some of them. Give me the SAME "
+                         "format for exactly these numbers, one line each, "
+                         "nothing else: " + ", ".join(str(n) for n in missing))
+                try:
+                    more = self._parse_batch_probe(self.run_prompt(nudge))
+                    for n, val in more.items():
+                        if n in missing:
+                            parsed[n] = val
+                except Exception as exc:
+                    logger.warning("batch re-ask failed", error=str(exc)[:120])
+
+            for n, s_ in enumerate(chunk, start=1):
+                checked += 1
+                quote, ts, status = parsed.get(n, ("", "", "MISSING"))
+                # EVIDENCE, NOT ANSWER LENGTH (operator audit): the old check
+                # said "8+ words in the reply" — which a summary, a
+                # refusal-with-context or a hallucination all satisfy.
+                if status == "NO_TRANSCRIPT" or not quote:
+                    s_.upload_status = "failed"
+                    # KEEP WHAT IT ACTUALLY SAID, so a refusal, a rate-limit
+                    # banner and a drifted reply format stay distinguishable.
+                    s_.verify_note = (
+                        f"no verbatim quote for slot {n} ({status}) | reply: "
+                        + " ".join((answer or "").split())[:200])
+                    empty += 1
+                elif not ts:
+                    s_.upload_status = "ui_indexed"
+                    s_.verify_note = f"quote without timestamp: {quote[:60]}"
+                    empty += 1
+                else:
+                    ok, why = self._quote_matches_transcript(
+                        s_.video_id, quote, ts, vtt_dir or Path())
+                    s_.verified_words = len(quote.split())
+                    s_.verify_quote = quote[:200]
+                    s_.verify_timestamp = ts
+                    s_.verify_note = why
+                    if ok:
+                        s_.upload_status = "evidence_usable"
+                        verified += 1
+                    else:
+                        # Well-formed but uncorroborated: the model may have
+                        # invented both the quote and the time, or answered
+                        # this slot from a different source. Not evidence.
+                        s_.upload_status = "ui_indexed"
+                        empty += 1
+            manifest.save(base_dir)
+
+        summary = {"checked": checked, "verified": verified, "empty": empty,
+                   "batch": batch,
+                   "questions_asked": (len(targets) + batch - 1) // batch,
+                   "sampled": bool(sample and sample < len(manifest.sources)),
+                   "population": len(manifest.sources)}
+        (Path(base_dir) / "source_verification.json").write_text(
+            json.dumps(summary, indent=1), encoding="utf-8")
+        return summary
+
     def capture_citations(self, max_chips: int = 40) -> list[dict]:
-        """Best-effort citation harvest: click each chip, record the panel
-        text, close. Failures are recorded per-chip, never fatal."""
+        """Citations OF THE LAST ANSWER — click each chip, record the panel
+        text, close. Failures are recorded per-chip, never fatal.
+
+        SCOPED TO THE LATEST RESPONSE (operator audit 27/07): harvesting chips
+        page-wide collected every citation in the whole chat history, so three
+        different questions came back with 36/40 identical citation positions
+        and a first citation pointing at a video that was never asked about.
+        A citation set that does not belong to its answer is worse than none —
+        it looks like evidence."""
         out: list[dict] = []
+        scope = self.page
+        for _, css in SELECTORS["response_container"]:
+            try:
+                blocks = self.page.locator(css)
+                if blocks.count():
+                    scope = blocks.last          # the answer just generated
+                    break
+            except Exception:
+                continue
         for _, css in SELECTORS["citation_chip"]:
             try:
-                chips = self.page.locator(css)
+                chips = scope.locator(css)
                 n = min(chips.count(), max_chips)
             except Exception:
                 continue
@@ -512,7 +870,11 @@ class NotebookLMWorker:
 
 def run_notebook_stage(manifest: RunManifest, base_dir: Path,
                        worker: NotebookLMWorker,
-                       prompt_texts: dict[str, str]) -> RunManifest:
+                       prompt_texts: dict[str, str],
+                       url_batch_limit: int = 40,
+                       verify_sample: int = 0,
+                       vtt_dir: Path | None = None,
+                       titles: dict[str, str] | None = None) -> RunManifest:
     """Advance the manifest through the state machine with `worker`.
 
     Raises AuthRequired for the caller to fall back to the Native Learner.
@@ -548,25 +910,42 @@ def run_notebook_stage(manifest: RunManifest, base_dir: Path,
             state = RunState.UPLOAD_SOURCES
         if state == RunState.UPLOAD_SOURCES:
             worker.upload_sources(manifest, base_dir)
-            worker.add_url_sources(manifest, base_dir)
+            # Cohort-scale runs add hundreds of URL sources; the batch limit is
+            # a resume checkpoint, not a cap on the corpus.
+            worker.add_url_sources(manifest, base_dir,
+                                   batch_limit=url_batch_limit)
             manifest.transition(RunState.WAIT_FOR_INDEXING, base_dir)
             state = RunState.WAIT_FOR_INDEXING
         if state == RunState.WAIT_FOR_INDEXING:
             worker.wait_for_indexing(manifest, base_dir)
             manifest.transition(RunState.SOURCE_AUDIT, base_dir)
             state = RunState.SOURCE_AUDIT
+        # ARTIFACTS ARE PER NOTEBOOK (operator audit 27/07). Every run wrote to
+        # a shared `responses/`, so a 19-source pilot and a 280-source corpus
+        # left their answers side by side under identical names — an audit
+        # reading `source_audit.md` next to the 280 run was reading the pilot.
+        resp_dir = Path(base_dir) / manifest.notebook_key / "responses"
+        resp_dir.mkdir(parents=True, exist_ok=True)
+        # PROVE the sources carry transcripts before any finding rests on them.
+        # Runs on EVERY invocation when asked, not only when the state machine
+        # happens to pass through SOURCE_AUDIT: a corpus that finished ingestion
+        # sits in VALIDATE forever, and verification would never fire again.
+        # Sampled at cohort scale, and the summary always says what was checked.
+        if verify_sample:
+            summary = worker.verify_sources(manifest, base_dir,
+                                            sample=verify_sample,
+                                            vtt_dir=vtt_dir, titles=titles)
+            (resp_dir / "source_verification.json").write_text(
+                json.dumps(summary, indent=1), encoding="utf-8")
+            logger.info("notebook source verification", **summary)
         if state == RunState.SOURCE_AUDIT:
             audit = prompt_texts.get("source_audit", "")
             if audit:
                 text = worker.run_prompt(audit)
-                (Path(base_dir) / "responses").mkdir(parents=True, exist_ok=True)
-                (Path(base_dir) / "responses" / "source_audit.md").write_text(
-                    text, encoding="utf-8")
+                (resp_dir / "source_audit.md").write_text(text, encoding="utf-8")
             manifest.transition(RunState.RUN_RESEARCH_PROMPTS, base_dir)
             state = RunState.RUN_RESEARCH_PROMPTS
         if state == RunState.RUN_RESEARCH_PROMPTS:
-            resp_dir = Path(base_dir) / "responses"
-            resp_dir.mkdir(parents=True, exist_ok=True)
             for job in manifest.pending_prompts():
                 text = prompt_texts.get(job.prompt_id, "")
                 if not text:

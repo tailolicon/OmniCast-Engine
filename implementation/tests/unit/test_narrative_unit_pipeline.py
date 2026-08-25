@@ -69,6 +69,20 @@ def _story_plan(index: int) -> NarrativeStoryPlan:
     return NarrativeStoryPlan(
         story_id=f"story_{index}",
         title=f"Unit {index}",
+        # The horror profile requires a ladder (run 15 accepted a plan with
+        # none). Four present-tense rungs keep the shared fixture valid.
+        escalation_ladder=[
+            f"A tap on the glass after midnight in building {index}.",
+            "Another tap, this time closer to the center of the glass.",
+            "Footsteps on the porch, stopping outside the door.",
+            "The door handle turns once, hard, while he stands behind it.",
+        ],
+        # What stays (23/08): the four fields the corpus's most-watched
+        # stories all carry; ladder profiles require them.
+        already_line=f"The scuff on the sill in building {index} was from the night before: he had been inside already.",
+        no_way_out="The only phone is the wall unit by the loading door, on his side of it.",
+        threat_mind="He tried the door and stopped each time a light came on; he was checking whether anyone was left.",
+        remainder="Nobody ever said who had the other key, and the scuff is still on the sill.",
         narrator_profile=f"narrator {index} with a distinct job and cadence",
         setting=f"different storage building {index}",
         setup_requirement=f"ordinary work routine {index} established before danger",
@@ -386,9 +400,9 @@ def test_gate_rejects_ai_tells_evidence_stacking_and_repetition():
 @pytest.mark.parametrize(
     "phrase",
     [
-        "I figure it's pipes.",
-        "I did that thing where you tell yourself it lines up with something ordinary.",
-        "I almost had myself convinced it was the radiator.",
+        "I figure it's probably nothing.",
+        "I did that thing where you tell yourself it is fine.",
+        "I convinced myself it was my imagination.",
     ],
 )
 def test_gate_rejects_paraphrased_stock_self_reassurance(phrase):

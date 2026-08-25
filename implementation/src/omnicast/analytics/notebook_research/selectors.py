@@ -95,8 +95,18 @@ SELECTORS: dict[str, list[tuple[str, str]]] = {
         ("css", "[class*='citation']"),          # last resort only
     ],
     "response_container": [
-        # Live probe 2026-07-26: each Q/A exchange is a div.chat-message-pair
-        # inside .chat-panel-content — `.last` is the current answer.
+        # DOM probe 2026-07-28: a .chat-message-pair holds TWO chat-message
+        # nodes — .from-user-container (our question) and .to-user-container
+        # (the answer). The old table named the PAIR "the current answer", so
+        # every saved response artifact began with our own prompt, and the
+        # source verifier read the question's own NO_TRANSCRIPT token as the
+        # model's verdict ten times in a row.
+        # `...inner-content` also excludes the card's action row
+        # ("Save to note / copy_all / thumb_up"), which is chrome, not answer.
+        ("css", ".to-user-message-inner-content"),
+        ("css", ".to-user-container"),
+        # Fallbacks, in known-bad order: these DO include the question, which
+        # is why _strip_prompt_echo still runs on whatever comes back.
         ("css", ".chat-message-pair"),
         ("css", ".chat-panel-content"),
         ("css", "chat-panel"),

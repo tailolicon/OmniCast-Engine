@@ -35,7 +35,9 @@ from omnicast.media.production_router import (
 )
 
 # What the engine can do out of the box: no camera, no crew, no animator.
-DEFAULT_CAPS = {"screen_capture"}
+# What the engine can actually do out of the box: nothing that needs a camera,
+# a crew, an animator — or a screen recorder, which it also does not have.
+DEFAULT_CAPS: set[str] = set()
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -96,10 +98,31 @@ def test_animation_is_not_faked_with_a_pile_of_ai_frames_silently():
     assert route.fallback_reason
 
 
-def test_a_declared_capability_unlocks_its_mode():
+def test_a_declared_capability_alone_does_not_unlock_animation():
+    """Found in review: a config string produced `mode=animation,
+    was_substituted=False` for a pipeline with nothing able to draw a frame —
+    and the scene then fell through to a generated image downstream. That is
+    the "AI images plus a crossfade" the review rejects, wearing the label of
+    the thing it is not."""
+    from omnicast.media.production_router import animation_renderer_available
+
     channel = type("C", (), {"supported_production": ["character_animation"]})()
     caps = capabilities_from_channel(channel)
+    assert animation_renderer_available() is False
+    assert "character_animation" not in caps
     route = route_scene(0, "Our character leaps across the gap", capabilities=caps)
+    assert route.mode != ANIMATION
+    assert route.fallback_reason
+
+
+def test_animation_routes_only_when_a_renderer_is_actually_present(monkeypatch):
+    from omnicast.media import production_router as router
+
+    monkeypatch.setattr(router, "animation_renderer_available", lambda: True)
+    channel = type("C", (), {"supported_production": ["character_animation"]})()
+    caps = router.capabilities_from_channel(channel)
+    route = router.route_scene(0, "Our character leaps across the gap",
+                               capabilities=caps)
     assert route.mode == ANIMATION
     assert route.was_substituted is False
 
@@ -121,10 +144,21 @@ def test_every_fallback_chain_terminates_somewhere_producible():
             assert any(not (MODE_REQUIREMENTS[c] - DEFAULT_CAPS) for c in chain), mode
 
 
-def test_screen_capture_is_available_by_default_because_it_is_true():
+def test_screen_capture_is_not_granted_for_free():
+    """Round five: it WAS granted by default, on the strength of "OmniCast can
+    record a screen" — while this module's own APPROXIMATED_MODES said there is
+    no screen-recording capture step in the render pipeline. The router and
+    `stack_fit` both read this vocabulary, so a software tutorial looked
+    producible to the topic scorer too."""
+    from omnicast.media.production_router import screen_capture_available
+
+    assert screen_capture_available() is False
+    assert capabilities_from_channel(object()) == set()
     route = route_scene(0, "Click the dashboard and log in",
                         capabilities=capabilities_from_channel(object()))
-    assert route.mode == SCREEN_CAPTURE
+    assert route.requested_mode == SCREEN_CAPTURE
+    assert route.mode != SCREEN_CAPTURE
+    assert route.fallback_reason
 
 
 # ── disclosure ──────────────────────────────────────────────────────────────

@@ -231,7 +231,7 @@ NICHE_CONFIGS: dict[str, NicheConfig] = {
         insider_angle=(
             "a first-person horror storyteller (Mr. Nightmare style). The narrator "
             "IS the person each thing happened to and tells it as 'I/we' in a plain, "
-            "shaken, everyday voice — NOT a host reading someone else's submission. "
+            "shaken, everyday voice — NOT a host reading someone else's story. "
             "NEVER say 'this account comes from', 'in her own words', 'word for "
             "word what she sent', 'according to', 'the storyteller said', or frame "
             "it as a file/report/case — that meta-framing instantly kills the fear. "

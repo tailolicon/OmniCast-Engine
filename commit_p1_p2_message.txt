@@ -1,0 +1,201 @@
+P1 + P2.0 of brief §15: see how a video is cut, run the channel, gate the output
+
+Four packages, each answering one item the strategic review says is missing, and
+each wired to something in production rather than left as a library.
+
+§5 AUDIOVISUAL FORENSICS — analytics/av_forensics.py
+
+The review calls this the largest gap: the system could read what a competitor
+SAID and had never looked at how the video was CUT. Now measured from the file:
+shot boundaries, shot durations, cuts per minute, motion per shot, colour mood,
+silence, the music/SFX bed, loudness.
+
+Dissolves get their own detector rather than a lower scene threshold, because
+any threshold low enough to catch a crossfade invents boundaries inside every
+moving shot. A linear blend has a signature nothing else has: the picture
+changes completely, every step is an equal share of that change, and the middle
+frame is the average of the two ends. Windows are swept from 0.4s to 3s and the
+tolerances are fractions of the change, so fade length and contrast both cancel.
+
+What it cannot do is listed with reasons — kinetic typography, callout
+semantics, character consistency, camera framing, talking-head vs b-roll, joke
+beats, thumbnail payoff, SFX taxonomy. All need a vision model. Text overlay is
+a proxy, marked `inferred`, and never becomes the blueprint's
+`text_overlay_freq`.
+
+§11 CHANNEL STRATEGY — strategy/
+
+Thesis, content architecture, stage gates, experiment portfolio, audience
+journey, shorts->long funnel, and all twelve long-term metrics — including the
+ones that cannot be computed, each naming what would unblock it. A dashboard
+showing nine of twelve teaches its reader there are nine.
+
+Declared, never generated. A thesis an LLM writes agrees with whatever the
+channel already does, so it can never be evidence that the channel drifted. A
+stage gate with no data returns `unknown`, not `fail`: killing an experiment
+over a number nobody collected is how a system kills its own best bets.
+
+§8/§9 QUALITY AND BENCHMARK GATES — quality/
+
+Twelve gates, no fixed scores; a gate with no input is `unknown`, which is a
+third state and the one that hides. The benchmark comparison refuses a headline
+similarity figure until §8's own preconditions are met, and lists the material
+that must NOT be copied — presenter likeness, licensed music, archival footage,
+brand marks, voice identity — as unscored, because scoring them would reward
+getting closer to something we cannot ship.
+
+§7.1 ANIMATION FOUNDATION — animation/  (P2.0, NOT P2)
+
+The review's sentence: generating AI images and crossfading them is not
+animation. This is the subsystem's specification plus the parts that are pure
+computation — character bible and continuity, easing, anticipation, volume-
+preserving squash-and-stretch, comic timing, viseme timing.
+
+IT RENDERS NOTHING, AND SAYS SO. `readiness()` reports `renders_frames: False`
+and names rigging, prop interaction, camera choreography and drawing as absent.
+This does not close P2; it is the foundation P2 needs.
+
+The router now FAILS CLOSED on it: a `character_animation` string in a config
+used to produce `mode=animation, was_substituted=False` for a pipeline with
+nothing able to draw a frame, and the scene then fell through to a generated
+image — the exact "AI images plus a crossfade" the review rejects, wearing the
+label of the thing it is not. ANIMATION is routable only when a renderer is
+registered and healthy, which today it is not.
+
+SEVEN REVIEW ROUNDS, AND WHAT THEY CAUGHT
+
+Every round found the same class of defect: a module that is correct in
+isolation, wired so its answer changes nothing — or changes something for the
+worse. That is worth stating plainly, because it is the pattern, not a list of
+unrelated bugs.
+
+* The quality gates ran AFTER the audit sidecar was written and never fed their
+  verdict back into `passed`, so a video with a FAILED gate went to the approval
+  queue. They now run inside `inspect_product`, before the sidecar.
+* Then the FIX deadlocked it: `needs_human` also became an audit issue, so a
+  finance video failed its own render — and it failed BEFORE the step that
+  queues the video for approval, while nothing else writes `human_reviewed`.
+  The flag blocked the only route to the review that clears it, and finance and
+  health could not be produced at all. FAIL now blocks the render; `needs_human`
+  lets the render succeed, flags the product, and blocks PUBLISH.
+  `POST /api/products/{id}/review` records reviewer, timestamp and the SHA-256
+  of the cut, so re-rendering invalidates the approval instead of inheriting
+  it.
+* `is_ymyl` was never set by anything, so it defaulted to False and every
+  finance and health video passed the human gate reporting "not YMYL". It is now
+  inferred from the channel's niche; when even that is unreadable the gate is
+  `unknown`, never a pass.
+* The dissolve detector was tuned to one fade length and one contrast — the
+  arithmetic pinned it to 0.75-1.5s fades with a luma change of 25-60 of 255, so
+  it missed almost every real dissolve, including this project's own 0.5s house
+  default, while still publishing `shots: measured`.
+* `benchmark.headline` was unreachable for every possible input, because
+  `perceived_quality` — which is not machine-measurable by definition — was
+  counted among the unmeasured. §8's threshold could never fire.
+* `ebur128=framelog=quiet` is invalid before ffmpeg 6.1. The filter works; the
+  option did not, and the emitted note blamed the build.
+* `bool("no")` is True, which passed a compliance gate on `"false"` and
+  published a benchmark headline on `blind_human_comparison="no"`.
+* `squash_and_stretch` rounded both axes independently and broke the one
+  invariant it exists for; at 1e6 one axis rounded to a literal 0.0.
+* `OVERSHOOT_AMOUNT = 0.10` delivered 0.001, because the bump was multiplied by
+  a term that is ~0 exactly where the bump peaks.
+* A viseme track ran backwards on out-of-order or overlapping transcript cues.
+* A Korean line produced one `rest` cue — a character who never opens their
+  mouth — and this repo ships Korean voice configuration.
+* `scoring_calibration` carried its own `_num` and diverged in exactly the two
+  ways the shared one exists to prevent: `"1e400"` became `inf` and reached the
+  report, and `10**400` raised `OverflowError` out of `summarize`.
+
+Seven private `_num` implementations across seven modules were the source of
+most of the above; there is now one, in `shared/numbers.py`, with `num`,
+`count`, `rate`, `ratio` and `flag`.
+
+Rounds three to six, all wiring:
+
+* Competitor AV forensics had no production caller — it was measured on demand
+  and never on the path that builds a blueprint.
+* Production modes collapsed back into the two legacy visual types on the way to
+  the renderer, so a scene classified INFOGRAPHIC OVERWROTE a good storyboard
+  entry with a generated image, which this project's own image provider warns
+  cannot render readable charts or text. Naming a scene correctly and then making
+  the video worse is worse than not naming it.
+* Title and thumbnail generation bypassed the scoped intel gate the writer had
+  already been fixed to use.
+* `depicts_real_events` was never passed, so the disclosure branch was dead code.
+* `competitor_intel_required` still failed OPEN: `CompetitorIntelRequired` was
+  caught alongside every other exception.
+* `screen_capture` was granted for free, while the router's own
+  `APPROXIMATED_MODES` says there is no screen-recording step in the pipeline.
+* The forensics flag read only `os.environ`, so setting it in `.env` did nothing
+  on CLI runs; and `socket_timeout` is not a wall clock, so a slow-drip download
+  could run unbounded. Now `subprocess.run(timeout=)`.
+* `IntelDecision` is a frozen dataclass and `decision.scope_level = level` raised
+  inside a broad handler, so every caller saw a blank scope level.
+
+Round six, the last three:
+
+* The fail-closed error escaped `generate_clickbait` and was caught again by
+  `render_real_video`'s `except Exception`, which logged a warning and printed
+  DONE. The channel's declaration became a no-op one frame further out. There is
+  now a named clause BEFORE the broad one: it prints BLOCKED, writes
+  `packaging_blocked` and `publishable=False` to the product metadata, and
+  re-raises. The MP4 exists; it has no approved packaging and must not ship.
+* Fixing the ROUTER did not fix `stack_fit`, because the topic scorer does not
+  call the router — it reads `PIPELINE_UNSUPPORTED_PRODUCTION`, where
+  `screen_capture` was missing. A software tutorial still looked producible at
+  the moment the system decides what to make. And the test that was supposed to
+  cover this was named "does not reach the topic scorer" while only exercising
+  the router: the same anti-pattern this commit message criticises elsewhere.
+  There is now a test that builds a real ChannelProfile and runs TopicScorer.
+* Packaging re-derived the content pillar by classifying the first 2000
+  characters of the script, so a video the scorer had already filed under
+  `annuities` could take the `social_security` thumbnail playbook. `pillar_id`
+  now comes from `TopicBrief.pillar_id` through the product metadata; the
+  classifier remains only as a labelled fallback for callers with no brief.
+
+Round seven, the same defect on the WRITING side:
+
+* `meta.json["pillar_id"]` had a reader and no writer. `_step_script` never
+  wrote it, so in production the renderer's read always came back empty and
+  packaging fell through to the classifier every single time — round six was
+  correct on paper and inert in fact. All four scope dimensions are now written
+  from the brief, not just the one that was being discussed.
+* `publishable=False` was a flag, not a gate. The MP4 is registered as the
+  channel's newest render BEFORE packaging fails, so the operator could still
+  queue or upload the very artifact marked unpublishable.
+  `products.publish_blockers()` is now checked in three places:
+  `/api/publish/{id}` (409, and no approval row is created),
+  `/api/upload/{id}` (the shorter path to YouTube), and
+  `platforms.service.publish_approval_row()` — nearest the network call, so a
+  row queued before the gate existed does not slip past it. `force` does NOT
+  override it: `force` is for compliance false positives, and this flag is not a
+  heuristic. It is deliberately NOT in `release_issues()`, because that gates
+  the RENDER and a re-render is the repair path; a test pins that separation so
+  it does not get tidied away into the deadlock this project already shipped
+  once.
+
+WHAT THIS DOES NOT CLOSE
+
+P1.2 has no `series` or `packaging profile`, and `shorts_to_long_funnel` has no
+caller because nothing declares a short's target video yet. P1.3's headline
+similarity is permanently withheld because SFX placement and the music energy
+curve have no analyser — honest, and it means P1.3 is an evaluation framework
+rather than a finished benchmark gate. P2 needs a renderer. IMPLEMENTATION_STATUS
+§4c lists all four.
+
+MEASURED IN A LINUX SANDBOX on Python 3.10 with a StrEnum shim — no CPython
+3.12 is obtainable there, so 9 modules do not collect. tests/unit, run in three
+batches: 1777 passing, 8 failing, 6 skipped, 9 collection errors; the other test
+directories: 88 passing, 1 failing, 5 skipped. Every failure is a property of
+the sandbox — `Path.walk` and backslashes in f-strings are 3.12+, the Claude CLI
+is not installed so the client resolves to DryRunClient, there is no local Stable
+Diffusion, and the Gemini family was already failing before this work. None of
+them touch the code in this change. NOT verified on the target machine; the
+numbers to trust are the ones measured there.
+
+Every gate added in rounds six and seven was verified by REMOVING the fix and
+watching the test go red; five of the ten round-seven tests fail without it, and
+the other five cover the storage helper, which was not reverted.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
