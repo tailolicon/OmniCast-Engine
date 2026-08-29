@@ -81,7 +81,7 @@ def _frame_stats(path: str, at_s: float) -> dict | None:
             capture_output=True, text=True, timeout=60,
         )
         vals = {}
-        for key in ("YAVG", "YLOW", "YHIGH"):
+        for key in ("YAVG", "YLOW", "YHIGH", "YMAX"):
             m = re.search(rf"lavfi\.signalstats\.{key}=(\d+(?:\.\d+)?)", out.stderr)
             if m:
                 vals[key] = float(m.group(1))
@@ -89,6 +89,7 @@ def _frame_stats(path: str, at_s: float) -> dict | None:
             return None
         return {
             "brightness": vals["YAVG"],
+            "ymax": vals.get("YMAX", 0.0),
             "contrast": max(0.0, vals.get("YHIGH", 0.0) - vals.get("YLOW", 0.0)),
         }
     except Exception:
@@ -104,6 +105,12 @@ def is_blank_frame(stats: dict | None,
     if not stats:
         return True
     b = stats.get("brightness", 0.0)
+    # A title card is dark with a small area of bright text: the 10th..90th
+    # percentile spread ignores it (contrast reads 0) and every static card
+    # opening failed hook_frame. Real bright pixels anywhere (YMAX) mean the
+    # frame carries content; only near-black with NO bright pixels is blank.
+    if stats.get("ymax", 0.0) >= 180.0 and min_brightness <= b <= max_brightness:
+        return False
     return (b < min_brightness or b > max_brightness
             or stats.get("contrast", 0.0) < min_contrast)
 
