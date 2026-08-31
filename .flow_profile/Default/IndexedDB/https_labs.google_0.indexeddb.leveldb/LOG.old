@@ -1,0 +1,13 @@
+2026/08/30-15:53:10.983 42ec Reusing MANIFEST E:\Project\OmniCast Engine\.flow_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/MANIFEST-000001
+2026/08/30-15:53:10.984 42ec Recovering log #7
+2026/08/30-15:53:10.984 42ec Reusing old log E:\Project\OmniCast Engine\.flow_profile\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/000007.log 
+2026/08/30-15:53:11.207 6ca4 Level-0 table #11: started
+2026/08/30-15:53:11.210 6ca4 Level-0 table #11: 1175 bytes OK
+2026/08/30-15:53:11.213 6ca4 Delete type=0 #7
+2026/08/30-15:53:11.213 da4 Manual compaction at level-0 from '\x00\x06\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x07\x00\x00\x00' @ 0 : 0; will stop at '\x00\x06\x00\x00\x05' @ 405 : 1
+2026/08/30-15:53:11.213 da4 Compacting 1@0 + 1@1 files
+2026/08/30-15:53:11.215 da4 Generated table #12@0: 148 keys, 3300 bytes
+2026/08/30-15:53:11.215 da4 Compacted 1@0 + 1@1 files => 3300 bytes
+2026/08/30-15:53:11.218 da4 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/30-15:53:11.218 da4 Delete type=2 #11
+2026/08/30-15:53:11.219 da4 Manual compaction at level-0 from '\x00\x06\x00\x00\x05' @ 405 : 1 .. '\x00\x07\x00\x00\x00' @ 0 : 0; will stop at (end)

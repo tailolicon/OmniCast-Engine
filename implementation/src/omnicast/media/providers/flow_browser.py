@@ -226,15 +226,50 @@ class _FlowSession:
         programmatically remove the modal dialog and backdrop overlays from the DOM
         to restore pointer events to the underlying editor interface."""
         try:
-            iframe_sel = 'iframe[src*="changelogs"]'
+            # Detect EITHER the changelog iframe or a leftover Radix backdrop —
+            # after a first pass removes the iframe, the separate backdrop div
+            # still intercepts clicks and a second pass must not no-op (live).
+            iframe_sel = ('iframe[src*="changelogs"], '
+                          'div[data-state="open"][data-aria-hidden="true"]')
             if page.locator(iframe_sel).count() > 0:
                 print("[flow] Welcome/changelog popup detected. Dismissing it...", flush=True)
+                try:
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(400)
+                except Exception:
+                    pass
                 page.evaluate("""() => {
                     const dialog = document.querySelector('[role="dialog"]');
                     if (dialog) dialog.remove();
                     const overlays = document.querySelectorAll('[class*="sc-74a44e9a-0"], [class*="jDwSWX"]');
                     overlays.forEach(overlay => overlay.remove());
-                    
+                    // Class names rotate every Flow build — also walk up from the
+                    // changelog iframe itself and remove its whole overlay subtree.
+                    document.querySelectorAll('iframe[src*="changelogs"]').forEach(f => {
+                        let el = f, top = f;
+                        while (el && el !== document.body) {
+                            const pos = getComputedStyle(el).position;
+                            if (pos === 'fixed' || pos === 'absolute') top = el;
+                            el = el.parentElement;
+                        }
+                        top.remove();
+                    });
+                    // Radix marks BOTH the backdrop and the app root with
+                    // data-aria-hidden — deleting every match removed the whole
+                    // UI including the new-project button (live). The backdrop
+                    // is an EMPTY div; the app root has children. Remove only
+                    // empty ones, strip the attribute from the rest.
+                    document.querySelectorAll('[data-radix-focus-guard]').forEach(el => el.remove());
+                    document.querySelectorAll('div[data-aria-hidden="true"]').forEach(el => {
+                        if (el.childElementCount === 0) {
+                            el.remove();
+                        } else {
+                            el.removeAttribute('data-aria-hidden');
+                            el.removeAttribute('aria-hidden');
+                            el.style.pointerEvents = 'auto';
+                        }
+                    });
+
                     document.body.style.pointerEvents = 'auto';
                     document.body.style.overflow = 'auto';
                     document.documentElement.style.pointerEvents = 'auto';
@@ -253,11 +288,39 @@ class _FlowSession:
         up and confuse the newest-first result mapping. Sets self._project."""
         page.goto(_FLOW_HOME, wait_until="domcontentloaded", timeout=120_000)
         page.wait_for_timeout(5000)
+        # The changelog popup also appears on the HOME page and its overlay
+        # intercepts the new-project click (live: 08-26 changelog iframe).
+        self._dismiss_welcome_popup(page)
         before = page.url
+        # 08/2026 redesign: labs.google/fx/.../flow can land on a MARKETING page
+        # whose only entry is "Create with Google Flow" (no "Dự án mới"). Click
+        # through it first; if that lands on accounts.google.com the stored
+        # session has expired — fail with a message that says exactly that
+        # instead of a generic click timeout (operator must log in manually;
+        # credentials are never entered by automation).
+        if page.locator(_NEW_PROJECT_SEL).count() == 0:
+            entry = page.locator(
+                'button:has-text("Create with Google Flow"), '
+                'a:has-text("Create with Google Flow")')
+            if entry.count() > 0:
+                entry.first.click(timeout=8000)
+                page.wait_for_timeout(6000)
+                if "accounts.google.com" in page.url:
+                    raise FlowBlocked(
+                        "Flow session expired: entry button led to Google "
+                        "sign-in. Run scripts/flow_login.py and log in, then "
+                        "re-render.")
+                self._dismiss_welcome_popup(page)
         try:
             page.locator(_NEW_PROJECT_SEL).first.click(timeout=8000)
         except Exception as exc:
-            raise MediaError(f"Flow: could not click 'Dự án mới' (new project): {exc}")
+            # One more dismissal + retry: the popup can mount late, after the
+            # first dismissal pass already ran.
+            self._dismiss_welcome_popup(page)
+            try:
+                page.locator(_NEW_PROJECT_SEL).first.click(timeout=8000)
+            except Exception:
+                raise MediaError(f"Flow: could not click 'Dự án mới' (new project): {exc}")
         for _ in range(20):  # wait for navigation into /project/<id>
             page.wait_for_timeout(1000)
             if "/project/" in page.url and page.url != before:

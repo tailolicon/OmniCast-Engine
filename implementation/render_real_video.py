@@ -596,7 +596,8 @@ _ORD_WORDS = {1: "STORY ONE", 2: "STORY TWO", 3: "STORY THREE",
               4: "STORY FOUR", 5: "STORY FIVE"}
 
 
-def _render_card_png(path: Path, kicker: str, title: str, subtitle: str = "") -> None:
+def _render_card_png(path: Path, kicker: str, title: str, subtitle: str = "",
+                     title_px: int = 172, sub_px: int = 44) -> None:
     """Near-black full-frame title card: red letterspaced kicker, bone-white
     horror-font title, optional subtitle. Used for intro + story beat cards."""
     from PIL import Image, ImageDraw, ImageFont
@@ -604,11 +605,11 @@ def _render_card_png(path: Path, kicker: str, title: str, subtitle: str = "") ->
     d = ImageDraw.Draw(img)
     try:
         f_kick = ImageFont.truetype(FONT_REG, 40)
-        f_title = ImageFont.truetype(FONT_HORROR, 172)
-        f_sub = ImageFont.truetype(FONT_REG, 44)
+        f_title = ImageFont.truetype(FONT_HORROR, title_px)
+        f_sub = ImageFont.truetype(FONT_REG, sub_px)
     except Exception:
         f_kick = f_sub = ImageFont.truetype(FONT_REG, 40)
-        f_title = ImageFont.truetype(FONT_BOLD, 120)
+        f_title = ImageFont.truetype(FONT_BOLD, min(120, title_px))
     if kicker:
         k = " ".join(kicker)  # letterspaced
         wk = d.textlength(k, font=f_kick)
@@ -663,7 +664,10 @@ def _insert_story_beats(out_mp4: Path, work: Path, clips: list, scenes,
     intro_title = str(channel_meta.get("card_intro_title")
                       or channel_meta.get("brand_name") or "TRUE DREAD FILES").upper()
     intro_sub = str(channel_meta.get("card_intro_subtitle") or "REAL ACCOUNTS · NOTHING EXPLAINED")
-    _render_card_png(intro_png, "", intro_title, intro_sub)
+    # Brand stays subordinate to the story image behind it (audit R1/R19/R25:
+    # a 172px title + red slogan dominated the whole opening hierarchy).
+    _render_card_png(intro_png, "", intro_title, intro_sub,
+                     title_px=104, sub_px=30)
     # The near-black card at t=0 fails the hook_frame QA and opens the video
     # on nothing; competitors open on an image. Composite the card over the
     # story's own first frame, darkened.
@@ -674,7 +678,7 @@ def _insert_story_beats(out_mp4: Path, work: Path, clips: list, scenes,
                             "-frames:v", "1", "-q:v", "3", str(_bg)], capture_output=True)
         if _r.returncode == 0 and _bg.exists():
             base = Image.open(_bg).convert("RGB").resize((W, H))
-            base = ImageEnhance.Brightness(base).enhance(0.45)
+            base = ImageEnhance.Brightness(base).enhance(0.55)
             card = Image.open(intro_png).convert("RGB")
             import PIL.ImageChops as _ch
             merged = _ch.lighter(base, card)
@@ -3397,8 +3401,15 @@ def main() -> None:
                         continue
                     vclip = work / f"scene_{i:02d}_stock.mp4"
                     print(f"[stock-video] (all-stock) scene {i}: '{q}' ...")
+                    _negs = [t.strip() for t in
+                             re.split(r"[,;]", cell.get("negative_prompt") or "")
+                             if t.strip()]
                     try:
-                        ok = download_best_stock_video(q, vclip, W, H, max_seconds=15)
+                        ok = download_best_stock_video(q, vclip, W, H, max_seconds=15,
+                                                       negative_terms=_negs,
+                                                       forbid_text=bool(
+                                                           _style_policy and
+                                                           _style_policy.forbid_onscreen_text))
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}"); ok = False
                     if ok and vclip.exists() and vclip.stat().st_size > 0:
@@ -3467,9 +3478,20 @@ def main() -> None:
                     if _stock_reuse(i, stock_query):
                         continue
                     vclip = work / f"scene_{i:02d}_stock.mp4"
+                    # The cell's negative_prompt names this story's world-breakers
+                    # (snow in a summer story, actors in first-person beats) —
+                    # the provider vetoes candidates whose descriptor matches.
+                    _negs = [t.strip() for t in
+                             re.split(r"[,;]", cell.get("negative_prompt") or "")
+                             if t.strip()]
                     print(f"[stock-video] scene {i}: '{stock_query}' ...")
                     try:
-                        ok = download_best_stock_video(stock_query, vclip, W, H, max_seconds=15)
+                        ok = download_best_stock_video(stock_query, vclip, W, H,
+                                                       max_seconds=15,
+                                                       negative_terms=_negs,
+                                                       forbid_text=bool(
+                                                           _style_policy and
+                                                           _style_policy.forbid_onscreen_text))
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}")
                         ok = False
