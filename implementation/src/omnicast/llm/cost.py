@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 # Tuple: (input, output, cache_write, cache_read)
 # DeepSeek: no prompt caching API yet → cache_write/read = 0
 MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
+    # ChatGPT Web relay — subscription-billed, no marginal token cost. Must be
+    # registered explicitly: the .get() fallback below bills unknown models at
+    # Sonnet rates.
+    "chatgpt-web":               (0.00,   0.00,  0.00,  0.00),
     # Claude
     # Introductory Sonnet 5 pricing through 2026-08-31. Change to $3/$15
     # when Anthropic's published standard pricing takes effect.

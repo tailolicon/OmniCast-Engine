@@ -84,6 +84,18 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
 WRITER_SYSTEM = WRITER_SYSTEM_FINANCE
 
 
+def _long_output_llm(llm) -> bool:
+    """True for backends that can emit a full scene-JSON draft in one pass.
+
+    Claude (22k headroom, measured 2026-07-08) and the ChatGPT Web relay
+    (browser turn — max_tokens is not enforced at all, so the larger budget is
+    free). DeepSeek keeps the small cap: it is a real API limit there.
+    """
+    if getattr(llm, "_provider", "") == "chatgpt_web":
+        return True
+    return "claude" in str(getattr(llm, "_model", "")).lower()
+
+
 class WriterAgent(BaseAgent):
     """Generates script variants and revises based on critic feedback.
 
@@ -384,7 +396,7 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
         # Claude drafts under the word floor → 2 extra $0.14 expand calls per run
         # (measured 2026-07-08). Claude supports large outputs — give it headroom;
         # DeepSeek keeps the old cap (its API limit).
-        _is_claude = "claude" in str(getattr(self._llm, "_model", "")).lower()
+        _is_claude = _long_output_llm(self._llm)
         _gen_tokens = 22000 if _is_claude else 12000
 
         for i, angle in enumerate(ANGLES[:num_variants]):
@@ -488,7 +500,7 @@ CURRENT SCRIPT:
         if not (draft.raw_content or "").strip():
             return draft
         try:
-            _mt = 22000 if "claude" in str(getattr(self._llm, "_model", "")).lower() else 12000
+            _mt = 22000 if _long_output_llm(self._llm) else 12000
             resp = await self.call_llm(
                 [{"role": "user", "content": self._build_continuity_prompt(draft, brief)}],
                 max_tokens=_mt)
@@ -698,7 +710,7 @@ CURRENT SCRIPT:
                 draft, brief, words=words, floor=floor,
                 previous_script=prev_json, narrative=narrative)
             try:
-                _mt = 22000 if "claude" in str(getattr(self._llm, "_model", "")).lower() else 14000
+                _mt = 22000 if _long_output_llm(self._llm) else 14000
                 resp = await self.call_llm(
                     [{"role": "system", "content": system},
                      {"role": "user", "content": expand}],
@@ -776,7 +788,7 @@ CURRENT SCRIPT:
             draft, feedback, brief, niche_cfg=niche_cfg)
 
         try:
-            _mt = 22000 if "claude" in str(getattr(self._llm, "_model", "")).lower() else 12000
+            _mt = 22000 if _long_output_llm(self._llm) else 12000
             response = await self.call_llm(
                 [{"role": "user", "content": prompt}],
                 max_tokens=_mt,

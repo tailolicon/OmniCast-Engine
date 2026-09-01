@@ -96,7 +96,9 @@ class CapabilityRegistry:
                 kind="text",
                 provider_id=provider_id,
                 model_id=provider_id,
-                runtime="local" if provider_id == "ollama" else "remote",
+                # chatgpt_web is a loopback relay into a local browser — its
+                # availability is a property of this machine, not a remote API.
+                runtime="local" if provider_id in ("ollama", "chatgpt_web") else "remote",
                 metadata={"source": "llm.registry"},
             ))
         for provider in list_media_providers():

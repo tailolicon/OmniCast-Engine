@@ -176,7 +176,18 @@ def _narrative_role_clients(
                     cli_effort=effort, role=role)
 
     planner = claude(planner_model, planner_effort, "planner")
-    writer = claude(writer_model, writer_effort, "writer")
+    # WRITER PROVIDER OVERRIDE (e.g. chatgpt_web through the Shiro relay):
+    # prose is the one role where a subscription-billed browser model is a
+    # drop-in — every judge/audit stage stays on its own account, so a relay
+    # outage degrades exactly one role and the checkers still fail closed.
+    writer_provider = _opt(
+        "OMNICAST_SCRIPT_WRITER_PROVIDER",
+        str(getattr(settings, "omnicast_script_writer_provider", "") or ""),
+    ).lower()
+    if writer_provider and writer_provider != "anthropic":
+        writer = make(writer_provider, db_path=vault_path, role="writer")
+    else:
+        writer = claude(writer_model, writer_effort, "writer")
     # FOREIGN-PROVIDER ADVERSARY (external review 2026-07-20, both reviewers):
     # Opus challenging Sonnet is a manager grading their own company's work —
     # same base data, same RLHF, shared blind spots. Set
@@ -212,7 +223,8 @@ def _narrative_role_clients(
     }
     model_roles = {
         "planner": f"{planner_model}/{planner_effort}",
-        "writer": f"{writer_model}/{writer_effort}",
+        "writer": (writer_provider if writer_provider and writer_provider != "anthropic"
+                   else f"{writer_model}/{writer_effort}"),
         "release_challenger": f"{challenger_model}/{challenger_effort}",
     }
 
@@ -561,6 +573,19 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     # - run_tournament False: 2 variants are already scored by Critic — the extra
     #   Elo pairwise call added latency and once ranked a 66 ABOVE an 84.
     llm_writer = _llm_client("deepseek", model=settings.deepseek_chat_model, db_path=vault_path)
+    # WRITER PROVIDER OVERRIDE — one switch swaps who DRAFTS in every flow
+    # (claude_first, debate, and the unit_first writer role via
+    # _narrative_role_clients). Judges keep their own providers untouched.
+    # "chatgpt_web" routes drafting through the Shiro relay's logged-in
+    # ChatGPT tab: subscription-billed, serialized one call at a time.
+    _writer_provider = (
+        os.environ.get("OMNICAST_SCRIPT_WRITER_PROVIDER", "")
+        or str(getattr(settings, "omnicast_script_writer_provider", "") or "")
+    ).strip().lower()
+    _writer_override = (
+        _llm_client(_writer_provider, db_path=vault_path, role="writer")
+        if _writer_provider and _writer_provider != "anthropic" else None
+    )
 
     _channel_brand_top = {
         "brand_voice": getattr(channel, "brand_voice", "") or "",
@@ -756,7 +781,7 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             ),
         )]
     elif _flow == "claude_first":
-        _cw = WriterAgent(llm=llm_claude)
+        _cw = WriterAgent(llm=_writer_override or llm_claude)
         _cc = CriticAgent(llm=llm_pro)
         _prog("Writer (Claude) drafting", 30, detail=topic[:60])
         _live("Writer (claude-sonnet): drafting full script with prosody…", "agent_start")
@@ -834,7 +859,7 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
             _live(str(e.get("msg", ""))[:200], str(e.get("type", "debate")))
 
         orchestrator = DebateOrchestrator(
-            writer=WriterAgent(llm=llm_writer),
+            writer=WriterAgent(llm=_writer_override or llm_writer),
             critic=CriticAgent(llm=llm_pro),
             thinker=ThinkingAgent(llm=llm_flash),
             compliance=ComplianceChecker(llm=llm_flash),

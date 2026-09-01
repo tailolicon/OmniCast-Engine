@@ -101,6 +101,19 @@ class Settings(BaseSettings):
     groq_api_key: str = Field(default="")
     groq_model: str = Field(default="llama-3.3-70b-versatile")
 
+    # === ChatGPT Web via Shiro chatgpt-bridge relay (subscription-billed) ===
+    # Empty base_url/token = auto-read from chatgpt_web_relay_env (or the
+    # default .ShiroRuntime/state/chatgpt-relay.env beside the Shiro repo).
+    chatgpt_web_base_url: str = Field(default="", description="Relay HTTP base, e.g. http://127.0.0.1:23158")
+    chatgpt_web_api_token: str = Field(default="", description="Relay API_TOKEN (not the Bridge token)")
+    chatgpt_web_relay_env: str = Field(default="", description="Path to chatgpt-relay.env to read HOST/PORT/API_TOKEN")
+    chatgpt_web_model: str = Field(default="", description="ChatGPT UI model label (e.g. 'GPT-5.6 Thinking'); empty = tab's current pick")
+    chatgpt_web_effort: str = Field(default="", description="instant | medium | high; empty = auto")
+    # Writer provider override for script generation (claude_first/debate writer
+    # + unit_first writer role). Same dual env/Settings lookup as other flags:
+    # OMNICAST_SCRIPT_WRITER_PROVIDER wins over this field.
+    omnicast_script_writer_provider: str = Field(default="", description="e.g. 'chatgpt_web' to draft scripts on ChatGPT Web")
+
     # === Stock media (B-roll footage) ===
     pexels_api_key: str = Field(default="", description="Pexels API key for stock video/photo")
     pixabay_api_key: str = Field(default="", description="Pixabay API key for stock video/photo")

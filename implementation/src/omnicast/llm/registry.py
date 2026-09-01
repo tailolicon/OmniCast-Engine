@@ -249,7 +249,23 @@ def _groq_factory(*, api_key, model, max_tokens) -> LLMBackend:
     )
 
 
+def _chatgpt_web_factory(*, api_key, model, max_tokens) -> LLMBackend:
+    from omnicast.config.settings import get_settings
+    from omnicast.llm.chatgpt_web import ChatGPTWebClient
+
+    s = get_settings()
+    return ChatGPTWebClient(
+        base_url=getattr(s, "chatgpt_web_base_url", ""),
+        api_token=api_key or getattr(s, "chatgpt_web_api_token", ""),
+        model=model or getattr(s, "chatgpt_web_model", ""),
+        effort=getattr(s, "chatgpt_web_effort", ""),
+        relay_env=getattr(s, "chatgpt_web_relay_env", ""),
+        max_tokens=max_tokens,
+    )
+
+
 register_llm_backend("deepseek", _deepseek_factory)
+register_llm_backend("chatgpt_web", _chatgpt_web_factory)
 register_llm_backend("ollama", _ollama_factory)
 register_llm_backend("openai", _openai_factory)
 register_llm_backend("groq", _groq_factory)

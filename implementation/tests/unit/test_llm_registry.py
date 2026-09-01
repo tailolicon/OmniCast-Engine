@@ -25,7 +25,7 @@ def staging_settings(monkeypatch):
 class TestRegistry:
     def test_builtins_registered(self):
         providers = list_llm_providers()
-        for expected in ("deepseek", "ollama", "openai", "groq"):
+        for expected in ("deepseek", "ollama", "openai", "groq", "chatgpt_web"):
             assert expected in providers
 
     def test_unknown_provider_raises(self):
