@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     # + unit_first writer role). Same dual env/Settings lookup as other flags:
     # OMNICAST_SCRIPT_WRITER_PROVIDER wins over this field.
     omnicast_script_writer_provider: str = Field(default="", description="e.g. 'chatgpt_web' to draft scripts on ChatGPT Web")
+    # Script Farm: import cloud-drafted scripts from scriptfarm/ (repo-coordinated
+    # ChatGPT workers, see scriptfarm/WORKER_START.md). Env: OMNICAST_SCRIPT_FARM=1.
+    omnicast_script_farm: str = Field(default="", description="1 = import drafted/approved scriptfarm scripts before drafting locally")
 
     # === Stock media (B-roll footage) ===
     pexels_api_key: str = Field(default="", description="Pexels API key for stock video/photo")

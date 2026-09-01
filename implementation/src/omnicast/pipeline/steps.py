@@ -307,6 +307,41 @@ def _narrative_role_clients(
     return roles
 
 
+def _load_farm_script(repo_root: Path, channel_id: str, topic: str) -> str:
+    """Find a cloud-drafted Script Farm draft for this channel+topic.
+
+    The farm (scriptfarm/WORKER_START.md) lets ChatGPT draft and commit scripts
+    via GitHub with no laptop involved. Only items a worker marked `drafted` or
+    the operator marked `approved` are importable; matching is by exact
+    case-insensitive title so a farm draft can never hijack a different topic.
+    Returns the raw script text, or "" when there is nothing to import.
+    """
+    import json as _j
+    farm = repo_root / "scriptfarm"
+    queue_file = farm / "queue.json"
+    if not queue_file.is_file():
+        return ""
+    try:
+        items = _j.loads(queue_file.read_text(encoding="utf-8")).get("items", [])
+    except (OSError, ValueError):
+        return ""
+    t_norm = topic.strip().lower()
+    for it in items:
+        if not isinstance(it, dict) or it.get("channel_id") != channel_id:
+            continue
+        if it.get("status") not in ("drafted", "approved"):
+            continue
+        if str(it.get("title", "")).strip().lower() != t_norm:
+            continue
+        path = farm / "scripts" / channel_id / str(it.get("item_id", "")) / "script.md"
+        if path.is_file():
+            try:
+                return path.read_text(encoding="utf-8")
+            except OSError:
+                return ""
+    return ""
+
+
 def _needs_length_only_fill(draft, feedback, brief, revise_below: int) -> bool:
     """True when the script is good enough but fails only the deterministic length gate.
 
@@ -612,7 +647,39 @@ async def _step_script(inputs: dict[str, Any], ctx: StepContext) -> dict[str, An
     )
     _flow = os.environ.get("OMNICAST_SCRIPT_FLOW", _default_flow).strip().lower()
     _narrative_result = None
-    if _flow == "unit_first":
+    # ── SCRIPT FARM IMPORT (OMNICAST_SCRIPT_FARM=1) ──────────────────────────
+    # Cloud-drafted scripts (scriptfarm/WORKER_START.md — ChatGPT writes and
+    # commits via GitHub; the laptop only pulls) short-circuit the writer. The
+    # draft goes through the SAME parser and is re-scored by the local critic,
+    # so every downstream quality gate still applies. No matching farm draft =
+    # silent fall-through to the normal flow.
+    _farm_results = None
+    if _runtime_flag("OMNICAST_SCRIPT_FARM", "omnicast_script_farm", settings):
+        _farm_text = _load_farm_script(impl_root.parent, channel_id, topic)
+        if _farm_text:
+            _farm_draft = WriterAgent(llm=llm_pro)._parse_draft(_farm_text, "farm", topic)
+            if _farm_draft.word_count > 0 and (_farm_draft.segments or _farm_draft.hook_scenes):
+                _prog("Farm script imported", 40, detail=f"{_farm_draft.word_count} words")
+                _live(f"Farm draft imported ({_farm_draft.word_count} words) — scoring locally…",
+                      "agent_start")
+                _farm_fb = await CriticAgent(llm=llm_pro).execute(
+                    _farm_draft, brief, niche_cfg=niche_cfg,
+                    channel_brand=_channel_brand_top)
+                _live(f"Farm draft scored {_farm_fb.total_score}/100"
+                      f"{' — APPROVED' if _farm_fb.approved else ''}", "critic_score",
+                      score=_farm_fb.total_score)
+                logger.info("pipeline.script: farm import",
+                            score=_farm_fb.total_score, approved=_farm_fb.approved)
+                _farm_results = [DebateResult(
+                    variant_id="farm", final_draft=_farm_draft,
+                    final_score=_farm_fb.total_score, approved=_farm_fb.approved,
+                    converged=True, rounds=[], exit_reason="farm_import")]
+            else:
+                logger.warning("pipeline.script: farm draft unparseable — falling back",
+                               channel=channel_id, topic=topic[:60])
+    if _farm_results is not None:
+        results = _farm_results
+    elif _flow == "unit_first":
         if niche_cfg.content_format != "narrative":
             raise ValueError("unit_first currently requires a narrative channel strategy")
         if not _script_profile_id:

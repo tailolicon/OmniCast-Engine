@@ -1,0 +1,36 @@
+name: validate-scriptfarm
+
+on:
+  push:
+    paths:
+      - "scriptfarm/**"
+  pull_request:
+    paths:
+      - "scriptfarm/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate farm scripts
+        run: python scriptfarm/tools/validate_script.py
+      - name: Validate queue.json shape
+        run: |
+          python - <<'EOF'
+          import json, sys
+          q = json.load(open("scriptfarm/queue.json", encoding="utf-8"))
+          assert isinstance(q.get("items"), list), "queue.json: items must be a list"
+          seen = set()
+          for it in q["items"]:
+              iid = it.get("item_id")
+              assert iid and it.get("channel_id") and it.get("title"), f"bad item: {it}"
+              assert it.get("status") in ("queued", "drafted", "approved", "rejected"), \
+                  f"bad status on {iid}: {it.get('status')}"
+              assert iid not in seen, f"duplicate item_id {iid}"
+              seen.add(iid)
+          print(f"queue OK — {len(q['items'])} items")
+          EOF
