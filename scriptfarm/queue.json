@@ -6,7 +6,7 @@
       "channel_id": "true_dread_files_us",
       "title": "overnight hotel front desk off the highway",
       "type": "narrative",
-      "status": "queued",
+      "status": "drafted",
       "prompt_paths": [
         "scriptfarm/narrative/20260903_overnight-hotel-front-desk-off-the-highway-nu/story_1.prompt.md"
       ],
