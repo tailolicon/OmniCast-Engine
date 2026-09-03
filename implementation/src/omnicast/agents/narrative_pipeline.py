@@ -1491,7 +1491,7 @@ _FORBIDDEN_ENDING_RE = re.compile(
     re.I,
 )
 _AUTHORITY_RE = re.compile(
-    r"\b(?:police|policeman|sheriff|deputy|officers?|trooper|patrol|dispatcher|"
+    r"\b(?:police|policeman|sheriff|deput(?:y|ies)|officers?|troopers?|patrol|dispatchers?|"
     r"cops?|9\s?-?1\s?-?1|nine\s+one\s+one|emergency\s+(?:line|number|services))\b",
     re.I,
 )
@@ -2236,8 +2236,31 @@ def _aftermath_region(narration: str) -> str:
     there is", and the neighbour who is told afterwards from the neighbour who
     merely opens a door mid-escape. Searching the whole narration would let any
     incidental family noun discharge the obligation, which is no gate at all.
+
+    The window is a WORD budget, not a paragraph count. Live 2026-09-04
+    (hotel front desk, 89/100 rejected): the genre's one-line paragraphing
+    made "last 3 paragraphs" a three-sentence window, and the mandatory
+    what-stays coda (already_line, routine change, remainder) now occupies
+    exactly that tail — so a draft that reported to the deputies in a full
+    aftermath scene 8 paragraphs from the end failed the gate that its own
+    coda contract pushed it out of. The budgeted window is always a superset
+    of the old three-paragraph one, so nothing that passed before can fail now.
     """
-    return "\n\n".join(_paragraphs(narration)[-3:])
+    paras = _paragraphs(narration)
+    total_words = sum(len(p.split()) for p in paras)
+    # Proportional, no absolute floor: a fixed floor (first cut used 150 words)
+    # swallowed a fifth of a short story and pulled mid-escape bystanders into
+    # the window — the release-integrity fixtures caught it. Three paragraphs
+    # is the only minimum; 15% scales the window to the story.
+    budget = int(total_words * 0.15)
+    tail: list[str] = []
+    words = 0
+    for para in reversed(paras):
+        tail.append(para)
+        words += len(para.split())
+        if words >= budget and len(tail) >= 3:
+            break
+    return "\n\n".join(reversed(tail))
 
 
 def _parse_number_words(phrase: str) -> int:
