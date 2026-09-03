@@ -4612,7 +4612,11 @@ rewrite): at most TWO one-word beat sentences ("Quiet." "Nothing."); at most ONE
 "the way you..." comparison; at most ONE "it was no X, it was Y / not just X but Y"
 reversal; at most TWO physical fear reactions, never stock ("heart pounded", "blood ran
 cold", "stomach dropped", "little did I know" are banned outright — name the feeling
-plainly in this narrator's register instead). A verbal habit must not repeat across the
+plainly in this narrator's register instead); at most TWO self-reassurances in the whole
+account, and each must offer a SPECIFIC ordinary alternative that the next thing seen or
+heard takes apart ("I figured dispatch had pulled it off an old manifest") — the empty
+form ("I told myself it was nothing / my imagination") is banned at any count, and a
+THIRD specific one fails the release challenger outright. A verbal habit must not repeat across the
 compilation's stories. When sound precedes sight (as it should), do NOT render it with
 the literal "I heard it before I saw it" scaffold — that exact construction is rationed
 to one narrator per compilation and yours may not be the one; let the sound arrive
@@ -4620,7 +4624,8 @@ inside this narrator's own syntax (a wrong noise in a known rhythm, a sound out 
 place for the hour) instead of announcing the ordering.
 
 Forbidden: visual/SFX directions, host intro, CTA, recap, analysis, neat explanation,
-"I told myself" or equivalent self-reassurance, arbitrary exact numbers, stacked proof,
+EMPTY self-reassurance (waving a sign away with no specific alternative — the budgeted
+specific form above is the only kind allowed), arbitrary exact numbers, stacked proof,
 camera/static clichés, footprints that vanish, decorative gore, trailer prose, and an
 announced bare claim that the narrator never returned (a permanently changed routine
 must be shown as one concrete ongoing behavior — parks somewhere else, double-checks
@@ -4789,6 +4794,12 @@ In particular, admitting a threat across a locked boundary that the escape plan 
 hold is contradicted, even if the narrator later escapes another way.
 evidence_budget_status is preserved|violated|unclear and concerns only aftermath proof,
 not live safety actions, phones, doors, clothing, keys, or objects used during escape.
+Proof means CONFIRMATION: footage that shows him, records that match, a witness who
+backs it up. A check that comes back EMPTY (a name matching nothing on record, footage
+that saved nothing, nobody else who saw) is the opposite of proof — it is the genre's
+no-closure device, is usually the plan's own locked remainder line, and is NEVER a
+violation. Live 2026-09-04: a clean 89/100 draft was rejected for executing its locked
+remainder ("the name on his registration card never matched anything on record").
 For violated, copy one exact quote. No markdown and no approval field.
 
 CHANNEL STANDARD ({strategy.strategy_id}):
