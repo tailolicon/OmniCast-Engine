@@ -71,10 +71,14 @@ def test_provider_interface_compliance():
 async def test_convert_without_api_key_raises(tmp_path, monkeypatch):
     """convert() raises MediaError when GOOGLE_API_KEY is missing (deferred validation)."""
     from omnicast.config.settings import get_settings
+
     get_settings.cache_clear()
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
     provider = GeminiVideoProvider()  # must NOT raise
+    # Settings also read `.env`, so clearing the env var alone left a real key
+    # in place wherever one exists — patch the loaded settings object.
+    monkeypatch.setattr(provider.settings, "google_api_key", "", raising=False)
     with pytest.raises(MediaError, match="GOOGLE_API_KEY not configured"):
         await provider.convert(
             image_path=str(tmp_path / "x.png"),

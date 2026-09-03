@@ -79,7 +79,10 @@ class VisualDirectorAgent(BaseAgent):
         try:
             response = await self.call_llm(
                 [{"role": "user", "content": prompt}],
-                max_tokens=4000,
+                max_tokens=min(
+                    16000,
+                    max(4000, self._scene_count(draft) * 70),
+                ),
                 temperature=0.4,
             )
             improved_scenes_map = self._parse_response(response.content)
@@ -93,6 +96,14 @@ class VisualDirectorAgent(BaseAgent):
         except Exception as exc:
             logger.warning("Visual Director failed — returning original draft", error=str(exc))
             return draft  # safe fallback: original VO+visuals unchanged
+
+    @staticmethod
+    def _scene_count(draft: ScriptDraft) -> int:
+        return (
+            len(draft.hook_scenes)
+            + sum(len(segment.scenes) for segment in draft.segments)
+            + len(draft.outro_scenes)
+        )
 
     async def enrich(
         self,
@@ -174,11 +185,20 @@ class VisualDirectorAgent(BaseAgent):
                 f'"current_visual": "{_esc(visual)}", "current_sfx": "{sfx or "null"}"}}'
             )
 
-        # Hook (treat as pseudo-scenes from joined VO sentences)
-        for sentence in re.split(r"(?<=[.!?])\s+", draft.hook.strip()):
-            if sentence:
+        # Hook — use the actual storyboard scenes when present so changes can be
+        # applied, rather than generating throwaway pseudo-scenes.
+        if draft.hook_scenes:
+            for scene in draft.hook_scenes:
                 scene_id += 1
-                _add_scene(scene_id, sentence, "(hook — needs visual)", None)
+                _add_scene(
+                    scene_id, scene.voiceover,
+                    scene.visual_prompt, scene.sfx)
+        else:
+            for sentence in re.split(r"(?<=[.!?])\s+", draft.hook.strip()):
+                if sentence:
+                    scene_id += 1
+                    _add_scene(
+                        scene_id, sentence, "(hook — needs visual)", None)
 
         # Segments
         for seg in draft.segments:
@@ -192,9 +212,16 @@ class VisualDirectorAgent(BaseAgent):
                 _add_scene(scene_id, seg.content[:100], "(no scene data)", None)
 
         # Outro
-        if draft.outro:
+        if draft.outro_scenes:
+            for scene in draft.outro_scenes:
+                scene_id += 1
+                _add_scene(
+                    scene_id, scene.voiceover,
+                    scene.visual_prompt, scene.sfx)
+        elif draft.outro:
             scene_id += 1
-            _add_scene(scene_id, draft.outro[:100], "(outro — needs visual)", None)
+            _add_scene(
+                scene_id, draft.outro[:100], "(outro — needs visual)", None)
 
         scenes_json = "[\n  " + ",\n  ".join(scene_items) + "\n]"
 
@@ -202,6 +229,7 @@ class VisualDirectorAgent(BaseAgent):
 Niche: {brief.niche.value} | Voice: {niche_cfg.insider_angle}
 Typical visuals for this niche: {niche_cfg.broll_style}
 Available SFX: {sfx_opts}
+Verified official source pages: {", ".join(brief.source_urls) or "(none supplied)"}
 {fixes_block}
 SCENES (vo_locked = DO NOT CHANGE, fix visual and sfx only):
 {scenes_json}
@@ -223,6 +251,11 @@ VISUAL PROMPT RULES:
 - Must include an ACTION ('reviewing 401k statement' not 'looking at paper')
 - Must include CONTEXT ('at kitchen table, morning light' or 'on trading floor')
 - Must be findable on Pexels/Storyblocks with this exact query
+- Official screenshots, forms, calculators, statement fields, and document
+  titles may be named ONLY when they occur in the verified source-page list
+  above. Never invent a form field or tool to satisfy a critic suggestion.
+- For verified official pages, request a legible screen capture of that exact
+  URL or a faithful diagram of the spoken rule; do not fabricate UI contents.
 - Match SFX to the VO moment: use {niche_cfg.sfx_primary} when a key number is spoken, {niche_cfg.sfx_secondary} for warnings/reveals
 """
         return prompt
@@ -264,9 +297,27 @@ VISUAL PROMPT RULES:
             return draft
 
         scene_id = 0
-        # Count hook pseudo-scenes to skip them (hook visual not stored in ScriptScene)
-        hook_sentences = [s for s in re.split(r"(?<=[.!?])\s+", draft.hook.strip()) if s]
-        scene_id += len(hook_sentences)  # skip hook pseudo-scenes
+
+        new_hook_scenes: list[ScriptScene] = []
+        if draft.hook_scenes:
+            for scene in draft.hook_scenes:
+                scene_id += 1
+                if scene_id in scenes_map:
+                    visual, sfx = scenes_map[scene_id]
+                    new_hook_scenes.append(scene.model_copy(update={
+                        "visual_prompt": visual,
+                        "sfx": sfx,
+                    }))
+                else:
+                    new_hook_scenes.append(scene)
+        else:
+            # Pseudo hook records have no ScriptScene to update.
+            scene_id += len([
+                sentence
+                for sentence in re.split(
+                    r"(?<=[.!?])\s+", draft.hook.strip())
+                if sentence
+            ])
 
         new_segments: list[ScriptSegment] = []
         for seg in draft.segments:
@@ -280,18 +331,33 @@ VISUAL PROMPT RULES:
                 scene_id += 1
                 if scene_id in scenes_map:
                     visual, sfx = scenes_map[scene_id]
-                    new_scenes.append(ScriptScene(
-                        voiceover=sc.voiceover,  # LOCKED
-                        visual_prompt=visual,
-                        sfx=sfx,
-                        duration_s=sc.duration_s,
-                    ))
+                    new_scenes.append(sc.model_copy(update={
+                        "visual_prompt": visual,
+                        "sfx": sfx,
+                    }))
                 else:
                     new_scenes.append(sc)
 
             new_segments.append(seg.model_copy(update={"scenes": new_scenes}))
 
-        return draft.model_copy(update={"segments": new_segments})
+        new_outro_scenes: list[ScriptScene] = []
+        if draft.outro_scenes:
+            for scene in draft.outro_scenes:
+                scene_id += 1
+                if scene_id in scenes_map:
+                    visual, sfx = scenes_map[scene_id]
+                    new_outro_scenes.append(scene.model_copy(update={
+                        "visual_prompt": visual,
+                        "sfx": sfx,
+                    }))
+                else:
+                    new_outro_scenes.append(scene)
+
+        return draft.model_copy(update={
+            "hook_scenes": new_hook_scenes,
+            "segments": new_segments,
+            "outro_scenes": new_outro_scenes,
+        })
 
     def _build_enrich_prompt(
         self,

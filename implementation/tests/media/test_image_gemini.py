@@ -15,21 +15,34 @@ class TestGeminiImageProviderMetadata:
     """Tests that don't require an API key."""
 
     def test_provider_attributes(self):
-        """Provider has correct id/name/models even without an API key."""
+        """Provider has correct id/name/models even without an API key.
+
+        The default model is the STABLE id: the `-preview` alias started
+        404ing (2026-07-10) and the provider was moved to
+        `gemini-2.5-flash-image`. This expectation was left behind and
+        failed for months as pure noise.
+        """
         provider = GeminiImageProvider()
         assert provider.id == "gemini"
         assert provider.name == "Google Gemini Image"
         assert len(provider.models) == 2
-        assert provider.models[0].id == "gemini-2.5-flash-image-preview"
+        assert provider.models[0].id == "gemini-2.5-flash-image"
 
     @pytest.mark.asyncio
     async def test_generate_without_api_key_raises(self, tmp_path, monkeypatch):
-        """generate() raises MediaError when GOOGLE_API_KEY is missing."""
+        """generate() raises MediaError when the key is missing.
+
+        Patch the SETTINGS object, not the environment: settings are loaded
+        from `.env` too, so `delenv` left the key in place on any machine that
+        actually has one — the test passed only where the key was absent.
+        """
         from omnicast.config.settings import get_settings
+
         get_settings.cache_clear()
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-
         provider = GeminiImageProvider()  # must NOT raise
+        monkeypatch.setattr(provider.settings, "google_api_key", "", raising=False)
+
         with pytest.raises(MediaError, match="GOOGLE_API_KEY not configured"):
             await provider.generate(prompt="x", output_path=str(tmp_path / "x.png"))
 
