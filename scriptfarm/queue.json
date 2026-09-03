@@ -23,7 +23,7 @@
       "channel_id": "true_dread_files_us",
       "title": "overnight medical courier runs between small clinics",
       "type": "narrative",
-      "status": "drafted",
+      "status": "rejected",
       "prompt_paths": [
         "scriptfarm/narrative/20260904_overnight-medical-courier-runs-between-small-clinics-nu/story_1.prompt.md"
       ],
@@ -32,7 +32,8 @@
       ],
       "added_at": "2026-09-03T17:10:21+00:00",
       "added_by": "farm_narrative.py",
-      "gated_at": "2026-09-03T17:50:02+00:00"
+      "gated_at": "2026-09-03T21:39:05+00:00",
+      "gate_verdict": "REJECTED/FAILED after 1715.7s: Script failed release gate (86/100); candidate saved at /home/tailolicon/Projects/OmniCast Engine/implementation/output/products/true_dread_files_us/20260904_0439_overnight_medical_courier_runs_between_small_clini/needs_edit.txt"
     }
   ]
 }
