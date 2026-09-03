@@ -101,7 +101,12 @@ class CompetitorIntel:
     thumbnail_playbook: str = ""   # thumbnail visual recipe (layout/color/text/emotion)
     script_playbook: str = ""      # hook/structure/pacing distilled from competitor transcripts
     sample_titles: list[str] = field(default_factory=list)
-    sample_count: int = 0          # how many outliers it was distilled from
+    sample_count: int = 0          # how many WINNERS it was distilled from
+    # JSON: winner/control counts, is_comparable, the selection thresholds, and
+    # notes for every video that dropped out. A playbook learned without a
+    # control group is an observation, not a finding — a reader has to be able
+    # to tell which one they are holding.
+    cohort_meta: str = ""
     updated_at: str = ""
 
 

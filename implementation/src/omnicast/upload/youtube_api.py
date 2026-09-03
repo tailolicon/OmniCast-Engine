@@ -19,6 +19,7 @@ YOUTUBE_API_QUOTA_COST = {
     "thumbnails.set": 50,
     "videos.update": 50,
     "videos.list": 1,
+    "commentThreads.list": 1,
 }
 
 

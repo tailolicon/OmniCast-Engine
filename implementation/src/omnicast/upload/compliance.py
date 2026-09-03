@@ -15,6 +15,7 @@ REQUIRED_CHECKS = [
     "ftc_disclosure",
     "advertiser_friendly",
     "ymyl_health_safety",
+    "ymyl_finance_safety",
     "not_targeting_children",
     "cross_channel_unique",
 ]
@@ -41,6 +42,7 @@ class ComplianceChecker:
         if hits_d:
             v.append(f"demonetize triggers: {', '.join(hits_d)}")
         v.extend(cls._check_ymyl_health_text(title, body))
+        v.extend(cls._check_ymyl_finance_text(title, body))
         return v
 
     def check(self, request: UploadRequest) -> ComplianceResult:
@@ -71,6 +73,12 @@ class ComplianceChecker:
         checks["ymyl_health_safety"] = self._check_ymyl_health_safety(request)
         if not checks["ymyl_health_safety"]:
             violations.append("Health/YMYL content needs disclaimer and verifiable sources")
+
+        checks["ymyl_finance_safety"] = self._check_ymyl_finance_safety(request)
+        if not checks["ymyl_finance_safety"]:
+            violations.append(
+                "Finance/YMYL content needs educational disclaimer; promises and "
+                "advisor-persona claims are prohibited")
 
         checks["not_targeting_children"] = self._check_not_children(request)
         if not checks["not_targeting_children"]:
@@ -133,6 +141,45 @@ class ComplianceChecker:
         "not medical advice", "talk to your doctor", "consult your doctor",
         "consult a doctor", "consult your healthcare provider",
         "speak with your healthcare provider", "ask your clinician",
+    ]
+    # Word-boundary matched (codex audit finding 9: "ira" as a substring
+    # classified "hiking trails in Iraq" as finance).
+    _FINANCE_TERMS = [
+        "social security", "retirement", "401k", "401(k)", "ira", "iras",
+        "roth", "medicare", "rmd", "rmds", "irmaa", "pension", "pensions",
+        "annuity", "annuities", "tax bracket", "tax brackets", "capital gains",
+        "withdrawal", "withdrawals", "invest", "investing", "investment",
+        "investments", "portfolio", "brokerage", "estate plan", "reverse mortgage", "bond",
+        "bonds", "stocks", "stock market", "trading", "dividend", "dividends",
+        "interest rate", "interest rates", "savings",
+    ]
+    # Complete disclaimer phrases only — "licensed professional" alone matched
+    # "interview with a licensed professional" (finding 9).
+    _FINANCE_DISCLAIMER = [
+        "not financial advice", "not financial, tax, or legal advice",
+        "not tax advice", "not investment advice", "educational only",
+        "educational purposes", "consult a licensed professional",
+        "consult a licensed financial professional",
+    ]
+    _FINANCE_FATAL = [
+        "guaranteed return", "guaranteed returns", "guaranteed profit",
+        "guaranteed income", "risk-free investment", "can't lose", "cannot lose",
+        "double your money", "get rich", "act now before",
+    ]
+    # Promise patterns with an interposed figure ("guaranteed 8% returns",
+    # "I guarantee a 12% yield") — regex because the number defeats substrings.
+    _FINANCE_FATAL_RE = [
+        r"\bguaranteed?\s+(?:an?\s+)?\d[\d.,]*\s?%",
+        r"\bi guarantee\b",
+        r"\brisk[- ]free\s+(?:returns?|investment|income)\b",
+    ]
+    # Synthetic-voice channel claiming professional credentials = fabricated
+    # authority (YMYL + 2026 inauthentic-content policy). Same ban the critic
+    # enforces at script time — re-checked here because upload metadata
+    # (title/description) is written separately from the script.
+    _FINANCE_PERSONA = [
+        "as a financial advisor", "as a retirement advisor", "as a cpa",
+        "as a certified financial planner", "as your advisor", "my clients",
     ]
     _DANGEROUS_HEALTH_CLAIMS = [
         "stop taking your medication", "stop your medication", "quit your medication",
@@ -234,6 +281,66 @@ class ComplianceChecker:
     def _check_ymyl_health_safety(self, request: UploadRequest) -> bool:
         text = f"{request.metadata.title} {request.metadata.description}"
         return not self._check_ymyl_health_text(request.metadata.title, request.metadata.description)
+
+    @classmethod
+    def _looks_finance_ymyl(cls, text: str) -> bool:
+        import re
+        low = text.lower()
+        # Lookarounds instead of \b: terms ending in punctuation ("401(k)")
+        # have a non-word edge where \b can never match (codex verify).
+        return any(re.search(rf"(?<!\w){re.escape(term)}(?!\w)", low)
+                   for term in cls._FINANCE_TERMS)
+
+    @classmethod
+    def _finance_fatal_hits(cls, low: str) -> list[str]:
+        import re
+        hits = [p for p in cls._FINANCE_FATAL if p in low]
+        hits += [m.group(0) for pat in cls._FINANCE_FATAL_RE
+                 for m in [re.search(pat, low)] if m]
+        return hits
+
+    @classmethod
+    def _check_ymyl_finance_text(cls, title: str, body: str = "") -> list[str]:
+        """Finance analogue of the health YMYL text check (was health-only —
+        the flagship senior-finance channel made the gap production-relevant).
+
+        Promise/guarantee language is checked REGARDLESS of niche classification
+        — "guaranteed 8% returns" is a scam marker on any channel; only the
+        disclaimer requirement is scoped to finance-classified text."""
+        text = f"{title} {body}"
+        low = text.lower()
+        violations = []
+
+        fatal = cls._finance_fatal_hits(low)
+        if fatal:
+            violations.append(f"finance/YMYL: prohibited promise/urgency language: {', '.join(fatal)}")
+
+        if not cls._looks_finance_ymyl(text):
+            return violations
+
+        if not any(phrase in low for phrase in cls._FINANCE_DISCLAIMER):
+            violations.append("finance/YMYL: missing educational/not-financial-advice disclaimer")
+
+        # Single-source the persona detector with the script-time rubric so the
+        # two layers can never drift apart ("I'm your CPA" was caught at script
+        # time but missed here — codex verify).
+        persona = [p for p in cls._FINANCE_PERSONA if p in low]
+        try:
+            from omnicast.agents.rubrics.finance_explainer import _PERSONA_RE
+            m = _PERSONA_RE.search(text)
+            if m and m.group(0).lower() not in persona:
+                persona.append(m.group(0))
+        except Exception:
+            pass
+        if persona:
+            violations.append(
+                f"finance/YMYL: advisor-persona claim on a synthetic-voice channel: {', '.join(persona)}")
+
+        return violations
+
+    def _check_ymyl_finance_safety(self, request: UploadRequest) -> bool:
+        return not self._check_ymyl_finance_text(
+            request.metadata.title, request.metadata.description)
 
     def _check_not_children(self, request: UploadRequest) -> bool:
         """If made_for_kids=True, verify COPPA compliance. Else pass."""

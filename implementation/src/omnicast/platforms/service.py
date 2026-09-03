@@ -66,6 +66,19 @@ async def publish_approval_row(
     if not vpath.exists():
         return {"publish_error": f"video file not found: {video_path}"}
 
+    # LAST STOP BEFORE THE NETWORK. The two HTTP routes check this too, but an
+    # approval row can be older than the flag, or be created by something other
+    # than those routes; the check that matters is the one nearest the upload.
+    try:
+        from omnicast.storage import products as _products
+
+        _blocked = _products.publish_blockers_for_video(vpath)
+    except Exception:  # pragma: no cover - storage layer unavailable
+        _blocked = []
+    if _blocked:
+        return {"publish_error": "not publishable: " + "; ".join(_blocked),
+                "publish_blocked": _blocked}
+
     channel = await _load_channel(channels_dir, channel_id)
     metadata = _metadata_from_approval(row, raw, vpath)
     metadata = _maybe_monetize_metadata(

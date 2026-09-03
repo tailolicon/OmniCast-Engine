@@ -21,6 +21,39 @@ import structlog
 
 logger = structlog.get_logger()
 
+
+def extract_json(content: str) -> str:
+    """Pull the JSON document out of a model reply that may not be only JSON.
+
+    The old parser handled exactly two shapes: a bare document, or one inside a
+    ```json fence. Anything else — a one-line preamble, a closing remark — went
+    straight to `orjson.loads` and raised, and the caller labelled the result
+    "schema or provider error", which reads as though the model returned the
+    wrong FIELDS rather than the right ones wrapped in a sentence.
+
+    That mislabelling hid a standing cost. The narrative planner has been
+    logging planner=4 / planner_schema_retry=4 for weeks: every first attempt
+    failing, planner quota spent twice per plan. Three explanations were
+    measured and eliminated first — the prompt names all 16 required fields;
+    345 real continuity_ledger entries top out at 21 words against a 24-word
+    limit; real plans run 2,100-2,350 tokens against a 3,200 cap. What is left
+    is the wrapper, and the retry succeeds because its contract text is
+    forceful enough to suppress the preamble.
+
+    Falls back to the outermost braces so a preamble, a trailing note, or both
+    parse. Raises nothing itself; a reply with no object at all still fails at
+    the caller, where it should.
+    """
+    text = (content or "").strip()
+    fenced = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
+    if fenced:
+        return fenced.group(1).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        return text[start:end + 1]
+    return text
+
+
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 # This process runs INSIDE a Claude Code session — the child `claude` must not
@@ -370,9 +403,6 @@ class ClaudeCLIClient:
         import orjson
         resp = await self.complete(system=system, messages=messages,
                                    max_tokens=max_tokens, temperature=temperature)
-        content = resp.content
-        m = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", content)
-        if m:
-            content = m.group(1).strip()
-        parsed = output_schema.model_validate(orjson.loads(content.strip()))
+        parsed = output_schema.model_validate(
+            orjson.loads(extract_json(resp.content)))
         return resp, parsed
