@@ -33,14 +33,27 @@ class IImageProvider(Protocol):
     
     name: str
     """Human-readable name of the provider."""
-    
+
     models: list[ModelOption]
     """List of available models for this provider."""
-    
+
+    supports_reference_images: bool
+    """Whether `generate()` honours per-call ordered reference images.
+
+    Declared rather than assumed. A provider that accepts the argument and
+    ignores it yields character drift that reads as a prompt-writing bug, so
+    callers must check this before relying on reference conditioning and record
+    a degradation when it is False. Providers predating this flag simply lack
+    the attribute; use `getattr(provider, "supports_reference_images", False)`.
+    """
+
+    max_reference_images: int
+    """Upper bound on references per call. Callers decide what to drop."""
+
     async def health_check(self) -> dict:
         """Return provider health metadata without generating media."""
         ...
-    
+
     async def generate(
         self,
         prompt: str,
@@ -49,19 +62,25 @@ class IImageProvider(Protocol):
         model: str | None = None,
         resolution: tuple[int, int] | None = None,
         output_path: str,
+        reference_images: list[str] | None = None,
+        reference_labels: list[str] | None = None,
     ) -> str:
         """Generate an image from a text prompt.
-        
+
         Args:
             prompt: The text prompt describing the desired image.
             negative: Negative prompt to avoid certain elements.
             model: Optional model ID to use. If None, uses provider default.
             resolution: Optional (width, height) tuple. If None, uses provider default.
             output_path: Absolute path where the generated image should be saved.
-        
+            reference_images: Ordered reference paths. Position is meaningful:
+                the Nth entry is what the prompt's Nth label names. Only
+                honoured when `supports_reference_images` is True.
+            reference_labels: Labels parallel to `reference_images`.
+
         Returns:
             Absolute path to the generated image file.
-        
+
         Raises:
             MediaError: If image generation fails.
         """
@@ -102,9 +121,10 @@ class IVideoProvider(Protocol):
         model: str | None = None,
         resolution: tuple[int, int] | None = None,
         output_path: str,
+        last_image_path: str | None = None,
     ) -> str:
         """Convert an image into a video clip.
-        
+
         Args:
             image_path: Absolute path to the source image.
             prompt: Text prompt describing the desired video motion/style.
@@ -112,10 +132,16 @@ class IVideoProvider(Protocol):
             model: Optional model ID to use. If None, uses provider default.
             resolution: Optional (width, height) tuple. If None, uses provider default.
             output_path: Absolute path where the generated video should be saved.
-        
+            last_image_path: Optional still the clip must END on (first/last-
+                frame interpolation). Callers MUST check the provider's
+                `supports_last_frame` attribute (absent == False) before
+                passing this — providers without the capability do not accept
+                the keyword at all, so the plan can fall back to plain i2v
+                instead of dying mid-render.
+
         Returns:
             Absolute path to the generated video file.
-        
+
         Raises:
             MediaError: If video generation fails.
         """

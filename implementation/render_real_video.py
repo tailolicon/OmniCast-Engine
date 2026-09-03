@@ -48,7 +48,62 @@ ROOT = Path(__file__).parent
 # content, they don't downgrade it. Set OMNICAST_STRICT=0 to allow degraded
 # best-effort renders (debug only).
 STRICT = os.environ.get("OMNICAST_STRICT", "1") != "0"
+# Per-shot fade length in seconds. THE DEFAULT IS THE OLD HOUSE VALUE (0.15).
+# A previous change set this to 0.0 ("the cohort cuts straight") — but that
+# measurement came from 5 winners and 2 controls, exactly the sample the edit
+# profile gate later refused. Flipping the module default meant production had
+# ALREADY adopted the ungated finding: the gate could stop the profile from
+# overriding, but it could not restore a default that had been moved.
+# A gate that only guards the override is not a gate.
+EDIT_FADE_DEFAULT = 0.15
+EDIT_FADE = EDIT_FADE_DEFAULT
 sys.path.insert(0, str(ROOT / "src"))
+
+
+def _thumbnail_layout(channel_meta: dict | None) -> str:
+    """Resolve packaging grammar from the audience, not a global CTR trope."""
+    meta = channel_meta or {}
+    style = str(meta.get("visual_style") or "").lower()
+    niche = str(meta.get("niche") or "").lower()
+    channel_style = str(meta.get("channel_style") or "").lower()
+    audience = meta.get("audience") or {}
+    age = str(audience.get("age_range") or "").lower()
+    if channel_style == "horror_real" or str(meta.get("thumb_style") or "") == "horror":
+        return "horror"
+    older_audience = any(token in age for token in ("60", "65", "70", "75", "senior"))
+    if style == "clean_trust" or (niche in {"finance", "health"} and older_audience):
+        return "trust"
+    return "impact"
+
+
+def _allow_real_frame_thumbnail(channel_meta: dict | None) -> bool:
+    """Whether a licensed frame from this render is the intended strict source.
+
+    A channel that bans generated imagery cannot coherently be required to use
+    Flow for packaging.  Trust/footage channels should package the same real
+    evidence grammar the viewer sees inside the video.
+    """
+    meta = channel_meta or {}
+    return (
+        _thumbnail_layout(meta) == "trust"
+        and (
+            bool(meta.get("ban_generated_images"))
+            or str(meta.get("channel_style") or "").lower() == "footage"
+        )
+    )
+
+
+def _outro_subline(narration: str) -> str:
+    """Topic-aware end-card copy that supports the words being spoken."""
+    text = str(narration or "").lower()
+    if ("current reduction" in text
+            and ("later recalculation" in text or "recalculation" in text)):
+        return "CURRENT REDUCTION  •  LATER RECALCULATION?"
+    if "official rules" in text and "plain english" in text:
+        return "OFFICIAL RULES → PLAIN ENGLISH"
+    if "subscribe" in text:
+        return "THE RETIREMENT DESK"
+    return "SOCIAL SECURITY, WITHOUT THE FINE-PRINT FOG"
 
 
 def _aiorun(coro):
@@ -64,6 +119,24 @@ def _aiorun(coro):
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
         return _ex.submit(lambda: asyncio.run(coro)).result()
+
+
+def _syncrun(fn, *args, **kwargs):
+    """Call a sync-Playwright-using function even when this thread already has
+    a running event loop (same failure class _aiorun handles for coroutines:
+    sync_playwright() hard-refuses to start inside a running loop, and the
+    html_overlay/web_shot persistent loop is alive by the time the
+    web_search_image branch first fires)."""
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return fn(*args, **kwargs)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+        return _ex.submit(fn, *args, **kwargs).result()
+
+
 from omnicast.media.providers.web_assets import download_best_web_image
 from omnicast.media.providers.stock_video import download_best_stock_video
 from omnicast.media.providers.web_shot import capture_web_page
@@ -107,29 +180,62 @@ def split_into_shots(scenes: list["Scene"], max_words: int) -> list["Scene"]:
     """
     if max_words <= 0:
         return scenes
+    _burst_ids: set[int] = set()
     # Two-speed editing: ENUMERATION lines (a comma series — "email, images, code,
     # video, homework…") get a faster cut rhythm (split on the commas into short
     # burst shots) so each listed item flashes its own image, like high-retention
     # montage moments. Normal explanation lines keep the calmer ~max_words chunking.
-    _enum_re = re.compile(r"(\s*\w[^,]{0,40},){3,}")  # >=3 short comma items in a row
+    # A comma BETWEEN digits is a thousands separator, not a list separator —
+    # "$7,760" once split into "$7" | "760 of your own benefit" here, and the
+    # TTS spoke the mangled halves. Only commas followed by whitespace count.
+    _enum_re = re.compile(r"(\s*\w[^,]{0,40},(?=\s)){3,}")  # >=3 short comma items in a row
     shots: list[Scene] = []
     for sc in scenes:
         first_shot = len(shots)
-        if _enum_re.search(sc.narration):
-            items = [p.strip() for p in re.split(r",|\band\b", sc.narration) if p.strip()]
+        _enum_hit = _enum_re.search(sc.narration)
+        if _enum_hit:
+            items = [p.strip() for p in re.split(r",(?=\s)|\band\b", sc.narration) if p.strip()]
+            # A TRUE enumeration is short items with no sentence breaks inside.
+            # Comma-rich narrative prose ('Two weeks, she said. Feed the dog,')
+            # matched the regex and got cut MID-SENTENCE, so every image
+            # illustrated the tail of the previous sentence (live: a hospital
+            # corridor under 'feed the dog'). Fall through to sentence packing
+            # unless the items actually read as a list.
+            _is_list = (
+                len(items) >= 3
+                and all(len(it.split()) <= 6 for it in items)
+                and not any(re.search(r"[.!?]\s+\S", it) for it in items)
+            )
+            if not _is_list:
+                _enum_hit = None
+        if _enum_hit:
             # pair items up so shots aren't absurdly tiny (~2 items/shot)
             for k in range(0, len(items), 2):
-                shots.append(Scene(heading=sc.heading,
-                                   narration=", ".join(items[k:k + 2]),
-                                   pace=sc.pace or "fast",  # enumeration = montage burst
-                                   emphasis=sc.emphasis, segment=sc.segment))
+                _b = Scene(heading=sc.heading,
+                           narration=", ".join(items[k:k + 2]),
+                           pace=sc.pace or "fast",  # enumeration = montage burst
+                           emphasis=sc.emphasis, segment=sc.segment)
+                _burst_ids.add(id(_b))
+                shots.append(_b)
         else:
             sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", sc.narration) if s.strip()]
+            # CUT RHYTHM FOLLOWS THE WRITING, NOT A CONSTANT. Greedy packing to
+            # one global word budget gave every shot the same length, so a
+            # 15-minute video cut at a metronome pace — the "flat editing" an
+            # operator named after watching it. The writer already marks which
+            # beats should breathe and which should rush; that marker is the
+            # only rhythm signal we can honour honestly (the cohort's own cut
+            # rate is not measured — see edit_profile's sufficiency gate).
+            budget = max_words
+            if sc.pace == "slow":
+                budget = int(max_words * 1.6)     # let a weighty beat hold
+            elif sc.pace == "fast":
+                budget = max(6, int(max_words * 0.6))
             chunk: list[str] = []
             count = 0
             for sent in sentences:
                 w = len(sent.split())
-                if chunk and count + w > max_words:
+                if chunk and count + w > budget:
                     shots.append(Scene(heading=sc.heading, narration=" ".join(chunk),
                                        pace=sc.pace, emphasis=sc.emphasis, segment=sc.segment))
                     chunk, count = [], 0
@@ -138,6 +244,23 @@ def split_into_shots(scenes: list["Scene"], max_words: int) -> list["Scene"]:
             if chunk:
                 shots.append(Scene(heading=sc.heading, narration=" ".join(chunk),
                                    pace=sc.pace, emphasis=sc.emphasis, segment=sc.segment))
+        # ORPHAN MERGE: a chunk under ~6 words cannot be illustrated and drew
+        # junk stock ('Two weeks, she said.' -> a close-up of Russian book
+        # pages). It joins the previous chunk of the same scene instead.
+        k = first_shot + 1
+        while k < len(shots):
+            # Burst shots are SUPPOSED to be tiny — merging them back undoes
+            # the montage the enum branch just built (live: a 5-item list
+            # collapsed to one shot; the number-series test caught it).
+            if id(shots[k]) in _burst_ids:
+                k += 1
+                continue
+            if len(shots[k].narration.split()) < 6 and shots[k].heading == shots[k - 1].heading:
+                shots[k - 1].narration = (shots[k - 1].narration.rstrip() + " " + shots[k].narration.strip())
+                shots[k - 1].pause_after_ms = shots[k].pause_after_ms or shots[k - 1].pause_after_ms
+                del shots[k]
+            else:
+                k += 1
         # the scene's dramatic pause lands AFTER its LAST shot only
         if len(shots) > first_shot and sc.pause_after_ms:
             shots[-1].pause_after_ms = sc.pause_after_ms
@@ -482,7 +605,8 @@ _ORD_WORDS = {1: "STORY ONE", 2: "STORY TWO", 3: "STORY THREE",
               4: "STORY FOUR", 5: "STORY FIVE"}
 
 
-def _render_card_png(path: Path, kicker: str, title: str, subtitle: str = "") -> None:
+def _render_card_png(path: Path, kicker: str, title: str, subtitle: str = "",
+                     title_px: int = 172, sub_px: int = 44) -> None:
     """Near-black full-frame title card: red letterspaced kicker, bone-white
     horror-font title, optional subtitle. Used for intro + story beat cards."""
     from PIL import Image, ImageDraw, ImageFont
@@ -490,11 +614,11 @@ def _render_card_png(path: Path, kicker: str, title: str, subtitle: str = "") ->
     d = ImageDraw.Draw(img)
     try:
         f_kick = ImageFont.truetype(FONT_REG, 40)
-        f_title = ImageFont.truetype(FONT_HORROR, 172)
-        f_sub = ImageFont.truetype(FONT_REG, 44)
+        f_title = ImageFont.truetype(FONT_HORROR, title_px)
+        f_sub = ImageFont.truetype(FONT_REG, sub_px)
     except Exception:
         f_kick = f_sub = ImageFont.truetype(FONT_REG, 40)
-        f_title = ImageFont.truetype(FONT_BOLD, 120)
+        f_title = ImageFont.truetype(FONT_BOLD, min(120, title_px))
     if kicker:
         k = " ".join(kicker)  # letterspaced
         wk = d.textlength(k, font=f_kick)
@@ -549,7 +673,27 @@ def _insert_story_beats(out_mp4: Path, work: Path, clips: list, scenes,
     intro_title = str(channel_meta.get("card_intro_title")
                       or channel_meta.get("brand_name") or "TRUE DREAD FILES").upper()
     intro_sub = str(channel_meta.get("card_intro_subtitle") or "REAL ACCOUNTS · NOTHING EXPLAINED")
-    _render_card_png(intro_png, "", intro_title, intro_sub)
+    # Brand stays subordinate to the story image behind it (audit R1/R19/R25:
+    # a 172px title + red slogan dominated the whole opening hierarchy).
+    _render_card_png(intro_png, "", intro_title, intro_sub,
+                     title_px=104, sub_px=30)
+    # The near-black card at t=0 fails the hook_frame QA and opens the video
+    # on nothing; competitors open on an image. Composite the card over the
+    # story's own first frame, darkened.
+    try:
+        from PIL import Image, ImageEnhance
+        _bg = work / "card_intro_bg.jpg"
+        _r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-i", str(out_mp4),
+                            "-frames:v", "1", "-q:v", "3", str(_bg)], capture_output=True)
+        if _r.returncode == 0 and _bg.exists():
+            base = Image.open(_bg).convert("RGB").resize((W, H))
+            base = ImageEnhance.Brightness(base).enhance(0.55)
+            card = Image.open(intro_png).convert("RGB")
+            import PIL.ImageChops as _ch
+            merged = _ch.lighter(base, card)
+            merged.save(intro_png)
+    except Exception as _bg_exc:
+        print(f"      [warn] intro card background skipped ({_bg_exc})")
     intro_clip = work / "cardclip_intro.mp4"
     if _make_card_clip(intro_png, intro_clip, D, fps, drone):
         clip_specs.append((0.0, intro_clip))
@@ -762,16 +906,129 @@ def _overlay_timed_kinetics(out_mp4: Path, work: Path, kinetic_paths: dict,
                 pass
 
 
+# A transition cue marks a STRUCTURAL move — "we are done with that part, here
+# comes the next one". The old rule fired on any scene-heading change, and the
+# finance storyboard gives nearly every scene its own heading, so a viewer heard
+# a whoosh at almost every cut. That is not sound design; it is a tic, and the
+# first operator watching the finished video named it in the first sentence.
+MIN_CUE_GAP_S = 45.0            # two sections cannot be 6 seconds apart
+CUE_SECONDS_PER_CUE = 90.0      # at most one cue per 90s of video
+MAX_HEADING_CHURN = 0.6         # unique headings / scenes above this = not sections
+MIN_TING_GAP_S = 40.0           # a reveal chime stops being a reveal if it repeats
+
+# The punch-in (a centred zoom instead of a drifting Ken Burns move) is the
+# renderer's way of saying LOOK AT THIS. It fired on any scene holding a stat
+# cell, a large number, an emphasis word or a dramatic pause — and this cohort
+# speaks ~2.4 figures a minute, so nearly every scene qualified. Every shot
+# doing the emphatic move is the same as no shot doing it, which is what "flat
+# editing" felt like from the outside.
+PUNCH_SHARE = 1 / 6             # at most this fraction of scenes may punch in
+MIN_PUNCH_SPACING = 2           # scenes between punch-ins
+
+
+def _sfx_event_policy(style: str, total_seconds: float) -> dict:
+    """Audience-aware limits for non-diegetic editorial sound cues."""
+    normalized = (style or "full").lower().strip()
+    if normalized == "restrained":
+        # Trust-led finance: no creator-style transition noises. A soft reveal
+        # cue can still help a load-bearing number land, but only a few times.
+        return {
+            "transition_cues": False,
+            "reveal_min_gap_s": 150.0,
+            "max_events": max(1, min(3, int(max(1.0, total_seconds) // 240))),
+        }
+    return {
+        "transition_cues": True,
+        "reveal_min_gap_s": MIN_TING_GAP_S,
+        "max_events": 24,
+    }
+
+
+def _punch_in_scenes(scenes, board) -> set[int]:
+    """Which scene indices earn the emphatic centred zoom.
+
+    Scored rather than thresholded, because the old boolean could not tell a
+    hero reveal from a passing mention of "three years".
+    """
+    import re as _re
+    hero = _re.compile(r"\d[\d,]{3,}|\$\s?\d|\b\d+(\.\d+)?\s?%|"
+                       r"\b(million|billion|trillion)\b", _re.I)
+
+    scored: list[tuple[float, int]] = []
+    for i, sc in enumerate(scenes):
+        if i <= 1:                       # the hook is not the place to punch
+            continue
+        cell = board[i] if (board and i < len(board)) else {}
+        nar = (getattr(sc, "narration", "") or "")
+        s = 0.0
+        if (cell.get("stat_number") or "").strip():
+            s += 3.0                     # the storyboard itself calls this a stat
+        if hero.search(nar):
+            s += 2.0                     # a real money/scale figure, not "3 years"
+        if (getattr(sc, "pause_after_ms", 0) or 0) >= 400:
+            s += 1.5                     # the writer asked for air after this
+        if getattr(sc, "emphasis", ()):
+            s += 1.0
+        if s > 0:
+            scored.append((s, i))
+
+    budget = max(1, int(len(scenes) * PUNCH_SHARE))
+    chosen: list[int] = []
+    # Strongest first, then spacing — so a cluster of numbers yields the best
+    # one rather than the earliest one.
+    for _s, i in sorted(scored, key=lambda t: (-t[0], t[1])):
+        if len(chosen) >= budget:
+            break
+        if all(abs(i - c) >= MIN_PUNCH_SPACING for c in chosen):
+            chosen.append(i)
+    return set(chosen)
+
+
+def _section_cue_times(starts: list[float], scenes, total: float) -> list[float]:
+    """Where a transition cue may legitimately fire.
+
+    Three independent limits, because any one of them alone still shipped the
+    tic: headings must actually behave like section markers, cues must be far
+    enough apart to read as structure, and their number must scale with the
+    video rather than with the storyboard's verbosity.
+    """
+    heads = [((s.heading if s is not None else "") or "") for s in scenes]
+    named = [h for h in heads if h.strip()]
+    if not named:
+        return []
+    # HEADING CHURN GUARD: if a channel labels every scene, its headings carry
+    # no section information, and no amount of spacing makes the cue meaningful.
+    if len(set(named)) > max(1, len(heads)) * MAX_HEADING_CHURN:
+        return []
+    budget = int(total // CUE_SECONDS_PER_CUE)
+    if budget <= 0:
+        return []
+    out: list[float] = []
+    prev_head = heads[0] if heads else ""
+    for i in range(1, min(len(starts), len(heads))):
+        if not heads[i].strip() or heads[i] == prev_head:
+            prev_head = heads[i] or prev_head
+            continue
+        prev_head = heads[i]
+        t = max(0.0, starts[i] - 0.08)
+        if out and t - out[-1] < MIN_CUE_GAP_S:
+            continue
+        out.append(t)
+        if len(out) >= budget:
+            break
+    return out
+
+
 def _mix_sfx(out_mp4: Path, work: Path, clips: list, board, scenes,
              sfx_style: str = "full") -> None:
     """Mix subtle SFX into the finished video: a soft whoosh at each section change
     (scene heading flips) and a ting when a hero/shock number reveals. No-op + safe
     if assets or ffmpeg fail — purely additive polish, never breaks the render.
 
-    sfx_style (channels/<id>.json "sfx_style"): "full" (default explainer polish),
-    "off" — no cue track at all. Horror/story channels use "off": a whoosh at
-    every transition reads as EDITING, breaks dread; silence + room tone scare
-    more (Mr. Nightmare-style minimal editing).
+    sfx_style (channels/<id>.json "sfx_style"): "full" (default explainer
+    polish), "restrained" (rare reveal cues, no transition whooshes), or "off"
+    (no cue track). Horror/story channels use "off": silence + room tone carry
+    more weight than editorial noises.
     """
     # "diegetic" = horror event-SFX only (handled by _mix_diegetic_sfx); the
     # whoosh/ting transition cues here read as EDITING and break dread, so skip.
@@ -790,34 +1047,53 @@ def _mix_sfx(out_mp4: Path, work: Path, clips: list, board, scenes,
         starts.append(t)
         cd = probe_duration(clips[i]) if (clips[i] and clips[i].exists()) else 0.0
         t += cd
+    policy = _sfx_event_policy(sfx_style, t)
     events: list[tuple[float, Path]] = []  # (time, sfx)
-    prev_head = None
+    tings: list[float] = []
+    cue_at = (
+        set(_section_cue_times(starts, scenes, t))
+        if whoosh.exists() and policy["transition_cues"] else set()
+    )
+    for tm in sorted(cue_at):
+        events.append((tm, whoosh))
     for i in range(len(starts)):
         cell = board[i] if (board and i < len(board)) else {}
         sc = scenes[i] if i < len(scenes) else None
-        head = (sc.heading if sc else "") or ""
-        added_whoosh = False
-        if whoosh.exists() and head and head != prev_head and i > 0:
-            events.append((max(0.0, starts[i] - 0.08), whoosh))  # lead the cut slightly
-            added_whoosh = True
-        prev_head = head
-        # Twist beat: the Writer marks a deliberate pause after this scene → whoosh
-        # into the twist even without a section change (skip if a heading whoosh
-        # already fired here so we don't double it).
-        if (whoosh.exists() and not added_whoosh and i > 0 and sc is not None
+        # Twist beat: the Writer marks a deliberate pause after this scene →
+        # whoosh into the twist even without a section change. Same spacing rule
+        # applies — a pause every other scene is still a tic.
+        if (policy["transition_cues"] and whoosh.exists()
+                and i > 0 and sc is not None
                 and (getattr(sc, "pause_after_ms", 0) or 0) >= 400):
-            events.append((max(0.0, starts[i] - 0.08), whoosh))
+            tm = max(0.0, starts[i] - 0.08)
+            if all(abs(tm - e) >= MIN_CUE_GAP_S for e, _ in events):
+                events.append((tm, whoosh))
         num = (cell.get("stat_number") or "") + " " + (cell.get("stat_label") or "")
         if ting.exists() and (cell.get("stat_number") or "").strip() and _hero_re.search(num):
-            events.append((starts[i] + 0.15, ting))
+            tings.append(starts[i] + 0.15)
         # Emphasized number/key word → ting even when the storyboard left
         # stat_number empty (the Writer's emphasis carries the reveal).
         elif (ting.exists() and sc is not None and getattr(sc, "emphasis", ())
                 and _hero_re.search(" ".join(sc.emphasis))):
-            events.append((starts[i] + 0.15, ting))
+            tings.append(starts[i] + 0.15)
+    # A REVEAL ONLY READS AS A REVEAL IF IT IS RARE. This cohort runs ~2.4
+    # figures a minute; chiming each one turns the cue into background texture
+    # and trains the ear to ignore the moment that actually matters.
+    last = -1e9
+    for tm in sorted(tings):
+        if tm - last >= policy["reveal_min_gap_s"]:
+            events.append((tm, ting))
+            last = tm
     if not events:
         return
-    events = events[:24]  # safety cap
+    # Sort BEFORE the cap: the list is built whooshes-first, so a positional
+    # truncation would silently delete the back half of the video's reveals
+    # while keeping every transition cue.
+    events.sort(key=lambda e: e[0])
+    if policy["max_events"] < 24:
+        events = events[:policy["max_events"]]
+    else:
+        events = events[:24]  # safety cap
     tmp = out_mp4.with_name(out_mp4.stem + "_sfx.mp4")
     try:
         inputs = ["-i", str(out_mp4)]
@@ -978,6 +1254,11 @@ def _zoompan_expr(motion_idx: int, frames: int) -> tuple[str, str, str]:
     so there is room to pan/zoom without showing edges.
     """
     n = max(1, frames)
+    # motion_idx < 0 = STATIC full frame: a data chart must show every label
+    # and its axis — any Ken Burns crop cuts the left label column ("Under
+    # Full Retirement Age" rendered as "er Full Retirement Age" on a live run).
+    if motion_idx < 0:
+        return ("1", "0", "0")
     cx, cy = "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
     m = motion_idx % 6
     if m == 0:  # zoom in (centered)
@@ -1017,11 +1298,14 @@ def ken_burns_scene(
         "-i", str(audio),
         "-loop", "1", "-i", str(overlay_png),
     ]
-    # Gentle in/out fade on the video only (audio untouched, clip duration
-    # unchanged) so scene cuts feel smooth instead of hard — and the caption
-    # offsets (computed from clip durations) stay exact.
-    fd = 0.15
-    fade = f"fade=t=in:st=0:d={fd},fade=t=out:st={max(0.0, dur - fd):.2f}:d={fd}"
+    # MEASURED FROM THE COHORT (analytics/edit_profile): winners cut STRAIGHT —
+    # dissolves are ~2% of their scene changes. A 0.15s fade on every shot was
+    # a house habit nobody had checked against the competition; it reads as a
+    # soft slideshow next to their hard cuts. GRADE-style fades stay available
+    # via EDIT_FADE for channels that genuinely want them.
+    fd = EDIT_FADE
+    fade = (f"fade=t=in:st=0:d={fd},fade=t=out:st={max(0.0, dur - fd):.2f}:d={fd}"
+            if fd > 0 else "null")
     if avatar_mp4 is not None:
         inputs += ["-i", str(avatar_mp4)]
         av_h = int(H * inset_frac)
@@ -1607,6 +1891,320 @@ def _web_cache_path(query: str, w: int, h: int) -> Path:
     return _IMG_CACHE_DIR / f"web_{key}.png"
 
 
+class ChartAuditError(RuntimeError):
+    """A chart figure failed the fact-ledger audit — the render must stop."""
+
+
+def _persist_final_board(board: list, product_dir: Path) -> str | None:
+    """Persist the board AS RENDERED — after patches, router, style policy,
+    preflight AND acquisition mutations — with a digest sidecar, and bind the
+    digest into meta.json. An early snapshot is not the rendered board
+    (codex verify round 2)."""
+    try:
+        text = json.dumps(board, ensure_ascii=False)
+        sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        (product_dir / "board_final.json").write_text(text, encoding="utf-8")
+        (product_dir / "board_final.sha256").write_text(sha, encoding="utf-8")
+        try:
+            from omnicast.storage import products as _prod
+            _prod.write_meta(product_dir, board_final_sha256=sha)
+        except Exception:
+            pass
+        print(f"      board_final.json persisted post-acquisition "
+              f"(sha256 {sha[:16]}…, sidecar + meta.json)")
+        return sha
+    except Exception as e:
+        print(f"[warn] board_final persistence failed: {e}")
+        return None
+
+
+def _apply_board_patches(board: list, scenes: list, patches: list) -> int:
+    """Apply narration-keyed patches to storyboard cells in place.
+
+    Each patch: {"narration_key": <substring matched case-insensitively
+    against the shot narration>, "set": {cell fields}, "chart_source":
+    <source-line override applied only when the cell stays a chart>}.
+    Returns the number of cell edits applied.
+    """
+    applied = 0
+    for cell, sc in zip(board, scenes):
+        if not isinstance(cell, dict):
+            continue
+        narration = getattr(sc, "narration", "").lower()
+        for p in patches:
+            key = str(p.get("narration_key", "")).lower()
+            if not key or key not in narration:
+                continue
+            pset = p.get("set") or {}
+            if pset:
+                cell.update(pset)
+                if "visual_type" in pset:
+                    # A narration-keyed editor decision survives regenerated
+                    # boards and must also survive the generic regex router.
+                    cell["visual_type_locked"] = True
+            if (p.get("chart_source")
+                    and cell.get("visual_type") == "chart"
+                    and isinstance(cell.get("chart_spec"), dict)):
+                cell["chart_spec"]["source"] = p["chart_source"]
+            applied += 1
+    return applied
+
+
+def _router_can_override_visual(cell: dict, target_type: str) -> bool:
+    """Whether a generic narration classifier may replace an art-directed cell.
+
+    Real evidence/page captures are already a stronger, source-aware decision
+    than a money regex. Likewise, routing a beat to ``chart`` without labels
+    and values merely creates a malformed chart that later falls back to
+    generic stock. The router may annotate every cell, but it only replaces a
+    visual when it can actually deliver the requested production mode.
+    """
+    if not isinstance(cell, dict) or cell.get("visual_type_locked"):
+        return False
+    current = str(cell.get("visual_type") or "")
+    if current in {"web_screenshot", "web_search_image", "chart"}:
+        return False
+    if target_type == "chart":
+        spec = cell.get("chart_spec")
+        if not isinstance(spec, dict):
+            return False
+        labels = spec.get("labels") or []
+        values = spec.get("values") or []
+        if len(labels) < 2 or len(labels) != len(values):
+            return False
+    return True
+
+
+def _audit_visual_numeric_fields(board: list, ledger_data: dict) -> list[str]:
+    """Audit every number/year that can steer or appear in a YMYL visual.
+
+    Chart contents have their richer audit. This catches the other path: a
+    stale year in a web-search query or stat label can acquire an obsolete
+    screenshot even when the narration and ledger are current.
+    """
+    from omnicast.compliance.fact_ledger import uncovered_figures
+
+    fields = (
+        "stat_number", "stat_label", "search_query", "stock_query",
+        "image_prompt", "video_prompt",
+    )
+    failures: list[str] = []
+    for index, cell in enumerate(board or []):
+        if not isinstance(cell, dict):
+            continue
+        rendered_or_sourced_text = " | ".join(
+            str(cell.get(field) or "") for field in fields)
+        missing = uncovered_figures(rendered_or_sourced_text, ledger_data)
+        if missing:
+            failures.append(
+                f"scene {index}: visual field figure(s) {missing[:4]} are not "
+                "covered by the fact ledger")
+    return failures
+
+
+def _stat_visual_needs_stock(visual_type: str) -> bool:
+    """Whether a kinetic stat needs its background replaced with real B-roll.
+
+    A first-party page capture is already real, source-bearing imagery. The
+    old inline condition replaced it with generic stock, removing the very
+    evidence the storyboard had selected. Unverified web-search images remain
+    ineligible because their provenance is unknown.
+    """
+    return str(visual_type or "") not in {
+        "stock_video", "chart", "web_screenshot",
+    }
+
+
+_EVIDENCE_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+    "has", "have", "in", "is", "it", "not", "of", "on", "or", "our",
+    "page", "same", "that", "the", "their", "this", "to", "we", "when",
+    "with", "you", "your",
+}
+
+
+def _evidence_tokens(text: str) -> set[str]:
+    return {
+        token for token in re.findall(r"[a-z0-9]+", str(text or "").lower())
+        if len(token) > 2 and token not in _EVIDENCE_STOPWORDS
+    }
+
+
+def _verified_official_url(url: str) -> bool:
+    """Conservative official-source test for automatic YMYL screenshots."""
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(str(url or ""))
+        host = (parsed.hostname or "").lower().rstrip(".")
+        return (
+            parsed.scheme == "https"
+            and bool(host)
+            and (host.endswith(".gov") or host == "gov")
+        )
+    except Exception:
+        return False
+
+
+def _bind_ymyl_evidence_visuals(
+        board: list, scenes: list, evidence_pack: dict) -> int:
+    """Resolve web-image evidence beats to verified first-party pages.
+
+    The storyboard model can recognize that a beat needs evidence, but a search
+    query is not provenance: the top result may be a blog, ad, or stale image.
+    This matcher binds that beat to the most textually relevant official entry
+    from the script's already-verified evidence pack, then locks the decision
+    against generic routing.
+    """
+    entries = [
+        entry for entry in (evidence_pack or {}).get("entries", [])
+        if isinstance(entry, dict)
+        and _verified_official_url(entry.get("source_url", ""))
+    ]
+    verified_urls = {
+        str(entry.get("source_url") or "").strip() for entry in entries
+    }
+    bound = 0
+    for index, (cell, scene) in enumerate(zip(board or [], scenes or [])):
+        if not isinstance(cell, dict):
+            continue
+        visual_type = cell.get("visual_type")
+        if visual_type not in {"web_search_image", "web_screenshot"}:
+            continue
+        current_url = str(cell.get("search_query") or "").strip()
+        # Already bound to an exact verified evidence entry.
+        if visual_type == "web_screenshot" and current_url in verified_urls:
+            continue
+        scene_text = " ".join((
+            str(getattr(scene, "narration", "") or ""),
+            str(cell.get("search_query") or ""),
+        ))
+        scene_tokens = _evidence_tokens(scene_text)
+        if not scene_tokens:
+            continue
+        ranked: list[tuple[int, int, dict]] = []
+        for entry in entries:
+            evidence_tokens = _evidence_tokens(
+                f"{entry.get('claim', '')} {entry.get('quote', '')}")
+            overlap = scene_tokens & evidence_tokens
+            # Numeric tokens are unusually discriminative in finance claims.
+            numeric_overlap = sum(token.isdigit() for token in overlap)
+            ranked.append((len(overlap) + numeric_overlap * 2,
+                           len(evidence_tokens), entry))
+        if not ranked:
+            continue
+        score, _, best = max(ranked, key=lambda row: (row[0], -row[1]))
+        # Three meaningful shared terms avoids binding a merely topical beat.
+        if score < 3:
+            continue
+        cell["visual_type"] = "web_screenshot"
+        cell["search_query"] = best["source_url"]
+        cell["evidence_id"] = best.get("evidence_id", "")
+        cell["evidence_source_url"] = best["source_url"]
+        cell["visual_type_locked"] = True
+        cell["evidence_match_score"] = score
+        bound += 1
+    return bound
+
+
+def _chart_spec_degenerate(spec: dict) -> str | None:
+    """Reason a chart_spec can never be a real data comparison, else None.
+
+    These are storyboard-LLM failure classes seen on live boards — each one
+    both reads as a broken visual AND can never pass the ledger audit, so
+    they degrade to stock BEFORE the fail-closed audit ever sees them:
+      - malformed / non-numeric values
+      - rate shorthand as bars ("$1 per $2" -> [1, 2])
+      - mixed units (the $24,480 LIMIT next to the withholding RATE: [24480, 2])
+      - all-equal decoration bars ([100, 100] "One Bends, One Doesn't")
+      - extreme scale gap ([24480, 50]: the small bar renders as zero pixels,
+        and in practice the small member is a derived percentage the script
+        deliberately never states)
+    Real small comparisons (2.8 vs 2.5 COLA, ages 62 vs 67) all pass.
+    """
+    labels = [str(x) for x in (spec.get("labels") or [])]
+    values_raw = spec.get("values") or []
+    if not labels or len(labels) != len(values_raw) or not (2 <= len(labels) <= 6):
+        return f"malformed chart_spec (labels={len(labels)}, values={len(values_raw)})"
+    try:
+        values = [float(v) for v in values_raw]
+    except (TypeError, ValueError):
+        return "non-numeric chart values"
+    if all(v <= 3 and float(v).is_integer() for v in values):
+        return "all-integer values ≤ 3 read as rate shorthand, not a data comparison"
+    if (min(values) <= 3 and float(min(values)).is_integer()
+            and max(values) >= 100):
+        return (f"rate-shorthand value mixed with a real figure "
+                f"({min(values):g} vs {max(values):g}) — mixed units")
+    if len(set(values)) == 1:
+        return f"all chart values identical ({values[0]:g}) — nothing compared"
+    if min(values) > 0 and max(values) / min(values) >= 100:
+        return (f"scale gap {max(values):g}/{min(values):g} ≥ 100x — the small "
+                "bar draws as zero pixels, no comparison is conveyed")
+    return None
+
+
+def _render_chart_cell(spec: dict, dest: Path, script_path: Path, w: int, h: int) -> bool:
+    """Render a storyboard chart cell as a REAL data chart (chart_gen PNG).
+
+    Fail-closed audit (compliance.fact_ledger.audit_chart_spec): the ledger
+    must exist, be gate-PASSED, be SHA-bound to this script, and EVERY figure
+    the chart displays — values, labels, title, source line — must be covered
+    by a sourced ledger entry. Any miss raises ChartAuditError, which aborts
+    the render on purpose (never degrade a compliance failure)."""
+    from omnicast.compliance.fact_ledger import audit_chart_spec
+
+    reason = _chart_spec_degenerate(spec)
+    if reason:
+        print(f"[chart] [warn] {reason} — skipping chart")
+        return False
+    labels = [str(x) for x in (spec.get("labels") or [])]
+    values = [float(v) for v in (spec.get("values") or [])]
+
+    lf = script_path.parent / "fact_ledger.json"
+    if not lf.exists():
+        # The YMYL precheck already blocks finance channels without a ledger;
+        # reaching here means a non-finance channel produced a chart cell.
+        # Unaudited numbers must not render either way.
+        print("[chart] [warn] no fact ledger to audit against — chart skipped")
+        return False
+    try:
+        ledger_data = json.loads(lf.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ChartAuditError(f"fact_ledger.json unreadable: {exc}")
+
+    failures = audit_chart_spec(spec, ledger_data,
+                                script_path.read_text(encoding="utf-8"))
+    if failures:
+        raise ChartAuditError(
+            "; ".join(failures[:4])
+            + " — a figure without a sourced ledger entry must not be drawn "
+              "(fix the ledger or the storyboard, then re-render)")
+
+    from omnicast.media.providers import chart_gen
+    if not chart_gen.available():
+        print("[chart] [warn] matplotlib unavailable — chart skipped")
+        return False
+    # Display units: the ledger knows which figures are money — "$24,480"
+    # instead of a bare "24480" (codex render audit: senior readability).
+    _ledger_blob = json.dumps(ledger_data)
+    value_labels = []
+    for v in values:
+        _money = f"${v:,.0f}"
+        if float(v).is_integer() and _money in _ledger_blob:
+            value_labels.append(_money)
+        elif float(v).is_integer() and abs(v) >= 1000:
+            value_labels.append(f"{v:,.0f}")
+        else:
+            value_labels.append(f"{v:g}")
+    return chart_gen.render_chart(
+        list(zip(labels, values)), dest,
+        title=str(spec.get("title") or ""),
+        highlight_label=(str(spec.get("highlight")) if spec.get("highlight") else None),
+        source=str(spec.get("source") or ""),
+        w=w, h=h, value_labels=value_labels)
+
+
 # Content-addressed image cache: identical (prompt, model, canvas size) always
 # yields the same illustration, so we never re-spend Flow/Imagen quota on a shot
 # we already rendered. Survives re-renders that only change compose/concat/BGM/
@@ -1785,19 +2383,47 @@ def _storyboard_chunk(scenes: list[Scene], offset: int, total: int,
                                "neutral atmosphere cutaways (sky, rain, fire). ")
         except Exception:
             pass
+        # Real-chart mode: channels that declare (and can back) `chart_render`
+        # may request a data-true chart cell. The chart is drawn by matplotlib
+        # from the numbers given — NEVER by an image model — so CRITICAL #1c
+        # (never a chart) is lifted only for this explicit visual_type.
+        _chart_mode = "chart_render" in {
+            str(x).strip().lower()
+            for x in (channel_meta or {}).get("supported_production", []) or []}
+        _chart_type = ' | "chart"' if _chart_mode else ""
+        _chart_keys = (
+            '  "chart_spec": {"title": "<short chart title>", '
+            '"labels": ["<bar label>", "..."], "values": [<number>, ...], '
+            '"highlight": "<label of the key bar, else empty>", '
+            '"source": "<source name + year, e.g. SSA 2026>"},  // ONLY when visual_type is "chart"\n'
+            if _chart_mode else "")
+        _chart_note = (
+            "CHART MODE ENABLED (overrides CRITICAL #1c for this channel): when the "
+            "narration COMPARES 2-6 real numbers (claiming ages, tax tiers, costs), "
+            "use visual_type 'chart' with a chart_spec. Use ONLY numbers spoken in "
+            "the narration — the chart is rendered from your values by a real chart "
+            "engine and every value is audited against the fact ledger; an invented "
+            "value blocks the render. Single numbers still use the kinetic stat "
+            "callout, not a chart. NEVER derive values the narration does not state "
+            "verbatim: no computed percentages (a '$1 per $2' rate is NOT a 50), no "
+            "projected future limits, no estimated population counts, no mixing a "
+            "dollar limit with a rate on one axis. If the narration states only one "
+            "number, it is NOT a chart. "
+            if _chart_mode else "")
         user = (
             f"{chunk_note}{len(scenes)} scenes below. Pick the best visual_type per scene. "
-            f"{prefer_line}"
+            f"{prefer_line}{_chart_note}"
             f"Keep one continuous world + consistent style for any generated images.\n\n{scene_block}\n\n"
             "Return a JSON array, one object per scene IN ORDER:\n"
             '[{\n'
             '  "scene_index": 0,\n'
-            '  "visual_type": "stock_video" | "generated_image" | "web_search_image" | "web_screenshot",\n'
+            f'  "visual_type": "stock_video" | "generated_image" | "web_search_image" | "web_screenshot"{_chart_type},\n'
             '  "stock_query": "<2-5 word B-roll keywords if stock_video, else empty>",\n'
             '  "search_query": "<search query or URL if web_search_image/web_screenshot, else empty>",\n'
             '  "image_prompt": "<detailed prompt for generation, or fallback if a fetch fails>",\n'
             '  "video_prompt": "<camera/motion for image-to-video>",\n'
             '  "negative_prompt": "<things to avoid>",\n'
+            + _chart_keys +
             '  "stat_number": "<big number/stat if any, e.g. 52% — else empty>",\n'
             '  "stat_label": "<short ALL-CAPS caption for the stat, else empty>"\n'
             '}]'
@@ -1838,12 +2464,27 @@ def _storyboard_chunk(scenes: list[Scene], offset: int, total: int,
             if _policy:
                 system_prompt = system_prompt + _policy.storyboard_directive
 
-        llm = LLMClient(provider="deepseek", model=s.deepseek_flash_model)
-        resp = _aiorun(llm.complete(
-            system=system_prompt,
-            messages=[{"role": "user", "content": user}],
-            max_tokens=min(16000, 1500 + len(scenes) * 350), temperature=0.6,
-        ))
+        # DeepSeek first (cheap); Claude CLI subscription as fallback. Live
+        # 2026-08-25 02:20: a 402 Insufficient Balance killed the storyboard
+        # twice and STRICT mode refused the render.
+        _sb_max_tokens = min(16000, 1500 + len(scenes) * 350)
+        try:
+            llm = LLMClient(provider="deepseek", model=s.deepseek_flash_model)
+            resp = _aiorun(llm.complete(
+                system=system_prompt,
+                messages=[{"role": "user", "content": user}],
+                max_tokens=_sb_max_tokens, temperature=0.6,
+            ))
+        except Exception as _sb_exc:
+            print(f"      [warn] storyboard via DeepSeek failed ({str(_sb_exc)[:120]}); "
+                  "falling back to Claude CLI (Sonnet)")
+            from omnicast.llm.claude_cli import ClaudeCLIClient
+            _claude = ClaudeCLIClient(model="claude-sonnet-5", effort="low")
+            resp = _aiorun(_claude.complete(
+                system=system_prompt,
+                messages=[{"role": "user", "content": user}],
+                max_tokens=_sb_max_tokens, temperature=0.6,
+            ))
         txt = resp.content
         m = re.search(r"\[[\s\S]*\]", txt)
         raw = m.group(0) if m else txt
@@ -1930,8 +2571,9 @@ def veo_motion_scene(
         "-loop", "1", "-i", str(overlay_png),
     ]
     base = f"[0:v]scale={W}:{H},setsar=1,fps={fps}{(',' + GRADE) if GRADE else ''}[bg];"
-    fd = 0.15
-    fade = f"fade=t=in:st=0:d={fd},fade=t=out:st={max(0.0, dur - fd):.2f}:d={fd}"
+    fd = EDIT_FADE  # straight cut by default — see EDIT_FADE
+    fade = (f"fade=t=in:st=0:d={fd},fade=t=out:st={max(0.0, dur - fd):.2f}:d={fd}"
+            if fd > 0 else "null")
     if avatar_mp4 is not None:
         inputs += ["-i", str(avatar_mp4)]
         av_h = int(H * inset_frac)
@@ -2119,8 +2761,55 @@ def main() -> None:
         if args.motion == "kenburns":
             args.motion = cr["motion"]
 
+        # MEASURED EDIT PROFILE (analytics/edit_profile, built from competitor
+        # A/V forensics). Where the cohort's editing differs from our defaults,
+        # the measurement wins — that is the whole point of measuring it.
+        try:
+            _ep_path = (ROOT / "output" / "research" / args.channel
+                        / "edit_profile.json")
+            if _ep_path.exists():
+                _ep = _json.loads(_ep_path.read_text(encoding="utf-8"))["profile"]
+                # SUFFICIENCY GATE (operator audit 27/07): a profile built from
+                # 5 winners / 2 controls across 2 matched pairs is a diagnostic
+                # note, not a mandate. Measurement earns the right to change the
+                # render only at the cohort size the analytics layer declares.
+                _chan = int(_ep.get("channels_covered") or 0)
+                _pairs = int(_ep.get("matched_pairs") or 0)
+                _ok = _chan >= 3 and _pairs >= 10
+                if not _ok:
+                    globals()["EDIT_FADE"] = EDIT_FADE_DEFAULT
+                    print(f"[edit] edit profile NOT applied — {_chan}/3 channels, "
+                          f"{_pairs}/10 matched pairs (descriptive only); "
+                          f"fade stays at the house default {EDIT_FADE_DEFAULT}s")
+                else:
+                    _diss = _ep.get("dissolve_share")
+                    if _diss is not None and _diss <= 0.10:
+                        globals()["EDIT_FADE"] = 0.0
+                        print(f"[edit] cohort dissolves {_diss:.0%} → per-shot "
+                              "fades OFF")
+                    _shot = _ep.get("median_shot_seconds")
+                    if _shot and args.beat_words == cr["beat_words"]:
+                        # ~150 wpm spoken → words per shot at their pace.
+                        _target = max(8, min(30, round(_shot * 150 / 60)))
+                        if _target != args.beat_words:
+                            print(f"[edit] cohort shot median {_shot:.1f}s → "
+                                  f"beat_words {args.beat_words} → {_target}")
+                            args.beat_words = _target
+        except Exception as _epe:
+            print(f"[warn] edit profile not applied: {_epe}")
+
     style_prefix = STYLE_PREFIXES.get(args.style, STYLE_PREFIX)
     style_negative = f"{NEGATIVE_COMMON}, {STYLE_NEGATIVES.get(args.style, STYLE_NEGATIVES['editorial'])}"
+
+    # Channel-style policy drives overlay choice and the whole visual pipeline
+    # below — resolve it once, before anything consults it.
+    # (footage / storytelling / horror_real; None for legacy channels.)
+    try:
+        from omnicast.config.channel_styles import get_style_policy as _gsp
+        _style_policy = _gsp(channel_meta.get("channel_style"))
+    except Exception as e:
+        print(f"[warn] channel_style policy resolve failed: {e}")
+        _style_policy = None
 
     # PER-CHANNEL STYLE OVERRIDE — a channel that wants its OWN look (instead of
     # one of the shared preset wrappers) declares it in channels/<id>.json:
@@ -2151,6 +2840,16 @@ def main() -> None:
         overlay_fn = render_blank_overlay if word_subs else render_subtitle_overlay
     else:
         overlay_fn = render_text_overlay
+    # A footage channel's shot headings are INTERNAL storyboard prompts
+    # ('calendar birthday circled') and the kicker is a debug counter
+    # ('SCENE 38/160') — neither is viewer-facing copy. Premium documentary
+    # lets footage breathe; narration text belongs to subtitles, not a scrim
+    # that darkens (and on chart scenes, collides with) the real visual.
+    if (not args.subtitles and _style_policy is not None
+            and _style_policy.style_id == "footage"):
+        overlay_fn = render_blank_overlay
+        print("[chan] footage channel: heading/kicker text overlay disabled "
+              "(internal storyboard text is not viewer copy)")
 
     # HTML/CSS overlay (gradient title, frosted caption/subtitle card) — replaces
     # the flat Pillow text. Transparent PNG so Ken Burns/Veo still animate behind.
@@ -2186,6 +2885,69 @@ def main() -> None:
         print("[ERROR] No script found. Run content_flow.py --phase 2 first.")
         sys.exit(1)
 
+    # ── YMYL RENDER PRECHECK (fail-closed, BEFORE any acquisition path) ──────
+    # A finance-rubric channel may only render a script whose fact ledger
+    # exists, PASSED its gate, and is SHA-bound to exactly this script text.
+    # Placed here — ahead of --all-stock and every fallback — so no render
+    # entry point can bypass it (codex audit 2026-07-26, finding 1). Exits with
+    # AUDIT_EXIT_CODE so the pipeline knows this is a compliance failure, not a
+    # provider outage, and must not retry/degrade (finding 7).
+    _ymyl_rubric = ""
+    _nk = str(channel_meta.get("niche_config_key") or "").strip()
+    if _nk:
+        try:
+            from omnicast.config.niches import get_niche_config as _gnc
+            _ncfg = _gnc(*_nk.split(".", 1)) if "." in _nk else _gnc(_nk)
+            _ymyl_rubric = getattr(_ncfg, "rubric_id", "") or ""
+        except Exception as _ne:
+            # FAIL-CLOSED: a channel that DECLARES a niche key whose config we
+            # cannot read might be YMYL — "can't tell" must not mean "skip the
+            # compliance gate" (codex verify: detection failed open).
+            from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE
+            print(f"[ERROR] niche config '{_nk}' unreadable — cannot determine "
+                  f"YMYL status, refusing to render: {_ne}")
+            sys.exit(AUDIT_EXIT_CODE)
+    if _ymyl_rubric == "finance_explainer_v1":
+        import json as _pjson
+
+        from omnicast.compliance.fact_ledger import (
+            AUDIT_EXIT_CODE,
+            render_precheck,
+            uncovered_figures,
+        )
+        _ledger_file = script_path.parent / "fact_ledger.json"
+        _ok, _why = render_precheck(_ledger_file,
+                                    script_path.read_text(encoding="utf-8"))
+        if not _ok:
+            print(f"[ERROR] YMYL fact-ledger precheck FAILED: {_why}")
+            sys.exit(AUDIT_EXIT_CODE)
+        # The renderer PREFERS script.json narration over script.txt — so the
+        # sidecar's spoken text must pass the same coverage audit, or a stale/
+        # tampered sidecar could voice figures nobody sourced (codex verify,
+        # critical: checked text differed from rendered narration).
+        _sidecar_f = script_path.parent / "script.json"
+        if _sidecar_f.exists():
+            try:
+                _sb_data = _pjson.loads(_sidecar_f.read_text(encoding="utf-8"))
+                _sb_scenes = _sb_data.get("scenes") if isinstance(_sb_data, dict) else _sb_data
+                _sb_text = " ".join(str(s.get("voiceover") or "")
+                                    for s in (_sb_scenes or []) if isinstance(s, dict))
+            except Exception as _sbe:
+                print(f"[ERROR] script.json unreadable for YMYL audit: {_sbe}")
+                sys.exit(AUDIT_EXIT_CODE)
+            _ledger_data = _pjson.loads(_ledger_file.read_text(encoding="utf-8"))
+            _miss = uncovered_figures(_sb_text, _ledger_data)
+            if _miss:
+                print("[ERROR] YMYL sidecar audit FAILED — script.json narration "
+                      f"contains {len(_miss)} figures with no ledger entry: "
+                      + ", ".join(_miss[:6]))
+                sys.exit(AUDIT_EXIT_CODE)
+        print("[ymyl] fact-ledger precheck passed (gate PASSED, sha-bound, "
+              "sidecar covered)")
+        _ymyl_ledger_data = _pjson.loads(_ledger_file.read_text(encoding="utf-8"))
+    else:
+        _ymyl_ledger_data = None
+
     print(f"[1/5] Script: {script_path}")
     # PROSODY SIDECAR: phase-2 writes script.json (full storyboard incl. per-scene
     # pace/pause_after_ms/emphasis) next to the prose script.txt. Prefer it —
@@ -2218,6 +2980,33 @@ def main() -> None:
     work = out.parent / "_assets"
     work.mkdir(parents=True, exist_ok=True)
 
+    # Purge per-shot artifacts left by a previous render with MORE shots —
+    # stale scene_XX files silently shift every consumer that globs the work
+    # dir (visual QC once built a 160-shot timeline for a 154-shot video and
+    # scored frames against the wrong narration).
+    _stale = 0
+    for _f in work.glob("scene_*"):
+        _m = re.match(r"scene_(\d+)", _f.name)
+        if _m and int(_m.group(1)) >= len(scenes):
+            try:
+                _f.unlink()
+                _stale += 1
+            except Exception:
+                pass
+    if _stale:
+        print(f"      purged {_stale} stale per-shot artifacts (previous render had more shots)")
+    # Charts re-render fresh every run — a PNG left by a cell that is no
+    # longer routed as a chart makes the artifact set ambiguous (codex verify).
+    _stale_charts = 0
+    for _f in work.glob("scene_*_chart.png"):
+        try:
+            _f.unlink()
+            _stale_charts += 1
+        except Exception:
+            pass
+    if _stale_charts:
+        print(f"      purged {_stale_charts} chart PNGs (re-rendered fresh each run)")
+
     # Live status for the HTML dashboard (output/real/_status/status.json).
     import render_status
     # Initial title = first scene heading (real content) instead of the script
@@ -2237,17 +3026,24 @@ def main() -> None:
     # session is the VIDEO provider. Otherwise use the image provider.
     image_provider = None if veo_mode else (_load_image_provider(args.images) if args.images else None)
 
+    # A channel may ban AI-generated imagery outright (YMYL trust channels:
+    # every picture must be real footage, a real chart, or a real page). This
+    # closes BOTH generation paths — batch and per-scene — regardless of any
+    # provider configured elsewhere (codex render audit finding 4).
+    if image_provider is not None and channel_meta.get("ban_generated_images"):
+        print("[chan] ban_generated_images: image provider disabled for this channel")
+        image_provider = None
+
     # Channel-style: a storytelling channel is mostly generated illustrations, so
     # it needs an image provider even when --images was not passed. Explicit
     # --images / --all-stock / veo still win.
-    if image_provider is None and not veo_mode and not args.all_stock:
+    if (image_provider is None and not veo_mode and not args.all_stock
+            and not channel_meta.get("ban_generated_images")):
         try:
-            from omnicast.config.channel_styles import get_style_policy
-            _sp = get_style_policy(channel_meta.get("channel_style"))
-            if _sp and _sp.requires_image_provider:
-                _pid = channel_meta.get("image_provider") or _sp.default_image_provider
+            if _style_policy and _style_policy.requires_image_provider:
+                _pid = channel_meta.get("image_provider") or _style_policy.default_image_provider
                 if _pid:
-                    print(f"[chan] channel_style '{_sp.style_id}' needs images -> provider '{_pid}'")
+                    print(f"[chan] channel_style '{_style_policy.style_id}' needs images -> provider '{_pid}'")
                     image_provider = _load_image_provider(_pid)
         except Exception as e:
             print(f"[warn] channel_style image provider skipped: {e}")
@@ -2293,8 +3089,11 @@ def main() -> None:
 
     board = None  # always defined; downstream guards on `if board`
     # Build the storyboard whenever the visual pipeline is board-driven: image gen,
-    # veo motion, OR --all-stock (which still needs per-scene stock_query from it).
-    if image_provider is not None or veo_mode or args.all_stock:
+    # veo motion, --all-stock, OR a channel_style policy (a `footage` channel has
+    # no image provider yet still needs the board for its stock/chart/web routing
+    # — without this term the whole visual pipeline was silently skipped and a
+    # 15-minute video rendered as nothing but text cards).
+    if image_provider is not None or veo_mode or args.all_stock or _style_policy is not None:
         print("[1a/5] Generating storyboard (continuity-aware prompts)...")
         status.stage("storyboard", "active"); status.log("storyboard LLM...")
         board = cached_storyboard(scenes, args.style, channel_meta)
@@ -2314,6 +3113,108 @@ def main() -> None:
                 print("      [warn] no storyboard — deriving stock queries from scene headings")
                 board = [{} for _ in scenes]
 
+        # PRODUCT-CURATED BOARD PATCHES: narration-keyed visual decisions from
+        # QC/audit rounds, stored in the product dir and applied on EVERY
+        # render. Any config change alters the storyboard cache key and
+        # re-rolls the LLM board — index-keyed hand edits died twice that way;
+        # narration keys survive regeneration.
+        if board:
+            _patches_file = script_path.parent / "board_patches.json"
+            if _patches_file.exists():
+                try:
+                    _patches = json.loads(_patches_file.read_text(encoding="utf-8"))
+                    _applied = _apply_board_patches(board, scenes, _patches)
+                    if _applied:
+                        print(f"      board patches: {_applied} cell edit(s) "
+                              f"applied from {_patches_file.name}")
+                except Exception as _pe:
+                    # Fail CLOSED in STRICT mode: rendering WITHOUT the curated
+                    # YMYL decisions silently ships the unpatched board
+                    # (codex verify: warn-and-continue was fail-open).
+                    if STRICT:
+                        raise RuntimeError(
+                            f"board_patches.json unusable ({_pe}) — STRICT mode "
+                            "refuses to render without the curated patches") from _pe
+                    print(f"      [warn] board_patches.json unreadable: {_pe}")
+
+
+        # Production mode router (strategic review §7): decide WHAT KIND of
+        # visual each beat needs — chart, real evidence, reconstruction, screen
+        # capture, hold — before the style policy decides where the picture
+        # comes from. The two answer different questions and the order matters:
+        # coercing a source first would hide the fact that a scene wanted a
+        # chart at all.
+        #
+        # It only annotates and only overrides when it is confident, so a good
+        # LLM storyboard is left alone; the value is the recorded decision and
+        # the substitution log, not another coercion pass.
+        if board:
+            try:
+                from omnicast.media.production_router import (
+                    capabilities_from_channel,
+                    route_storyboard,
+                    summarise,
+                )
+
+                _scenes_for_router = [
+                    {"narration": getattr(sc, "narration", "") or getattr(sc, "text", ""),
+                     "visual": (board[i] or {}).get("image_prompt", ""),
+                     "stock_query": (board[i] or {}).get("stock_query", "")}
+                    for i, sc in enumerate(scenes) if i < len(board)
+                ]
+                _caps = capabilities_from_channel(
+                    type("_C", (), {"supported_production":
+                                    channel_meta.get("supported_production", [])})())
+                # DEPICTS REAL EVENTS. Without this the disclosure branch was
+                # dead code: the router defaulted to False and never marked a
+                # single scene. A channel is non-fiction unless it says
+                # otherwise — the safe default for a disclosure flag.
+                _real = bool(channel_meta.get(
+                    "depicts_real_events",
+                    str(channel_meta.get("content_mode", "")).lower() != "fiction"))
+                _routes = route_storyboard(_scenes_for_router, capabilities=_caps,
+                                           depicts_real_events=_real)
+                for _route in _routes:
+                    _cell = board[_route.scene_index]
+                    if not isinstance(_cell, dict):
+                        continue
+                    _cell["production_mode"] = _route.mode
+                    _cell["production_mode_confidence"] = _route.confidence
+                    if _route.approximation_gap:
+                        _cell["production_mode_approximated"] = _route.approximation_gap
+                    if _route.requires_disclosure:
+                        _cell["requires_ai_disclosure"] = True
+                    if _cell.get("visual_type_locked"):
+                        continue
+                    # OVERRIDE ONLY WHERE THE MODE IS REALLY PRODUCED THAT WAY.
+                    # `INFOGRAPHIC -> generated_image` is an approximation, and
+                    # the image providers warn they are poor at charts, numbers
+                    # and text — so rewriting a considered storyboard cell into
+                    # "AI picture of a chart" on a 0.75-confidence keyword match
+                    # made the video worse while looking like a decision.
+                    if (_route.confidence >= 0.75
+                            and _route.is_rendered_as_itself
+                            and _route.visual_type != "hold"
+                            and _router_can_override_visual(
+                                _cell, _route.visual_type)):
+                        _cell["visual_type"] = _route.visual_type
+                _summary_extra = summarise(_routes)
+                _summary = _summary_extra
+                status.log(
+                    f"production modes: {_summary['modes']} "
+                    f"(substituted {_summary['substituted_count']}, "
+                    f"approximated {_summary['approximated_count']}, "
+                    f"defaulted {_summary['defaulted_count']})")
+                for _appx in _summary["approximated"][:5]:
+                    print(f"      [mode] scene {_appx['scene_index']}: "
+                          f"{_appx['mode']} approximated — "
+                          f"{_appx['approximation_gap']}")
+                for _sub in _summary["substituted"][:5]:
+                    print(f"      [mode] scene {_sub['scene_index']}: "
+                          f"{_sub['fallback_reason']}")
+            except Exception as e:
+                print(f"[warn] production mode router skipped: {e}")
+
         # Channel-style policy: hard-coerce visual types the channel's style bans
         # (e.g. horror_real never shows AI art) BEFORE acquisition. The storyboard
         # directive already biased the LLM; this is the guarantee.
@@ -2327,12 +3228,119 @@ def main() -> None:
             except Exception as e:
                 print(f"[warn] channel_style policy skipped: {e}")
 
+        # YMYL EVIDENCE RESOLVER: a model-authored web query is only a request
+        # for evidence, not evidence itself. Bind those beats to the verified
+        # first-party URL in evidence_pack.json before any browser/image fetch.
+        if board and _ymyl_ledger_data is not None:
+            _evidence_file = script_path.parent / "evidence_pack.json"
+            try:
+                if not _evidence_file.exists():
+                    raise FileNotFoundError(_evidence_file)
+                _evidence_pack = json.loads(
+                    _evidence_file.read_text(encoding="utf-8"))
+                _evidence_bound = _bind_ymyl_evidence_visuals(
+                    board, scenes, _evidence_pack)
+                if _evidence_bound:
+                    status.log(
+                        f"YMYL evidence resolver: {_evidence_bound} web beat(s) "
+                        "bound to verified official pages")
+            except Exception as _ee:
+                if STRICT:
+                    raise RuntimeError(
+                        f"YMYL evidence pack unusable ({_ee}) — STRICT mode "
+                        "refuses unprovenanced web imagery") from _ee
+                print(f"[warn] YMYL evidence resolver skipped: {_ee}")
+
+        # CHART PRE-FLIGHT: audit EVERY chart cell up front. A mid-acquisition
+        # abort at scene 29 costs a 10-minute loop per discovery; this prints
+        # the complete failure list in seconds, before any download or TTS.
+        # Degenerate specs (rate shorthand, mixed units, …) merely downgrade —
+        # the acquisition loop re-detects them per-cell — but figures the
+        # ledger never sourced still abort fail-closed, now all at once.
+        if board and _ymyl_ledger_data is not None:
+            from omnicast.compliance.fact_ledger import (
+                AUDIT_EXIT_CODE as _AEC,
+                audit_chart_spec as _acs,
+            )
+            _script_text_pf = script_path.read_text(encoding="utf-8")
+            _pf_failures = _audit_visual_numeric_fields(
+                board, _ymyl_ledger_data)
+            for _i, _cell in enumerate(board):
+                if not isinstance(_cell, dict):
+                    continue
+                if _cell.get("visual_type") != "chart":
+                    # A rejected chart cell re-typed to stock must not keep its
+                    # spec — dormant fabricated data could be reactivated by a
+                    # later router or hand edit (codex render audit finding 3).
+                    if _cell.get("chart_spec"):
+                        print(f"[chart] [warn] scene {_i}: clearing dormant "
+                              "chart_spec on a non-chart cell")
+                        _cell.pop("chart_spec", None)
+                    continue
+                _spec = _cell.get("chart_spec") or {}
+                if _chart_spec_degenerate(_spec):
+                    continue  # will downgrade to stock in the loop below
+                try:
+                    _fails = _acs(_spec, _ymyl_ledger_data, _script_text_pf)
+                except Exception as _pfe:
+                    _fails = [f"audit error: {_pfe}"]
+                if _fails:
+                    _pf_failures.append(
+                        f"scene {_i} '{str(_spec.get('title') or '')[:48]}': "
+                        + "; ".join(_fails[:3]))
+            if _pf_failures:
+                print(f"[ERROR] [ymyl-visual] PRE-FLIGHT BLOCK — "
+                      f"{len(_pf_failures)} visual cell(s) contain figures the "
+                      "fact ledger never sourced (fix the storyboard cells or "
+                      "the ledger, then re-render):")
+                for _line in _pf_failures:
+                    print(f"[ERROR] [ymyl-visual]   {_line}")
+                sys.exit(_AEC)
+
         # Acquire per-scene visuals by type. Every branch falls back to a generated
         # image on failure so a fetch problem never breaks the render.
         if board:
             _IMG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            # Chart cells are only honoured on channels whose chart_render
+            # capability is DECLARED AND BACKED — a rogue LLM 'chart' cell on
+            # any other channel is treated as stock (codex finding 10).
+            try:
+                from omnicast.media.production_router import (
+                    capabilities_from_channel as _cfc,
+                )
+                _chart_capability = "chart_render" in _cfc(
+                    type("_C", (), {"supported_production":
+                                    channel_meta.get("supported_production", [])})())
+            except Exception:
+                _chart_capability = False
             for i, cell in enumerate(board):
                 visual_type = cell.get("visual_type", "generated_image")
+                if visual_type == "chart" and not _chart_capability:
+                    print(f"[chart] [warn] scene {i} requested a chart but this "
+                          "channel has no backed chart_render capability — using stock")
+                    cell["visual_type"] = "stock_video"
+                    visual_type = "stock_video"
+
+                # YMYL: a kinetic stat overlay is a DISPLAYED figure — audit it
+                # against the ledger like everything else; an uncovered number
+                # is dropped (safe degrade: the gated narration still carries
+                # the content). Codex verify: chart-failure fallback used to
+                # render stat_number unaudited.
+                if _ymyl_ledger_data is not None and (
+                        (cell.get("stat_number") or "").strip()
+                        or (cell.get("stat_label") or "").strip()):
+                    from omnicast.compliance.fact_ledger import uncovered_figures as _uf
+                    # The LABEL is rendered too — a number smuggled into it
+                    # ("BORN 1960+") bypassed the gate (codex render audit).
+                    _stat_txt = (f"{cell.get('stat_number') or ''} "
+                                 f"{cell.get('stat_label') or ''}")
+                    _stat_miss = _uf(_stat_txt, _ymyl_ledger_data)
+                    if _stat_miss:
+                        print(f"[ymyl] [warn] scene {i} stat overlay "
+                              f"'{_stat_txt.strip()}' has uncovered figure(s) "
+                              f"{_stat_miss[:3]} — dropped")
+                        cell["stat_number"] = ""
+                        cell["stat_label"] = ""
                 query = (cell.get("search_query") or "").strip()
                 stock_query = (cell.get("stock_query") or "").strip()
 
@@ -2359,11 +3367,28 @@ def main() -> None:
                     stock_query = _filmable(_lbl, _head)
                     cell["stock_query"] = stock_query
 
+                # No image provider → a generated_image cell can only degrade to
+                # a text card. On a stock-first channel (footage/horror_real)
+                # real B-roll of the subject is always the better degrade.
+                if (visual_type == "generated_image" and image_provider is None
+                        and _style_policy is not None
+                        and _style_policy.preferred_type == "stock_video"):
+                    from omnicast.config.channel_styles import _derive_stock_query
+                    if not stock_query:
+                        stock_query = _derive_stock_query(
+                            cell, re.sub(r"[\[\]]", "", scenes[i].heading))
+                        cell["stock_query"] = stock_query
+                    visual_type = "stock_video"
+                    cell["visual_type"] = "stock_video"
+                    print(f"[style-policy] scene {i}: generated_image without "
+                          f"provider -> stock '{stock_query}'")
+
                 # ENFORCE: a stat scene MUST be real B-roll (stock_video) so the
                 # plain white kinetic callout sits over footage — NOT a generated
                 # cartoon that bakes the number into a chart/book (rule #1b). The
                 # LLM sometimes ignores this, so force it here.
-                if (cell.get("stat_number") or "").strip() and visual_type != "stock_video":
+                if ((cell.get("stat_number") or "").strip()
+                        and _stat_visual_needs_stock(visual_type)):
                     visual_type = "stock_video"
                     cell["visual_type"] = "stock_video"
                     if not stock_query:
@@ -2385,8 +3410,15 @@ def main() -> None:
                         continue
                     vclip = work / f"scene_{i:02d}_stock.mp4"
                     print(f"[stock-video] (all-stock) scene {i}: '{q}' ...")
+                    _negs = [t.strip() for t in
+                             re.split(r"[,;]", cell.get("negative_prompt") or "")
+                             if t.strip()]
                     try:
-                        ok = download_best_stock_video(q, vclip, W, H, max_seconds=15)
+                        ok = download_best_stock_video(q, vclip, W, H, max_seconds=15,
+                                                       negative_terms=_negs,
+                                                       forbid_text=bool(
+                                                           _style_policy and
+                                                           _style_policy.forbid_onscreen_text))
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}"); ok = False
                     if ok and vclip.exists() and vclip.stat().st_size > 0:
@@ -2396,14 +3428,79 @@ def main() -> None:
                         print(f"[stock-video] [warn] failed scene {i}; will use text card.")
                     continue
 
+                # --- Real data chart (chart_render channels; audited vs ledger) ---
+                if visual_type == "chart":
+                    _spec = cell.get("chart_spec") or {}
+                    dest = work / f"scene_{i:02d}_chart.png"
+                    _chart_ok = False
+                    try:
+                        _chart_ok = _render_chart_cell(_spec, dest, script_path, W, H)
+                    except ChartAuditError as _ce:
+                        # Fail-closed on purpose: a chart whose figures the fact
+                        # ledger never sourced must not ship in a YMYL video.
+                        # Distinct exit code → the render step must NOT retry
+                        # or degrade to --all-stock on this (codex finding 7).
+                        from omnicast.compliance.fact_ledger import AUDIT_EXIT_CODE
+                        print(f"[ERROR] [chart] AUDIT BLOCK scene {i}: {_ce}")
+                        raise SystemExit(AUDIT_EXIT_CODE)
+                    except Exception as e:
+                        print(f"[chart] [warn] error scene {i}: {e}")
+                    if _chart_ok and dest.exists() and dest.stat().st_size > 0:
+                        bg_paths[i] = dest
+                        # The chart draws its numbers — clear the kinetic stat
+                        # only NOW so a failed chart keeps its callout on the
+                        # stock fallback (codex finding 10).
+                        cell["stat_number"] = ""
+                        cell["stat_label"] = ""
+                        print(f"[chart] rendered scene {i}: "
+                              f"'{str(_spec.get('title') or '')[:48]}'")
+                        continue
+                    # Never approximate a failed chart with an AI graph — fall
+                    # back to real B-roll of the scene's subject instead.
+                    _sq = _filmable(stock_query,
+                                    re.sub(r"[\[\]]", "", scenes[i].heading))
+                    if _sq:
+                        vclip = work / f"scene_{i:02d}_stock.mp4"
+                        print(f"[chart] [warn] chart failed scene {i}; stock fallback '{_sq}'")
+                        try:
+                            if download_best_stock_video(_sq, vclip, W, H, max_seconds=15) \
+                                    and vclip.exists() and vclip.stat().st_size > 0:
+                                stock_paths[i] = vclip
+                                # Record the downgrade — board_final must show
+                                # what RENDERED, not what was declared (codex
+                                # verify R2: "35 charts declared, 10 rendered").
+                                cell["visual_type"] = "stock_video"
+                                cell["stock_query"] = _sq
+                                continue
+                        except Exception as e:
+                            print(f"[chart] [warn] stock fallback error scene {i}: {e}")
+                    # Last resort is a generic illustration — scrub any chart
+                    # wording so the image model is never asked to draw a graph.
+                    if re.search(r"\b(chart|graph|diagram|infographic|bar|axis)\b",
+                                 (cell.get("image_prompt") or ""), re.I):
+                        cell["image_prompt"] = ""
+                    cell["visual_type"] = "generated_image"
+                    visual_type = "generated_image"
+
                 # --- Real moving B-roll footage (preferred) ---
                 if visual_type == "stock_video" and stock_query:
                     if _stock_reuse(i, stock_query):
                         continue
                     vclip = work / f"scene_{i:02d}_stock.mp4"
+                    # The cell's negative_prompt names this story's world-breakers
+                    # (snow in a summer story, actors in first-person beats) —
+                    # the provider vetoes candidates whose descriptor matches.
+                    _negs = [t.strip() for t in
+                             re.split(r"[,;]", cell.get("negative_prompt") or "")
+                             if t.strip()]
                     print(f"[stock-video] scene {i}: '{stock_query}' ...")
                     try:
-                        ok = download_best_stock_video(stock_query, vclip, W, H, max_seconds=15)
+                        ok = download_best_stock_video(stock_query, vclip, W, H,
+                                                       max_seconds=15,
+                                                       negative_terms=_negs,
+                                                       forbid_text=bool(
+                                                           _style_policy and
+                                                           _style_policy.forbid_onscreen_text))
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}")
                         ok = False
@@ -2456,7 +3553,7 @@ def main() -> None:
                         except Exception:
                             pass
                     print(f"[web-search] Searching web for scene {i}: '{query}'...")
-                    if download_best_web_image(query, dest, W, H):
+                    if _syncrun(download_best_web_image, query, dest, W, H):
                         try:
                             shutil.copyfile(dest, cp)
                         except Exception:
@@ -2480,6 +3577,31 @@ def main() -> None:
                 raise RuntimeError(
                     f"Stock footage missing for {len(_missing)}/{len(scenes)} scenes — "
                     "STRICT mode refuses text cards. Failing queries: " + "; ".join(_qs))
+
+        # STRICT: a footage-policy channel promises 90%+ real visuals. With no
+        # image provider every unacquired scene becomes a text card, so more
+        # than 10% missing is a broken product, not a degrade — fail with the
+        # scene list instead of shipping it.
+        if (STRICT and not args.all_stock and image_provider is None
+                and _style_policy is not None
+                and _style_policy.preferred_type == "stock_video"):
+            _missing = [i for i in range(len(scenes))
+                        if i not in stock_paths and i not in bg_paths]
+            _cap = max(1, int(0.10 * len(scenes)))
+            if len(_missing) > _cap:
+                _qs = []
+                for _mi in _missing[:6]:
+                    _c = board[_mi] if (board and _mi < len(board)) else {}
+                    _qs.append(f"scene {_mi}: '{(_c.get('stock_query') or _c.get('search_query') or scenes[_mi].heading)[:60]}'")
+                raise RuntimeError(
+                    f"Real visuals missing for {len(_missing)}/{len(scenes)} scenes "
+                    f"(cap {_cap}) on a '{_style_policy.style_id}' channel — STRICT "
+                    "mode refuses a text-card video. Failing queries: " + "; ".join(_qs))
+
+        # The board is now final for this render — every mutation (patches,
+        # router, policy, preflight clearing, acquisition fallbacks) has run.
+        if board:
+            _persist_final_board(board, script_path.parent)
 
         # Build prompts for the remaining generated images
         for i, sc in enumerate(scenes):
@@ -2567,37 +3689,54 @@ def main() -> None:
     total_words = sum(len(sc.narration.split()) for sc in scenes)
 
     # Veo motion phase (real moving clips). Serial — single Flow browser, each
-    # Veo clip takes minutes. Credit preflight aborts BEFORE spending if the
-    # balance can't cover the run; a live re-check after clip #1 measures the
-    # true per-clip cost and bails early if the remainder won't fit.
+    # Veo clip takes minutes. Flow (free credits) goes first; the Gemini Veo 3
+    # API picks up any clip Flow can't produce (blocked profile, exhausted
+    # credits) via omnicast.media.veo_pipeline's sticky-demotion fallback. A
+    # failed clip degrades that one scene to still/text-card, never the run.
     veo_paths: dict[int, Path] = {}
     if veo_mode:
-        import asyncio
-        vprov = _load_video_provider("flow")
-        info = _aiorun(vprov.preflight_video(total))
-        bal0 = info["balance"]
-        status.credits(info); status.stage("images", "active")
-        print(f"[1b/5] Credits balance={bal0} est_need={info['needed']} "
-              f"({total}x{info['cost_per_clip']}); generating {total} Veo clips (serial)...")
-        for i in range(total):
-            vclip = work / f"scene_{i:02d}_veo.mp4"
-            _aiorun(vprov.convert("", veo_prompts[i],
-                                      output_path=str(vclip.resolve()), wait_s=600))
-            veo_paths[i] = vclip
-            status.shot(i, state="active"); status.log(f"Veo clip {i+1}/{total}")
-            if i == 0 and bal0:
-                bal1 = _aiorun(vprov.credits())
-                if bal1 is not None:
-                    real = max(1, bal0 - bal1)
-                    need = (total - 1) * real
-                    print(f"      measured cost/clip={real}; balance={bal1}; remaining_need={need}")
-                    if bal1 < need:
-                        vprov.close()
-                        print(f"[ABORT] Insufficient credits for remaining {total-1} clips "
-                              f"(need {need}, have {bal1}). Partial clips kept.")
-                        sys.exit(2)
-            print(f"[1b/5] Veo clip {i+1}/{total} done")
-        vprov.close()
+        src = ROOT / "src"
+        if src.exists() and str(src) not in sys.path:
+            sys.path.insert(0, str(src))
+        from omnicast.media.veo_pipeline import generate_veo_clips
+
+        provider_order: tuple = ("flow", "gemini")
+        try:
+            vprov = _load_video_provider("flow")
+            info = _aiorun(vprov.preflight_video(total))
+            status.credits(info); status.stage("images", "active")
+            print(f"[1b/5] Credits balance={info['balance']} est_need={info['needed']} "
+                  f"({total}x{info['cost_per_clip']}); generating {total} Veo clips (serial)...")
+        except Exception as _pf:
+            # With an API fallback available, an unpayable Flow balance or a
+            # dead browser profile reorders providers instead of aborting.
+            provider_order = ("gemini",)
+            print(f"[1b/5] Flow preflight failed ({str(_pf)[:100]}); "
+                  "using Gemini Veo 3 API for this run.")
+            status.stage("images", "active")
+
+        def _on_clip(r):
+            if r.path is not None:
+                veo_paths[r.index] = Path(r.path)
+                status.shot(r.index, state="active")
+                status.log(f"Veo clip {r.index + 1}/{total} ({r.provider})")
+                print(f"[1b/5] Veo clip {r.index + 1}/{total} done ({r.provider})")
+            else:
+                print(f"[1b/5] [warn] Veo clip {r.index + 1}/{total} failed: "
+                      f"{r.error[:110]} (scene falls back to still/text card)")
+
+        _durs = [max(3.0, len(sc.narration.split()) / 2.9) for sc in scenes]
+        report = _aiorun(generate_veo_clips(
+            veo_prompts, _durs, work_dir=work,
+            provider_order=provider_order, wait_s=600, on_clip=_on_clip))
+        if report.demoted_from:
+            print(f"[1b/5] provider '{report.demoted_from}' demoted mid-run "
+                  f"({report.demotion_reason[:110]}); clips by provider: "
+                  f"{report.by_provider()}")
+        if report.ok_count == 0:
+            print("[ABORT] No Veo clips generated — every provider failed. "
+                  "Partial artifacts kept.")
+            sys.exit(2)
 
     # Ensure a background image exists per shot. Batch providers (Flow) already
     # filled bg_paths above; a non-batch provider (local-sd) is NOT thread-safe,
@@ -2724,7 +3863,12 @@ def main() -> None:
                 if cell_i is None or (cell_i.get("stat_number") or "").strip():
                     continue
                 cell_i["template"] = "remotion:OutroCTA"
-                cell_i["remotion_props"] = {"sub": "", "accent": _acc, "bg": "#0a0f1a"}
+                _nar = scenes[_i].narration if _i < len(scenes) else ""
+                cell_i["remotion_props"] = {
+                    "sub": _outro_subline(_nar),
+                    "accent": _acc,
+                    "bg": "#0a0f1a",
+                }
 
     # Pre-render kinetic stat callouts on the MAIN thread (Playwright sync is
     # thread-affine — cannot run inside the parallel compose workers below).
@@ -2821,19 +3965,16 @@ def main() -> None:
             return 1.0
         return 0.0
 
+    # Chosen ONCE for the whole video, because "is this shot emphatic?" is a
+    # question about the video, not about the shot — see _punch_in_scenes.
+    _punch = _punch_in_scenes(scenes, board)
+
     def _scene_motion(i: int) -> int:
-        # vfact zoom marker: punch a centered ZOOM-IN on the number/twist so the
-        # motion emphasizes it (reference zooms hard on data/reveals); other shots
-        # keep cycling the 6 ken-burns moves. Ties the zoom to the same stat/twist
-        # markers the Writer emits: a stat cell, a hero number, an emphasis word,
-        # or a deliberate dramatic pause.
-        sc = scenes[i] if i < len(scenes) else None
-        cell = board[i] if (board and i < len(board)) else {}
-        has_stat = bool((cell.get("stat_number") or "").strip()) or bool(
-            _num_re.search(sc.narration if sc else ""))
-        has_emph = bool(getattr(sc, "emphasis", ())) if sc else False
-        is_twist = ((getattr(sc, "pause_after_ms", 0) or 0) >= 400) if sc else False
-        return 0 if (has_stat or has_emph or is_twist) else i
+        # vfact zoom marker: punch a centered ZOOM-IN on the strongest number /
+        # twist beats so the motion emphasizes them (reference zooms hard on
+        # data reveals); every other shot keeps cycling the 6 ken-burns moves so
+        # the video has a rhythm to break.
+        return 0 if i in _punch else i
 
     def _compose(i: int) -> Path:
         sc = scenes[i]
@@ -2938,7 +4079,10 @@ def main() -> None:
             veo_motion_scene(vbg, overlay, audio, clip_dur, clip, avatar_mp4=talk)
         elif bg is not None and bg.exists():
             overlay = _build_overlay()
-            ken_burns_scene(bg, overlay, audio, clip_dur, clip, _scene_motion(i), avatar_mp4=talk)
+            # Charts render STATIC (motion -1): panning a data visual crops
+            # labels/axes; footage supplies the motion elsewhere.
+            _mi = -1 if bg.name.endswith("_chart.png") else _scene_motion(i)
+            ken_burns_scene(bg, overlay, audio, clip_dur, clip, _mi, avatar_mp4=talk)
         else:
             # No visual for this scene — usually a generated image Google's safety
             # filter refused (dark/figure prompts trip it). A plain text card among
@@ -3205,13 +4349,34 @@ def main() -> None:
     status.video(out.name); status.log(f"done {dur:.0f}s {size_mb:.1f}MB")
     print(f"[4/5] Rendered: {out}")
 
+    # Imported here so the handler below can NAME the fail-closed error rather
+    # than catching it with everything else.
+    try:
+        from omnicast.analytics.intel_gate import CompetitorIntelRequired
+    except Exception:  # pragma: no cover - package unavailable in bare scripts
+        class CompetitorIntelRequired(RuntimeError):
+            """Fallback so the handler below stays well-formed."""
+
     # Clickbait title + thumbnail (all channels). Title -> <stem>_title.txt,
     # thumbnail 1280x720 -> <stem>_thumb.png. Thumbnail bg = the hook
     # illustration (or a frame pulled from the final video as fallback).
     try:
         import clickbait
+        # The pillar comes from the BRIEF (recorded in product meta), not from
+        # re-reading the script: `TopicBrief.pillar_id` already decided it, and
+        # re-classifying 2,000 characters could hand an annuities video the
+        # social-security playbook because it mentions Medicare a lot. The
+        # classifier remains a fallback and says so.
+        _pillar_ssot = ""
+        try:
+            from omnicast.storage import products as _products_meta
+            _pillar_ssot = str((_products_meta.read_meta(out.parent) or {}).get(
+                "pillar_id") or "")
+        except Exception:
+            _pillar_ssot = ""
         cb = clickbait.generate_clickbait(
-            script_path.read_text(encoding="utf-8"), channel_meta)
+            script_path.read_text(encoding="utf-8"), channel_meta,
+            pillar_id=_pillar_ssot)
         if cb:
             (out.with_name(out.stem + "_title.txt")).write_text(
                 cb["title"], encoding="utf-8")
@@ -3222,6 +4387,7 @@ def main() -> None:
             # illustration, then a frame from the final video.
             thumb_bg = work / "_thumb_bg.png"
             generated = False
+            _thumb_layout = _thumbnail_layout(channel_meta)
             if image_provider is not None and (cb.get("thumb_prompt")):
                 try:
                     import asyncio
@@ -3229,10 +4395,8 @@ def main() -> None:
                     # authority), NOT the channel's flat 2D illustration style — a
                     # cartoon thumb reads as a cheap Freepik/Canva channel. Override
                     # the in-video illustration style_prefix with a cinematic one.
-                    _is_horror = (channel_meta.get("channel_style") == "horror_real"
-                                  or channel_meta.get("thumb_style") == "horror")
                     _ttext = (cb.get("thumb_text") or "").strip().upper()
-                    if _is_horror:
+                    if _thumb_layout == "horror":
                         # Horror thumbs: found-footage grade + scratched horror font,
                         # NOT the bright-yellow MrBeast look (which reads as clickbait
                         # comedy, kills the dread). Uncanny near-human subject.
@@ -3254,6 +4418,25 @@ def main() -> None:
                             f"\"{_ttext}\" — scratched distressed bone-white letters with "
                             f"a thin dried-blood-red edge, perfectly spelled, highly "
                             f"legible, cinematic horror typography, NOT yellow"
+                        )
+                    elif _thumb_layout == "trust":
+                        # The image model makes only a credible real background;
+                        # deterministic local type preserves exact dollar figures.
+                        THUMB_STYLE = (
+                            "credible editorial photograph for a respected public-service "
+                            "finance programme, older American adult or official document "
+                            "on the RIGHT side of frame, natural window light, restrained "
+                            "navy and warm-gold palette, uncluttered, calm authority, "
+                            "generous dark negative space on the LEFT"
+                        )
+                        THUMB_NEG = (
+                            "text, letters, numbers, logo, watermark, exaggerated face, "
+                            "open mouth, pointing, neon, magenta, scam advertisement, "
+                            "cartoon, illustration, fake government seal, distorted hands"
+                        )
+                        tp = (
+                            f"{THUMB_STYLE}, {cb['thumb_prompt']}. "
+                            "No typography and no invented agency interface."
                         )
                     else:
                         THUMB_STYLE = (
@@ -3279,30 +4462,38 @@ def main() -> None:
                         model=args.image_model, resolution=(1280, 720),
                         output_path=str(thumb_bg.resolve())))
                     generated = thumb_bg.exists()
-                    print(f"[4b/5] Thumbnail (text baked by Flow): '{_ttext}'")
+                    _mode = ("clean trust background"
+                             if _thumb_layout == "trust" else "text baked by Flow")
+                    print(f"[4b/5] Thumbnail ({_mode}): '{_ttext}'")
                 except Exception as te:
                     print(f"      [warn] Flow thumbnail gen failed ({te}); fallback")
             thumb = out.with_name(out.stem + "_thumb.png")
             if generated:
-                # Flow already rendered the headline text — use the image directly
-                # (normalize to 1280x720). Adding Pillow text would double it.
-                try:
-                    from PIL import Image as _PImg
-                    im = _PImg.open(thumb_bg).convert("RGB")
-                    tw, th = 1280, 720
-                    sc = max(tw / im.width, th / im.height)
-                    im = im.resize((int(im.width * sc), int(im.height * sc)))
-                    x0 = (im.width - tw) // 2; y0 = (im.height - th) // 2
-                    im.crop((x0, y0, x0 + tw, y0 + th)).save(thumb)
-                except Exception as _re:
-                    print(f"      [warn] thumb finalize failed ({_re}); raw copy")
-                    shutil.copyfile(thumb_bg, thumb)
+                if _thumb_layout == "trust":
+                    clickbait.compose_thumbnail(
+                        Path(thumb_bg), cb["thumb_text"], thumb,
+                        accent=tuple(accent), layout="trust")
+                else:
+                    # Flow already rendered the headline text — use the image
+                    # directly. Adding Pillow text would double it.
+                    try:
+                        from PIL import Image as _PImg
+                        im = _PImg.open(thumb_bg).convert("RGB")
+                        tw, th = 1280, 720
+                        sc = max(tw / im.width, th / im.height)
+                        im = im.resize((int(im.width * sc), int(im.height * sc)))
+                        x0 = (im.width - tw) // 2; y0 = (im.height - th) // 2
+                        im.crop((x0, y0, x0 + tw, y0 + th)).save(thumb)
+                    except Exception as _re:
+                        print(f"      [warn] thumb finalize failed ({_re}); raw copy")
+                        shutil.copyfile(thumb_bg, thumb)
             else:
                 # OPERATOR POLICY (2026-07-09): thumbnails are FLOW-ONLY. A stock
                 # frame reads as generic and tanks CTR ("lấy 1 frame quá xấu").
                 # No Flow = no thumbnail = failed render — log into Flow and
                 # re-run. (Non-strict debug builds keep the legacy paths below.)
-                if STRICT:
+                _allow_real_thumb = _allow_real_frame_thumbnail(channel_meta)
+                if STRICT and not _allow_real_thumb:
                     raise RuntimeError(
                         "Flow unavailable/failed — thumbnails are FLOW-ONLY by "
                         "operator policy (no stock frames). Open Flow in the "
@@ -3318,6 +4509,10 @@ def main() -> None:
                     _face_re = re.compile(
                         r"woman|face|person|presenter|looking|clutching|holding|"
                         r"nauseous|smiling|frustrated|tired|expression", re.I)
+                    _trust_re = re.compile(
+                        r"social security|ssa|official|document|statement|"
+                        r"retirement|older|senior|desk|calculator|benefit|"
+                        r"earnings|grocery|rent|calendar|chart", re.I)
                     _cands: list[tuple[int, Path]] = []
                     for _i in range(len(scenes)):
                         _sp = work / f"scene_{_i:02d}_stock.mp4"
@@ -3328,7 +4523,14 @@ def main() -> None:
                             _cell_q = (board[_i].get("stock_query")
                                        or board[_i].get("search_query") or "")
                         _txt = f"{_cell_q} {scenes[_i].heading}"
-                        _score = 2 if _face_re.search(_txt) else 0
+                        if _thumb_layout == "trust":
+                            _score = (
+                                4 * len(_trust_re.findall(_txt))
+                                + (1 if _face_re.search(_txt) else 0)
+                                - (_i / max(1, len(scenes)))
+                            )
+                        else:
+                            _score = 2 if _face_re.search(_txt) else 0
                         _cands.append((_score, _sp))
                     _cands.sort(key=lambda t: -t[0])
                     if _cands:
@@ -3342,9 +4544,9 @@ def main() -> None:
                     print(f"      [warn] stock thumb bg failed ({_se})")
                 if not got_bg and STRICT:
                     raise RuntimeError(
-                        "Thumbnail source failed (no face/emotion stock frame) — "
-                        "STRICT mode refuses random-frame thumbnails. Log into "
-                        "Flow for AI thumbs or fix the stock footage, then re-run.")
+                        "Thumbnail source failed (no suitable licensed real frame) — "
+                        "STRICT mode refuses a random frame. Fix the acquired footage "
+                        "or provide an approved source, then re-run.")
                 # 2) Last resort (non-strict only): a CONTENT frame from a mid
                 #    SCENE CLIP (pre-caption, pre-kinetics).
                 if not got_bg:
@@ -3363,10 +4565,38 @@ def main() -> None:
                         run(["ffmpeg", "-y", "-ss", f"{max(3.0, _dv * 0.45):.1f}",
                              "-i", str(out), "-frames:v", "1", str(thumb_bg)])
                 clickbait.compose_thumbnail(Path(thumb_bg), cb["thumb_text"], thumb,
-                                            accent=tuple(accent))
+                                            accent=tuple(accent),
+                                            layout=_thumb_layout)
             status.log(f"title: {cb['title']}")
             print(f"[4b/5] Title : {cb['title']}")
             print(f"[4b/5] Thumb : {thumb}  ('{cb['thumb_text']}')")
+            # A previous run may have persisted a fail-closed packaging state.
+            # Clear it only after this run has produced the complete title and
+            # thumbnail package; the exception handlers below must leave it set.
+            from omnicast.storage import products as _products
+            _products.mark_packaging_ready(out.parent)
+    except CompetitorIntelRequired as exc:
+        # FAIL CLOSED, ALL THE WAY OUT. `generate_clickbait` re-raises this, and
+        # catching it here with everything else put the declaration back to
+        # sleep one frame further out: the render printed a warning, printed
+        # DONE, and shipped packaging built from patterns the channel had said
+        # it would rather not ship at all.
+        #
+        # The MP4 stays on disk — it is already rendered and re-rendering costs
+        # money — but the product is marked unpublishable and the process exits
+        # non-zero, so no caller mistakes this for a completed render.
+        status.error(f"competitor intel required but unusable: {exc}")
+        print(f"[5/5] BLOCKED — {exc}")
+        print("       The video was rendered but has NO approved packaging and "
+              "must not be published. Re-run competitor intel for this channel, "
+              "or clear `competitor_intel_required` if that is really intended.")
+        try:
+            from omnicast.storage import products as _products
+            _products.write_meta(out.parent, packaging_blocked=str(exc),
+                                 publishable=False)
+        except Exception:
+            pass
+        raise
     except Exception as exc:
         print(f"      [warn] clickbait failed: {exc}")
 

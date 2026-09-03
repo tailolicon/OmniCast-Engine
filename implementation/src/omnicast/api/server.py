@@ -615,6 +615,10 @@ try:
     from omnicast.api.render_routes import OUT_DIR as _OUT_DIR, render_router
 
     app.include_router(render_router)
+    # Scene Review Studio — operator audits every scene BEFORE any render (REV7).
+    from omnicast.api.scene_review import router as _scene_review_router
+
+    app.include_router(_scene_review_router)
     _OUT_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/media", StaticFiles(directory=str(_OUT_DIR)), name="media")
     # Products tree (output/products) is the SSOT for rendered videos but wasn't
@@ -626,6 +630,49 @@ try:
     app.mount("/pmedia", StaticFiles(directory=str(_PRODUCTS_DIR)), name="pmedia")
 except Exception as _exc:  # don't let render routes break the core API
     print(f"[server] render routes not mounted: {_exc}")
+
+
+# ─── Storyboard — cast registry, reference sheets, token-bound frames ────────
+# Its own try block, deliberately. When this router first went inside the
+# render block a single missing import took the render routes down with it and
+# the only symptom was a one-line print. Failures here must cost the storyboard
+# UI and nothing else.
+try:
+    from fastapi.staticfiles import StaticFiles as _SBStaticFiles
+
+    from omnicast.api.storyboard_routes import storyboard_router as _sb_router
+    from omnicast.storyboard.refsheet import SHEET_DIR as _SHEET_DIR
+
+    app.include_router(_sb_router)
+    _SHEET_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/sbmedia", _SBStaticFiles(directory=str(_SHEET_DIR)), name="sbmedia")
+except Exception as _exc:
+    print(f"[server] storyboard routes not mounted: {_exc}")
+
+
+# ─── Douyin reup — download, translate zh→vi, dub, export ───────────────────
+# Own try block for the same reason as storyboard: this pulls in faster-whisper
+# and the vendored Douyin client, and neither is worth taking the core API down
+# for. Exported videos are served from the reup workspace under /reupmedia.
+try:
+    from fastapi.staticfiles import StaticFiles as _ReupStaticFiles
+
+    from omnicast.api.reup_routes import WORKSPACE_ROOT as _REUP_ROOT, reup_router
+
+    app.include_router(reup_router)
+    _REUP_ROOT.mkdir(parents=True, exist_ok=True)
+    app.mount("/reupmedia", _ReupStaticFiles(directory=str(_REUP_ROOT)), name="reupmedia")
+except Exception as _exc:
+    print(f"[server] reup routes not mounted: {_exc}")
+
+# Content library (series / episodes / platform accounts / posts) — same
+# isolation: a broken import must not take the backend down.
+try:
+    from omnicast.api.library_routes import library_router
+
+    app.include_router(library_router)
+except Exception as _exc:
+    print(f"[server] library routes not mounted: {_exc}")
 
 
 # ─── Thumb Studio — operator-curated FLOW-ONLY thumbnails ────────────────────
@@ -1702,6 +1749,63 @@ async def create_approval(payload: dict = Body(...)):
     return {"status": "queued", "approval": _approval_row_to_dict(row)}
 
 
+def _human_review_state(product_dir, video) -> dict:
+    """Whether a recorded human review actually covers THIS cut."""
+    from omnicast.media.output_audit import OutputQualityAuditor
+    from omnicast.storage import products as _products
+
+    meta = _products.read_meta(product_dir) or {}
+    review = meta.get("human_review")
+    if not isinstance(review, dict):
+        return {"valid": False, "reason": "no human review has been recorded"}
+    for field in ("reviewer", "reviewed_at", "artifact_sha256"):
+        if not str(review.get(field) or "").strip():
+            return {"valid": False, "reason": f"the recorded review has no {field}"}
+    current = OutputQualityAuditor.artifact_hash(video)
+    if current and review["artifact_sha256"] != current:
+        return {"valid": False,
+                "reason": ("the recorded review covers a different cut — this "
+                           "video was re-rendered after it was approved")}
+    return {"valid": True, "reason": "", "review": review}
+
+
+@app.post("/api/products/{channel_id}/review")
+async def record_human_review(channel_id: str, payload: dict = Body(default_factory=dict)):
+    """Record that a person reviewed a specific rendered cut.
+
+    The only thing that clears `requires_human_review`. It stores WHO, WHEN and
+    the artifact hash, so re-rendering invalidates the approval instead of
+    silently inheriting it."""
+    from datetime import datetime, timezone
+    from pathlib import Path as _Path
+
+    from omnicast.media.output_audit import OutputQualityAuditor
+    from omnicast.storage import products as _products
+
+    reviewer = str(payload.get("reviewer") or "").strip()
+    if not reviewer:
+        raise HTTPException(422, "reviewer is required — a review with no name "
+                                 "is not a review")
+    requested = str(payload.get("video_path") or "").strip()
+    video = _Path(requested) if requested else _products.latest_video(channel_id)
+    if not video or not video.exists():
+        raise HTTPException(404, f"No rendered video found for channel {channel_id}")
+
+    digest = OutputQualityAuditor.artifact_hash(video)
+    if not digest:
+        raise HTTPException(422, f"could not hash {video} — nothing to attest to")
+    review = {
+        "reviewer": reviewer,
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        "artifact_sha256": digest,
+        "notes": str(payload.get("notes") or "").strip(),
+    }
+    _products.write_meta(video.parent, human_review=review)
+    logger.info("human review recorded", channel=channel_id, reviewer=reviewer,
+                artifact=digest[:12])
+    return {"channel_id": channel_id, "video_path": str(video), "review": review}
+
+
 @app.post("/api/publish/{channel_id}")
 async def queue_channel_publish(channel_id: str, payload: dict = Body(default_factory=dict)):
     """Queue the latest rendered product for HITL publish approval."""
@@ -1737,6 +1841,42 @@ async def queue_channel_publish(channel_id: str, payload: dict = Body(default_fa
     tags = [t.strip() for t in raw_tags.split(",") if t.strip()] if isinstance(raw_tags, str) else list(raw_tags)
     raw_thumbs = payload.get("thumbnail_paths") or []
     thumbnail_paths = [raw_thumbs] if isinstance(raw_thumbs, str) and raw_thumbs.strip() else list(raw_thumbs)
+
+    # HUMAN-REVIEW GATE (§9). The render succeeds and flags the product; THIS is
+    # where a missing review stops something. Blocking the render instead
+    # deadlocked it: the flag blocked the only route to the review that clears
+    # the flag.
+    #
+    # A review counts only if it names a reviewer, a time, and the HASH of the
+    # cut that was reviewed — otherwise an approval survives a re-render and a
+    # different video publishes under it.
+    # PACKAGING GATE. A channel that declared `competitor_intel_required` and
+    # then could not get usable intel has an MP4 with no approved title or
+    # thumbnail. The renderer marks it; this is where the mark costs something.
+    # There is deliberately no `force` here: the flag records a decision the
+    # OPERATOR made in the channel config, so overriding it belongs in that
+    # config (or in a fresh render), not in a query parameter.
+    _packaging_blocked = _products.publish_blockers(product_dir)
+    if _packaging_blocked:
+        raise HTTPException(
+            409, {"error": "not_publishable",
+                  "reasons": _packaging_blocked,
+                  "how_to_clear": (
+                      "Re-render after competitor intel is available for this "
+                      "scope, or clear `competitor_intel_required` in "
+                      f"channels/{channel_id}.json if the channel no longer "
+                      "wants that guarantee.")})
+
+    review_state = _human_review_state(product_dir, video)
+    if product_meta.get("requires_human_review") and not review_state["valid"]:
+        raise HTTPException(
+            409, {"error": "human_review_required",
+                  "reason": review_state["reason"],
+                  "gates": product_meta.get("quality_needs_human") or [],
+                  "how_to_clear": (
+                      f"POST /api/products/{channel_id}/review with "
+                      "{\"reviewer\": \"<name>\", \"video_path\": \"...\"} "
+                      "after actually watching it")})
 
     destinations = [d for d in _destinations_for_channel(channel) if d.get("enabled", True)]
     if not destinations:
@@ -2847,18 +2987,34 @@ async def list_topics(channel_id: str):
 
 
 @app.post("/api/competitor-intel/{channel_id}")
-async def learn_competitor_intel(channel_id: str):
-    """Scan the channel's competitors and (re)learn title + thumbnail playbooks
-    for its niche. Needs youtube_api_key + competitor_handles in the channel."""
+async def learn_competitor_intel(channel_id: str, pillar: str = ""):
+    """Scan the channel's competitors and (re)learn the playbooks for its scope.
+
+    `?pillar=<id>` learns a playbook for ONE declared content pillar (§4.2): the
+    competitor corpus is filtered to that pillar first, and the row is written
+    under the pillar-scoped key. Without it the run writes at the channel-wide
+    level, which is what a channel with no declared pillars gets.
+
+    Needs youtube_api_key + competitor_handles in the channel."""
     from omnicast.config.channel import ChannelProfileLoader
     from omnicast.analytics import competitor_intel
     if not (CHANNELS_DIR / f"{channel_id}.json").exists():
         raise HTTPException(404, f"Channel '{channel_id}' not found")
     channel = await ChannelProfileLoader(CHANNELS_DIR).load(channel_id)
-    res = await competitor_intel.learn_for_channel(channel, channel.niche.value)
+    pillar = (pillar or "").strip()
+    if pillar:
+        declared = {str((p or {}).get("id") or "").strip()
+                    for p in (getattr(channel, "content_pillars", None) or [])}
+        if pillar not in declared:
+            raise HTTPException(
+                422, f"Pillar '{pillar}' is not declared on '{channel_id}'. "
+                     f"Declared: {sorted(d for d in declared if d) or 'none'}")
+    res = await competitor_intel.learn_for_channel(channel, pillar_id=pillar)
     if not res:
         raise HTTPException(
-            422, "Nothing learned — check youtube_api_key + competitor_handles in the channel.")
+            422, "Nothing learned — check youtube_api_key + competitor_handles in "
+                 "the channel" + (f", or no competitor video matched pillar "
+                                  f"'{pillar}'." if pillar else "."))
     return res
 
 
@@ -2881,7 +3037,10 @@ async def harvest_competitor_music(channel_id: str, mood: str = "ambient",
     if not (CHANNELS_DIR / f"{channel_id}.json").exists():
         raise HTTPException(404, f"Channel '{channel_id}' not found")
     channel = await ChannelProfileLoader(CHANNELS_DIR).load(channel_id)
-    vids = await competitor_intel._top_competitor_videos(channel, settings.youtube_api_key, top_n=20)
+    # Mining BGM credits out of descriptions makes no causal claim about why a
+    # video did well, so the flat view-sorted pool is fine here (unlike the
+    # playbook learner, which needs the winner/control cohort).
+    vids = await competitor_intel._all_competitor_videos(channel, settings.youtube_api_key, top_n=20)
     vid_ids = [v.get("video_id") for v in vids if v.get("video_id")]
     credits = music_harvester.harvest(vid_ids, settings.youtube_api_key)
     saved = music_harvester.auto_fetch(credits, mood=mood) if download else []
@@ -2899,9 +3058,249 @@ async def get_competitor_intel(niche: str):
     ci = vault_db.get_competitor_intel(niche.lower(), VAULT_DB)
     if not ci:
         return {"niche": niche, "learned": False}
+    try:
+        cohort_meta = json.loads(ci.cohort_meta) if ci.cohort_meta else {}
+    except Exception:
+        cohort_meta = {}
     return {"niche": ci.niche, "learned": True, "title_playbook": ci.title_playbook,
             "thumbnail_playbook": ci.thumbnail_playbook, "sample_titles": ci.sample_titles,
-            "sample_count": ci.sample_count, "updated_at": ci.updated_at}
+            "sample_count": ci.sample_count,
+            # Surfaced, not buried: a caller must be able to see whether these
+            # playbooks were learned against a control group.
+            "is_comparable": cohort_meta.get("is_comparable"),
+            "comparability": cohort_meta.get("comparability"),
+            "control_coverage": cohort_meta.get("control_coverage"),
+            # §4.5 — the unified dossier is the artifact a human should read:
+            # every field labelled measured/inferred/assumed/missing, and every
+            # recommendation traceable to the field it rests on.
+            "dossier": cohort_meta.get("dossier"),
+            "production_blueprint": cohort_meta.get("production_blueprint"),
+            "schedule": cohort_meta.get("schedule"),
+            "audience_signals": cohort_meta.get("audience_signals"),
+            "cohort": cohort_meta, "updated_at": ci.updated_at}
+
+
+def _audit_pass_rate(channel_id: str) -> dict:
+    """Share of this channel's rendered products whose output audit passed.
+
+    Read from the `_output_audit.json` sidecars the render pipeline already
+    writes, so the `format` stage gate is answered by evidence rather than left
+    permanently unknown."""
+    passed = total = 0
+    try:
+        for sidecar in (OUTPUT_DIR / "products").rglob("_output_audit.json"):
+            try:
+                report = json.loads(sidecar.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            meta_path = sidecar.parent / "meta.json"
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if str(meta.get("channel") or "") != channel_id:
+                continue
+            total += 1
+            passed += 1 if report.get("passed") else 0
+    except Exception:
+        return {"rate": None, "count": 0}
+    return {"rate": (passed / total) if total else None, "count": total}
+
+
+def _daily_metrics(channel_id: str) -> dict:
+    """Aggregate `channel_metrics_daily` into stage-gate evidence.
+
+    Zero means UNAVAILABLE for impressions and CTR — the schema says so in a
+    comment — so a zero is returned as None rather than as a measured zero that
+    would fail the packaging gate for a channel nobody has analytics for yet."""
+    from omnicast.shared.numbers import num, rate
+
+    out: dict = {"impressions": None, "ctr": None, "avd_percent": None,
+                 "rpm": None, "views": None, "channel_metrics": {}}
+    try:
+        from omnicast.vault import db as vault_db
+
+        rows = vault_db.list_channel_metrics_daily(
+            channel_id, 90, OUTPUT_DIR / "vault.db") or []
+    except Exception:
+        return out
+    if not rows:
+        return out
+
+    def _sum(field: str) -> float:
+        return sum(num(getattr(r, field, None)) or 0.0 for r in rows)
+
+    impressions = _sum("impressions")
+    views = _sum("views")
+    watch_hours = _sum("watch_time_hours")
+    revenue = _sum("revenue")
+    avd = [rate(getattr(r, "avd_percent", None) if
+                (num(getattr(r, "avd_percent", None)) or 0) <= 1
+                else (num(getattr(r, "avd_percent", None)) or 0) / 100.0)
+           for r in rows]
+    avd = [a for a in avd if a is not None]
+
+    out["impressions"] = impressions or None
+    # CTR is a weighted average, not a mean of means: a day with 10 impressions
+    # must not count as much as a day with 100,000.
+    clicks = sum((num(getattr(r, "ctr", None)) or 0.0)
+                 * (num(getattr(r, "impressions", None)) or 0.0) for r in rows)
+    out["ctr"] = rate(clicks / impressions) if impressions else None
+    out["avd_percent"] = (sum(avd) / len(avd)) if avd else None
+    out["rpm"] = (revenue / views * 1000.0) if views else None
+    out["views"] = views or None
+    out["channel_metrics"] = {
+        "views": views or None,
+        "watch_time_minutes": watch_hours * 60.0 if watch_hours else None,
+    }
+    return out
+
+
+def _library_rows(channel_id: str) -> list[dict]:
+    """Published videos with an age and a view count, for §11.6.
+
+    Only rows that carry a real view count. A synthetic `{"views": 0}` row per
+    title looked like input and made every metric structurally missing."""
+    from datetime import datetime, timezone
+
+    rows: list[dict] = []
+    try:
+        from omnicast.vault import db as vault_db
+
+        VAULT_DB = OUTPUT_DIR / "vault.db"
+        stats = {s.channel_id: s for s in (vault_db.list_channel_stats(VAULT_DB) or [])}
+    except Exception:
+        stats = {}
+    if channel_id not in stats:
+        return rows
+    try:
+        from omnicast.vault import db as vault_db
+
+        for video in vault_db.list_published(channel_id, OUTPUT_DIR / "vault.db") or []:
+            stamp = str(getattr(video, "published_at", "") or "")
+            if not stamp:
+                continue
+            try:
+                when = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if not when.tzinfo:
+                when = when.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - when).days
+            views = getattr(video, "views", None)
+            if views is None:
+                # No per-video view count is stored, so `library_compounding`
+                # genuinely cannot be computed. Emitting a row with no `views`
+                # says that; emitting `{"views": 0}` would have said the video
+                # earned nothing.
+                continue
+            rows.append({"age_days": max(age, 0), "views": views})
+    except Exception:
+        return rows
+    return rows
+
+
+@app.get("/api/strategy/{channel_id}")
+async def channel_strategy(channel_id: str):
+    """Long-term channel strategy (§11): thesis, architecture, gates, metrics.
+
+    The production caller for `omnicast.strategy`. It reports what was DECLARED
+    and measures drift against what was actually published — it never fills in a
+    thesis nobody wrote, because a generated thesis agrees with whatever the
+    channel already does and can therefore never be evidence that it drifted."""
+    from omnicast.config.channel import ChannelProfileLoader
+    from omnicast.strategy import (
+        evaluate_gates,
+        load_thesis,
+        measure_long_term,
+        portfolio_drift,
+        review_architecture,
+    )
+    from omnicast.strategy.stage_gate import decide
+    from omnicast.vault import db as vault_db
+
+    if not (CHANNELS_DIR / f"{channel_id}.json").exists():
+        raise HTTPException(404, f"Channel '{channel_id}' not found")
+    try:
+        channel = await ChannelProfileLoader(CHANNELS_DIR).load(channel_id)
+    except Exception as exc:
+        # `credentials.json` lives in the same directory and is not a channel;
+        # the existence check passed and the loader then raised a 500.
+        raise HTTPException(
+            422, f"'{channel_id}.json' is not a channel profile: {exc}") from exc
+
+    VAULT_DB = OUTPUT_DIR / "vault.db"
+    titles: list[str] = []
+    topic_counts: dict = {}
+    try:
+        vault_db.init_db(VAULT_DB)
+        published = vault_db.list_published(channel_id, VAULT_DB) or []
+        titles = [str(getattr(v, "title", "") or "") for v in published]
+        topic_counts = vault_db.count_topics(channel_id, VAULT_DB) or {}
+    except Exception as exc:
+        logger.warning("strategy: vault unreadable", error=str(exc))
+
+    thesis = load_thesis(channel)
+    architecture = review_architecture(channel, titles)
+
+    # Evidence for the gates comes from whatever is genuinely available. Absent
+    # inputs make a gate `unknown`, never `fail` — see stage_gate's docstring.
+    # Real evidence, from what the vault and the product sidecars actually
+    # hold. Supplying only `published_videos` meant the FIRST gate was always
+    # `unknown` and the walk stopped there, so the endpoint could never reach
+    # format, packaging, retention, audience return or monetization — and the
+    # one number it did compute was consumed by nothing.
+    audits = _audit_pass_rate(channel_id)
+    # `channel_metrics_daily` has held impressions, CTR, AVD, revenue and RPM
+    # all along; the endpoint claimed they were "not collected yet" and stopped
+    # at the first gate. They are read here so packaging, retention and
+    # monetization can actually be judged.
+    daily = _daily_metrics(channel_id)
+    evidence = {
+        "published_videos": len(titles),
+        "scored_topics": sum(topic_counts.values()) or None,
+        "approved_topics": topic_counts.get("queued", 0) + topic_counts.get("used", 0)
+        if topic_counts else None,
+        "audit_pass_rate": audits["rate"],
+        **{k: v for k, v in daily.items() if v is not None},
+    }
+    gates = evaluate_gates({k: v for k, v in evidence.items() if v is not None})
+
+    # Only real channel files. `glob("*.json")` swept up `credentials.json` and
+    # counted it as an unassigned experiment — and 500'd when it was requested
+    # by name, because it is not a ChannelProfile.
+    lanes = []
+    for path in sorted(CHANNELS_DIR.glob("*.json")):
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(config, dict) or not config.get("channel_id"):
+            continue
+        lanes.append(str(config.get("experiment_lane") or "") or "unassigned")
+
+    return {
+        "channel_id": channel_id,
+        "thesis": thesis.as_dict(),
+        "content_architecture": architecture.as_dict(),
+        "stage_gates": [g.as_dict() for g in gates],
+        "decision": decide(gates),
+        "experiment_portfolio": portfolio_drift(lanes).as_dict(),
+        # No synthetic library. Passing `{"views": 0}` rows made every §11.6
+        # metric structurally `missing` while looking like real input; passing
+        # nothing says the same thing without pretending data was supplied.
+        "long_term_metrics": measure_long_term(
+            channel_metrics=daily.get("channel_metrics") or {},
+            library=_library_rows(channel_id)).as_dict(),
+        "evidence": {**evidence, "audits_read": audits["count"]},
+        "evidence_note": (
+            "Stage gates read what the vault and the product sidecars actually "
+            "hold, including `channel_metrics_daily`. A gate that is still "
+            "`unknown` is one whose input genuinely is not collected — "
+            "`returning_viewer_rate` needs the YouTube Analytics returning-viewer "
+            "dimension, which nothing fetches yet — NOT one the channel failed."
+        ),
+    }
 
 
 @app.get("/api/dedup/check")
@@ -3886,6 +4285,17 @@ async def _run_channel_phase1(channel_id: str):
             if src.success:
                 all_raw.extend(src.topics)
 
+        # SSOT: TopicScorer admits, ChannelArchitect ranks. This path used to
+        # hand the Architect every raw topic and discard the scoring entirely,
+        # while the orchestrator path honoured the same lanes — one policy,
+        # applied on one path and skipped on the other.
+        from omnicast.discovery import topic_router as _router
+
+        _admission = _router.admit(result.scored_topics, all_raw)
+        all_raw = _admission.admitted
+        for _note in _admission.notes:
+            logger.info("topic router", channel=channel_id, note=_note)
+
         topic = ""
         score = 0
         topic_queue: list[dict] = []
@@ -3900,6 +4310,23 @@ async def _run_channel_phase1(channel_id: str):
             llm = create_llm(default_provider="deepseek", model=settings.deepseek_flash_model)
             architect = ChannelArchitectAgent(llm=llm)
             opps = await architect.analyze(all_raw, channel, niche_cfg, top_n=5)
+            # SSOT note: on THIS path ChannelArchitectAgent — not TopicScorer —
+            # decides which topic gets produced. Recording only the scorer's
+            # lane would calibrate a decision nobody makes, so the shadow corpus
+            # is stamped with what the real router actually picked.
+            try:
+                from omnicast.discovery import shadow_log as _shadow
+
+                if orchestrator.shadow_rows:
+                    _shadow.mark_selected(
+                        orchestrator.shadow_rows,
+                        [o.title for o in opps],
+                        decided_by="channel_architect",
+                    )
+                    _shadow.append_rows(
+                        [{**r, "phase": "post_router"} for r in orchestrator.shadow_rows])
+            except Exception as _sl_exc:  # telemetry must never break a run
+                logger.warning("shadow selection not recorded", error=str(_sl_exc))
             if opps:
                 best = opps[0]
                 topic = best.title
@@ -3967,7 +4394,7 @@ async def _run_channel_phase1(channel_id: str):
         # Learn competitor title + thumbnail playbooks for this niche (best-effort).
         try:
             from omnicast.analytics import competitor_intel
-            await competitor_intel.learn_for_channel(channel, channel.niche.value)
+            await competitor_intel.learn_for_channel(channel)
         except Exception as _cexc:
             logger.warning("competitor intel skipped", error=str(_cexc))
 
@@ -4208,6 +4635,9 @@ async def _run_channel_phase2(channel_id: str, topic: str | None = None,
             brand_voice=channel.brand_voice,
             channel_id=channel.channel_id,
             sub_niche=channel.sub_niche,
+            competitor_intel_required=bool(
+                getattr(channel, "competitor_intel_required", False)),
+            **TopicBrief.scope_fields_from_channel(channel, title=topic),
             key_points=([f"Operator brief: {_ovr_desc}"] if _ovr_desc else []) + [
                 niche_cfg.hook_examples[0][:80] if niche_cfg.hook_examples else "",
                 f"Key insight from {niche_cfg.proof_sources[0]}" if niche_cfg.proof_sources else "",

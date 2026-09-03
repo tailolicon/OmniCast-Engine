@@ -26,6 +26,10 @@ _STYLE_MAP = {
     "clean_educational": "clean_educational",
     "vibrant_3d": "vibrant_3d",
     "whiteboard": "whiteboard_sketch",
+    # Finance-trust channels (The Retirement Desk): desk-editor look, dark navy
+    # + gold accents — the dark_finance preset. An unmapped visual_style used to
+    # fall back to "editorial" SILENTLY, which shipped a text-card video.
+    "clean_trust": "dark_finance",
 }
 
 # voice_profile substring -> edge-tts voice. Multilingual neural voices are the
@@ -62,6 +66,11 @@ def _derive(channel: dict) -> dict:
     if not style:
         niche = (channel.get("niche") or "").lower()
         style = "watercolor" if niche in _SUBTITLE_NICHES else "editorial"
+        if vstyle:
+            # A declared style that matches nothing is a config bug, not a
+            # preference — say so loudly instead of silently restyling the video.
+            print(f"[channel_render] [warn] visual_style '{vstyle}' matches no "
+                  f"preset — falling back to '{style}'. Add it to _STYLE_MAP.")
 
     vp = (channel.get("voice_profile") or "").lower() + (channel.get("brand_voice") or "").lower()
     voice = next((v for key, v in _VOICE_MAP if key in vp), "en-US-AndrewMultilingualNeural")

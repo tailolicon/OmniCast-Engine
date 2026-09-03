@@ -497,6 +497,20 @@ async def upload_video(channel_id: str, video: str | None = None,
     if not vpath.exists():
         raise HTTPException(404, f"No rendered video found for {channel_id}")
 
+    # PACKAGING GATE — same one the publish queue enforces. This route is the
+    # SHORTER path to YouTube (no approval row), so a gate only on
+    # /api/publish would leave the door it was built to close standing open.
+    _blocked = _products.publish_blockers_for_video(vpath)
+    if _blocked:
+        raise HTTPException(
+            409, {"error": "not_publishable", "reasons": _blocked,
+                  "video": str(vpath),
+                  "how_to_clear": (
+                      "Re-render after competitor intel is available, or clear "
+                      f"`competitor_intel_required` in channels/{channel_id}.json. "
+                      "`force` does not override this: it exists for compliance "
+                      "false positives, and this flag is not a heuristic.")})
+
     mgr = _yt_oauth()
     if not mgr.has_token(channel_id):
         raise HTTPException(
@@ -806,13 +820,28 @@ async def _edge_catalog() -> list[dict]:
 
 
 @render_router.get("/api/voices")
-async def list_voices(lang: str | None = None):
-    """FULL voice catalog: all Kokoro voices (local) + all Edge voices (cloud, ~320).
-    Optional ?lang=en filters by locale prefix. Marks installed providers."""
+async def list_voices(
+    lang: str | None = None,
+    include_capcut: bool = False,
+    include_volcengine: bool = True,
+):
+    """FULL voice catalog: Kokoro + Edge + Piper + (optional) CapCut meta + Volcengine.
+
+    Optional ?lang=en filters by locale prefix. Marks installed providers.
+    Pass include_capcut=1 to also append CapCut/TikTok speaker metadata.
+    include_volcengine=1 (default) lists ByteDance seed-tts-2.0 (102 speakers) —
+    the official CapCut-family engine OmniCast synthesizes with when keys exist.
+    """
     import importlib.util
+    from omnicast.media.providers.tts_volcengine import load_credentials
+
+    _volc_app, _volc_tok = load_credentials()
+    volc_keys = bool(_volc_app and _volc_tok)
     avail = {"kokoro": importlib.util.find_spec("kokoro") is not None,
              "edge": importlib.util.find_spec("edge_tts") is not None,
-             "piper": importlib.util.find_spec("sherpa_onnx") is not None}
+             "piper": importlib.util.find_spec("sherpa_onnx") is not None,
+             "capcut": True,
+             "volcengine": volc_keys}
     voices: list[dict] = []
     if avail["kokoro"]:
         voices += _kokoro_catalog()
@@ -820,34 +849,151 @@ async def list_voices(lang: str | None = None):
         voices += await _edge_catalog()
     if avail["piper"]:
         voices += _piper_catalog()
+    if include_volcengine:
+        from omnicast.media.providers.tts_volcengine import list_speakers
+        for s in list_speakers():
+            voices.append({
+                **s,
+                "age": "", "pitch": "", "accent": "",
+                "use_case": "social",
+                "needs_key": not volc_keys,
+            })
+    if include_capcut:
+        from omnicast.media.capcut_voices import list_capcut_voices
+        voices += list_capcut_voices(gender="all")
     if lang:
-        voices = [v for v in voices if v["lang"].lower().startswith(lang.lower())]
-    langs = sorted({v["lang"] for v in voices if v["lang"]})
+        voices = [v for v in voices if (v.get("lang") or "").lower().startswith(lang.lower())]
+    langs = sorted({v["lang"] for v in voices if v.get("lang")})
     use_cases = sorted({v.get("use_case") for v in voices if v.get("use_case")})
     accents = sorted({v.get("accent") for v in voices if v.get("accent")})
     return {"voices": voices, "providers": avail, "langs": langs,
             "use_cases": use_cases, "accents": accents, "count": len(voices)}
 
 
+@render_router.get("/api/voices/volcengine")
+async def list_volcengine_voices_endpoint(
+    gender: str | None = None,
+    lang: str | None = None,
+    q: str | None = None,
+):
+    """Full ByteDance seed-tts-2.0 catalog (CapCut-family engine, official API).
+
+    102 speakers from ``media/data/doubao2_voices.json``. Synthesis needs
+    ``VOLCENGINE_TTS_APPID`` + ``VOLCENGINE_TTS_ACCESS_TOKEN``. Spec form:
+    ``volcengine:<speaker_id>`` or display name (e.g. ``volcengine:Vivi 2.0``).
+    """
+    from omnicast.media.providers.tts_volcengine import list_speakers, load_credentials
+
+    voices = list_speakers()
+    if gender and gender not in ("all", "*", "any"):
+        g = gender.strip().lower()
+        voices = [v for v in voices if (v.get("gender") or "").lower() == g]
+    if lang:
+        prefix = lang.strip().lower()
+        voices = [v for v in voices if (v.get("lang") or "").lower().startswith(prefix)]
+    if q:
+        needle = q.strip().lower()
+        voices = [
+            v for v in voices
+            if needle in (v.get("label") or "").lower()
+            or needle in (v.get("speaker_id") or "").lower()
+            or needle in (v.get("spec") or "").lower()
+        ]
+    appid, token = load_credentials()
+    return {
+        "voices": voices,
+        "provider": "volcengine",
+        "source": "bytedance_seed_tts_2",
+        "count": len(voices),
+        "configured": bool(appid and token),
+        "note": (
+            "Official ByteDance openspeech seed-tts-2.0 — same engine family CapCut uses. "
+            "Not 1:1 with CapCut app speaker ids (Jessie/en_us_002); use capcut: for those "
+            "labels (routes here via mapping when keys exist)."
+        ),
+    }
+
+
+@render_router.get("/api/voices/capcut")
+@render_router.get("/api/tiktok/voices")
+async def list_capcut_voices_endpoint(
+    gender: str = "female",
+    lang: str | None = None,
+    q: str | None = None,
+):
+    """CapCut / TikTok TTS voice catalog (ByteDance speaker codes).
+
+    Defaults to **female** CapCut voices (Jessie, Beauty Guru, Bestie, …).
+    Query params:
+      - gender: female (default) | male | character | all
+      - lang:   locale prefix filter (en, en-US, vi, ko, ja, …)
+      - q:      free-text search on label / speaker_id / desc
+
+    Each entry uses ``spec=capcut:<speaker_id>`` and may include ``edge_fallback``
+    for a legal Edge neural preview when CapCut synthesis is not configured.
+    Aliases: GET /api/voices/capcut and GET /api/tiktok/voices.
+    """
+    from omnicast.media.capcut_voices import list_capcut_voices
+
+    voices = list_capcut_voices(gender=gender, lang=lang, q=q)
+    langs = sorted({v["lang"] for v in voices if v.get("lang")})
+    genders = sorted({v["gender"] for v in voices if v.get("gender")})
+    return {
+        "voices": voices,
+        "provider": "capcut",
+        "source": "capcut_tiktok",
+        "gender": gender,
+        "langs": langs,
+        "genders": genders,
+        "count": len(voices),
+        "note": (
+            "Metadata catalog of CapCut/TikTok speaker codes. "
+            "Preview uses edge_fallback when present (no unofficial TikTok TTS invoke)."
+        ),
+    }
+
+
+@render_router.get("/api/voices/capcut/{speaker_id}")
+@render_router.get("/api/tiktok/voices/{speaker_id}")
+async def get_capcut_voice_endpoint(speaker_id: str):
+    """Lookup one CapCut/TikTok speaker by id (e.g. en_us_002 or capcut:en_us_002)."""
+    from omnicast.media.capcut_voices import get_voice
+
+    voice = get_voice(speaker_id)
+    if not voice:
+        raise HTTPException(404, f"CapCut voice not found: {speaker_id}")
+    return voice
+
+
 @render_router.post("/api/voice/preview")
 async def voice_preview(spec: str, text: str | None = None):
     """Synthesize a short sample for `spec` (provider:voice_id) → /media URL.
-    Cached per spec so re-previewing the same voice is instant."""
+    Cached per spec so re-previewing the same voice is instant.
+
+    CapCut specs (``capcut:…``) go through CapCutTTSProvider directly: real
+    CapCut common_task API first, then Volcengine/Edge stand-ins.
+    """
     import re as _re
-    slug = _re.sub(r"[^a-zA-Z0-9]+", "_", spec).strip("_")[:60]
+    synth_spec = (spec or "").strip()
+    slug = _re.sub(r"[^a-zA-Z0-9]+", "_", synth_spec).strip("_")[:60]
     prev_dir = OUT_DIR / "_voicepreview"
     prev_dir.mkdir(parents=True, exist_ok=True)
     out = prev_dir / f"{slug}.wav"
     if not (text and text.strip()) and out.exists():
-        return {"spec": spec, "url": _media_rel(out), "cached": True}
+        return {"spec": synth_spec, "url": _media_rel(out), "cached": True}
     sys.path.insert(0, str(IMPL_ROOT / "src"))
     from omnicast.media.voice_router import VoiceRouter, VoiceSpec
     try:
+        # CapCut provider owns its own fallback chain (API → volcengine → edge).
+        # Do not pre-resolve to Edge — that would skip the real CapCut voice.
         res = await VoiceRouter().synthesize(
-            (text or _PREVIEW_TEXT)[:300], [VoiceSpec.parse(spec)], str(out))
+            (text or _PREVIEW_TEXT)[:300], [VoiceSpec.parse(synth_spec)], str(out))
         _trim_preview_cache(prev_dir, keep=300)
-        return {"spec": spec, "url": _media_rel(Path(res.audio_path)),
-                "used": str(res.spec)}
+        return {
+            "spec": synth_spec,
+            "url": _media_rel(Path(res.audio_path)),
+            "used": str(res.spec),
+        }
     except Exception as e:
         raise HTTPException(500, f"voice preview failed: {str(e)[:160]}")
 

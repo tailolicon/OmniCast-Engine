@@ -7,6 +7,7 @@ to find B-roll footage, storing them in a local video cache.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import json
 import hashlib
@@ -55,11 +56,260 @@ def _download_file(url: str, dest: Path) -> bool:
         return False
 
 
-def fetch_pexels_video(query: str, orientation: str = "landscape") -> str | None:
-    """Search Pexels Videos API and return the best direct download URL."""
+# Grammatical stopwords only — content words (night, footprint, kitchen) all count.
+_QUERY_STOPWORDS = frozenset(
+    "a an the of in on at to for with and or by from into over under".split())
+
+
+def _content_tokens(text: str) -> set[str]:
+    return {t for t in re.split(r"[^a-z]+", text.lower())
+            if len(t) >= 3 and t not in _QUERY_STOPWORDS}
+
+
+# Boilerplate words in stock slugs/tags that describe the FORMAT, not the
+# subject — they must never earn relevance credit ('footage' prefix-matched
+# 'footprints' and let a burned-wood clip stand in for footprints, live).
+_GENERIC_SLUG_TOKENS = frozenset(
+    "footage video clip stock close closeup view shot slow motion".split())
+
+# Season words encode the STORYBOARD's intent (season lock), not something a
+# stock search or a single frame can verify — 'summer kitchen wall landline'
+# missed every Pexels result and the vision gate vetoed 45 good clips for not
+# proving 'summer' (live, v9). Strip them before searching and judging.
+_SEASON_WORDS = frozenset("summer winter autumn fall spring".split())
+
+
+def _searchable_query(query: str) -> str:
+    kept = [w for w in query.split() if w.lower() not in _SEASON_WORDS]
+    return " ".join(kept) or query
+
+
+def _match_score(query: str, candidate_text: str) -> int:
+    """How many of the query's content words the candidate describes.
+    Prefix-match at 5+ chars bridges morphology (footprint/footprints)
+    without cross-word hits (footage != footprint)."""
+    q = _content_tokens(query)
+    c = _content_tokens(candidate_text) - _GENERIC_SLUG_TOKENS
+    score = 0
+    for qt in q:
+        if qt in c or any(ct.startswith(qt[:5]) and len(qt) >= 5 for ct in c):
+            score += 1
+    return score
+
+
+# A negative term names an IDEA; slugs use sibling nouns for it. 'people'
+# never appears in "a-person-in-a-hoodie-walking-at-night" — expand the common
+# world-breaker terms to the words slugs actually use (live: a hooded figure
+# shipped as the threat under a 'people, faces' negative).
+_NEGATIVE_SYNONYMS = {
+    "people": ("person", "man", "woman", "girl", "boy", "guy", "figure",
+               "silhouette", "hooded", "crowd", "couple"),
+    "faces": ("face", "portrait", "closeup of a man", "closeup of a woman"),
+    "actor": ("person", "man", "woman", "model", "posing"),
+    "text": ("sign", "signage", "billboard", "lettering", "writing"),
+    "daylight": ("sunny", "sunshine", "daytime", "midday", "afternoon"),
+    "urban": ("city", "downtown", "skyscraper", "apartment", "street"),
+}
+
+
+def _hits_negative(candidate_text: str, negative_terms: list[str] | None) -> str | None:
+    """First storyboard negative term the candidate's descriptor matches, if any.
+    The storyboard's negative_prompt names this story's world-breakers (snow in
+    a summer story, daylight after nightfall, actors in first-person beats) —
+    a candidate that matches one is wrong even when it matches the query too
+    (live: 'flower bed dirt footprint night' → a snowbound cabin with tracks)."""
+    if not negative_terms:
+        return None
+    c = _content_tokens(candidate_text)
+    for term in negative_terms:
+        words = list(_content_tokens(term))
+        for nt in list(words):
+            words.extend(_NEGATIVE_SYNONYMS.get(nt, ()))
+        for nt in words:
+            for w in _content_tokens(nt) or {nt}:
+                if w in c or any(ct.startswith(w[:4]) and len(w) >= 4 for ct in c):
+                    return term
+    return None
+
+
+_OCR_SCRIPT = Path(__file__).resolve().parents[4] / "scripts" / "ocr_frame.ps1"
+
+
+def _frame_text(video_path: Path) -> str:
+    """Readable text found in the clip's frames (Windows WinRT OCR, local, free).
+    Samples two frames; returns the concatenated recognized text ('' = clean or
+    OCR unavailable). Slug/tag scoring cannot see lettering INSIDE the frame —
+    a '153' number plaque shipped twice in a story whose plot turns on a number."""
+    import subprocess, tempfile
+    if not _OCR_SCRIPT.exists() or os.name != "nt":
+        return ""
+    texts = []
+    try:
+        dur = 0.0
+        pr = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(video_path)],
+            capture_output=True, text=True, timeout=30)
+        try:
+            dur = float((pr.stdout or "0").strip() or 0)
+        except ValueError:
+            pass
+        # 3 samples: 25/75% missed a payphone's lettering when the pan spent
+        # those moments on glass glare (live, v6) — the midpoint catches it.
+        marks = [dur * 0.1, dur * 0.5, dur * 0.9] if dur > 1 else [0.0]
+        for t in marks:
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+                jpg = Path(f.name)
+            try:
+                r = subprocess.run(
+                    ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}",
+                     "-i", str(video_path), "-frames:v", "1", "-q:v", "3", str(jpg)],
+                    capture_output=True, timeout=60)
+                if r.returncode == 0 and jpg.exists() and jpg.stat().st_size > 0:
+                    o = subprocess.run(
+                        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                         "-File", str(_OCR_SCRIPT), str(jpg)],
+                        capture_output=True, text=True, timeout=90)
+                    texts.append((o.stdout or "").strip())
+            finally:
+                try:
+                    jpg.unlink()
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warn("stock_video.ocr_check_failed", error=str(e))
+        return ""
+    combined = " ".join(t for t in texts if t)
+    # Only count REAL lettering: 2+ consecutive alphanumerics (single stray
+    # glyphs are OCR noise on texture).
+    return combined if re.search(r"[A-Za-z0-9]{2,}", combined) else ""
+
+
+def _vision_verdict(video_path: Path, query: str) -> dict | None:
+    """One Sonnet look at the clip's mid frame via the Claude CLI (Read tool).
+
+    Returns {'readable_text','identifiable_person','depicts'} or None when the
+    check cannot run (no CLI, parse failure) — the caller treats None as
+    fail-open so a network/CLI hiccup never blocks a render. This exists
+    because slug/tag scoring and OCR both miss what only eyes catch: a hooded
+    FIGURE standing in for the threat, a payphone under a kitchen line, text
+    the OCR sampler's two frames happened to miss (all live, v5/v6)."""
+    import subprocess, tempfile, shutil as _sh
+    exe = _sh.which("claude")
+    if not exe:
+        return None
+    # The bare CLI inherits env/credentials that make the subscription look
+    # org-disabled (live: 'organization has disabled Claude subscription
+    # access'). claude_cli's isolated config dir + stripped env is the known
+    # working invocation — reuse it.
+    try:
+        from omnicast.llm.claude_cli import _clean_env
+        _env = _clean_env()
+    except Exception:
+        _env = None
+    root = Path(__file__).resolve().parents[4]
+    tmpdir = root / "output" / "_vision_tmp"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    stem = hashlib.sha256(str(video_path).encode()).hexdigest()[:16]
+    # Two frames: a single 2s probe let a person who enters mid-clip ship
+    # (codex audit R8/R15: figures at 240/360/480 all survived a 1-frame check).
+    jpgs = [tmpdir / f"probe_{stem}_a.jpg", tmpdir / f"probe_{stem}_b.jpg"]
+    jpg = jpgs[0]
+    try:
+        dur = 8.0
+        try:
+            pr = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", str(video_path)],
+                capture_output=True, text=True, timeout=30)
+            dur = float((pr.stdout or "8").strip() or 8)
+        except Exception:
+            pass
+        for j, t in zip(jpgs, (dur * 0.2, dur * 0.8)):
+            r = subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}",
+                 "-i", str(video_path),
+                 "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "5", str(j)],
+                capture_output=True, timeout=60)
+        jpgs = [j for j in jpgs if j.exists() and j.stat().st_size > 0]
+        if not jpgs:
+            return None
+        jpg = jpgs[0]
+        names = " and ".join(str(j) for j in jpgs)
+        prompt = (
+            f"Read the image file(s) {names} (frames of ONE video clip) and "
+            "answer with ONLY this JSON object, no prose: "
+            "{\"readable_text\": bool, \"identifiable_person\": bool, "
+            "\"depicts\": bool}. A property is true if it holds in ANY frame.\n"
+            "readable_text: any legible words/numbers/signage in the frame.\n"
+            "identifiable_person: a person whose face or full body is visible "
+            "(an anonymous fragment like a hand or boot does NOT count).\n"
+            f"depicts: the frames plausibly show this SUBJECT: \"{query}\" — "
+            "judge the kind of place/object shown; ignore season, weather or "
+            "time-of-day qualifiers a frame cannot prove, and accept any "
+            "lighting that is not flatly contradictory.")
+        text = ""
+        p = subprocess.run(
+            [exe, "-p", prompt, "--model", "claude-sonnet-5", "--effort", "low",
+             "--output-format", "json", "--max-turns", "4",
+             "--tools", "Read", "--disable-slash-commands",
+             "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}'],
+            capture_output=True, text=True, timeout=180, cwd=str(root),
+            env=_env, stdin=subprocess.DEVNULL)
+        if p.returncode == 0:
+            payload = json.loads(p.stdout)
+            text = payload.get("result") or ""
+        else:
+            logger.warn("stock_video.vision_cli_error", rc=p.returncode,
+                        err=(p.stderr or "")[:120])
+            # Claude CLI down (live: 403 org-disabled) — Codex CLI takes
+            # images directly and runs on a separate quota.
+            cx = _sh.which("codex")
+            if cx:
+                # The positional prompt is swallowed when it follows -i (live,
+                # codex 0.145) — feed it via stdin with the '-' sentinel.
+                _iargs = []
+                for j in jpgs:
+                    _iargs += ["-i", str(j)]
+                q = subprocess.run(
+                    [cx, "exec", "--sandbox", "read-only",
+                     "-c", "model_reasoning_effort=low",
+                     *_iargs, "-"],
+                    capture_output=True, text=True, timeout=300,
+                    cwd=str(root), input=prompt)
+                if q.returncode == 0:
+                    text = q.stdout or ""
+                else:
+                    logger.warn("stock_video.vision_codex_error",
+                                rc=q.returncode, err=(q.stderr or "")[-160:])
+        matches = re.findall(r"\{[^{}]*\}", text)
+        for raw in reversed(matches):
+            try:
+                v = json.loads(raw)
+            except Exception:
+                continue
+            if all(k in v for k in
+                   ("readable_text", "identifiable_person", "depicts")):
+                return v
+        return None
+    except Exception as e:
+        logger.warn("stock_video.vision_check_failed", error=str(e))
+        return None
+    finally:
+        for j in jpgs if isinstance(jpgs, list) else [jpg]:
+            try:
+                j.unlink()
+            except Exception:
+                pass
+
+
+def fetch_pexels_candidates(query: str, orientation: str = "landscape",
+                            negative_terms: list[str] | None = None) -> list[str]:
+    """Ranked candidate download URLs from Pexels (best first), after the
+    negative-term veto. Empty list = no relevant results."""
     api_key = _api_key("PEXELS_API_KEY")
     if not api_key:
-        return None
+        return []
 
     logger.info("stock_video.pexels_search_start", query=query)
     params = urllib.parse.urlencode({
@@ -80,31 +330,68 @@ def fetch_pexels_video(query: str, orientation: str = "landscape") -> str | None
         videos = data.get("videos", [])
         if not videos:
             logger.info("stock_video.pexels_no_results", query=query)
-            return None
+            return []
 
-        # Pick the first video, find HD file
-        video = videos[0]
-        files = video.get("video_files", [])
-        
-        # Look for HD files first
-        hd_files = [f for f in files if f.get("quality") == "hd"]
-        best_files = hd_files if hd_files else files
-        
-        if best_files:
-            # Sort by resolution, pick closest to HD (1920x1080)
-            best_files.sort(key=lambda x: abs((x.get("width") or 0) - 1920) + abs((x.get("height") or 0) - 1080))
-            best_url = best_files[0].get("link")
-            if best_url:
-                logger.info("stock_video.pexels_match_found", url=best_url[:60])
-                return best_url
+        # The API's own ranking returned a soil TILLER for 'flower bed dirt
+        # footprint night' (live, at the video's final beat). Each video's page
+        # URL carries a content slug — rank by how many query words it matches,
+        # and treat a page of zero-overlap candidates as NO result so the
+        # search falls through to the next provider instead of shipping a
+        # wrong-subject clip.
+        vetoed = []
+        for v in list(videos):
+            bad = _hits_negative(v.get("url") or "", negative_terms)
+            if bad:
+                vetoed.append(v)
+                logger.info("stock_video.pexels_negative_veto", query=query,
+                            term=bad, url=(v.get("url") or "")[:80])
+        videos = [v for v in videos if v not in vetoed]
+        if not videos:
+            return []
+        scored = sorted(
+            ((_match_score(query, v.get("url") or ""), i, v)
+             for i, v in enumerate(videos)),
+            key=lambda t: (-t[0], t[1]))
+        # A long specific query matching only ONE word is usually the wrong
+        # subject wearing a shared noun ('burned wood on muddy ground' under
+        # 'footprints in dirt around house') — demand two hits there.
+        required = 2 if len(_content_tokens(query)) >= 4 else 1
+        scored = [t for t in scored if t[0] >= required]
+        if not scored:
+            logger.info("stock_video.pexels_no_relevant_match", query=query,
+                        top_url=(videos[0].get("url") or "")[:80])
+            return []
+        out: list[str] = []
+        for _score, _i, video in scored:
+            files = video.get("video_files", [])
+            hd_files = [f for f in files if f.get("quality") == "hd"]
+            best_files = hd_files if hd_files else files
+            if best_files:
+                # Sort by resolution, pick closest to HD (1920x1080)
+                best_files.sort(key=lambda x: abs((x.get("width") or 0) - 1920) + abs((x.get("height") or 0) - 1080))
+                link = best_files[0].get("link")
+                if link:
+                    out.append(link)
+        if out:
+            logger.info("stock_video.pexels_match_found", url=out[0][:60],
+                        candidates=len(out))
+        return out
 
     except Exception as e:
         logger.warn("stock_video.pexels_api_error", query=query, error=str(e))
-    
-    return None
+
+    return []
 
 
-def fetch_pixabay_video(query: str) -> str | None:
+def fetch_pexels_video(query: str, orientation: str = "landscape",
+                       negative_terms: list[str] | None = None) -> str | None:
+    """Best single Pexels download URL (back-compat wrapper)."""
+    cands = fetch_pexels_candidates(query, orientation, negative_terms)
+    return cands[0] if cands else None
+
+
+def fetch_pixabay_video(query: str,
+                        negative_terms: list[str] | None = None) -> str | None:
     """Search Pixabay Video API and return the best direct download URL."""
     api_key = _api_key("PIXABAY_API_KEY")
     if not api_key:
@@ -128,8 +415,23 @@ def fetch_pixabay_video(query: str) -> str | None:
             logger.info("stock_video.pixabay_no_results", query=query)
             return None
 
-        # Pick the first match, and look for large/medium video size
-        hit = hits[0]
+        # Same relevance guard as Pexels: Pixabay hits carry a 'tags' string —
+        # rank by query-word overlap, zero overlap everywhere = no result.
+        hits = [h for h in hits
+                if not _hits_negative(h.get("tags") or "", negative_terms)]
+        if not hits:
+            logger.info("stock_video.pixabay_all_vetoed", query=query)
+            return None
+        scored = sorted(
+            ((_match_score(query, h.get("tags") or ""), i, h)
+             for i, h in enumerate(hits)),
+            key=lambda t: (-t[0], t[1]))
+        _required = 2 if len(_content_tokens(query)) >= 4 else 1
+        if scored[0][0] < _required:
+            logger.info("stock_video.pixabay_no_relevant_match", query=query,
+                        top_tags=(hits[0].get("tags") or "")[:80])
+            return None
+        hit = scored[0][2]
         videos = hit.get("videos", {})
         
         # Check order of preference: medium, large, small
@@ -162,12 +464,19 @@ _JUNK_TOKENS = (
 )
 
 
-def _reject_junk(info: dict, *, incomplete=False) -> str | None:
+def _reject_junk(info: dict, *, incomplete=False,
+                 negative_terms: list[str] | None = None) -> str | None:
     """yt-dlp match_filter callable: accept (None) or reject (reason string).
     Drops live/long/tiny clips and anything whose title/uploader looks like a
     stream/gaming/anime/branded upload rather than usable B-roll."""
     if info.get("is_live"):
         return "live stream"
+    # Storyboard world-breakers apply to the YouTube title too — yt-dlp is the
+    # only source with no slug/tag scoring (live: a hooded-figure clip shipped
+    # as the threat from this path under a 'people, faces' negative).
+    bad = _hits_negative(info.get("title") or "", negative_terms)
+    if bad:
+        return f"negative term: {bad}"
     dur = info.get("duration") or 0
     if dur and (dur < 2 or dur > 360):
         return f"duration {dur}s out of range"
@@ -182,7 +491,8 @@ def _reject_junk(info: dict, *, incomplete=False) -> str | None:
     return None
 
 
-def fetch_ytdlp_video(query: str, dest: Path, max_seconds: int = 15) -> bool:
+def fetch_ytdlp_video(query: str, dest: Path, max_seconds: int = 15,
+                      negative_terms: list[str] | None = None) -> bool:
     """Download a SHORT B-roll segment from YouTube via yt-dlp.
 
     Downloads only the first ``max_seconds`` (download_sections) of a video-only
@@ -212,7 +522,9 @@ def fetch_ytdlp_video(query: str, dest: Path, max_seconds: int = 15) -> bool:
             'no_warnings': True,
             'ignoreerrors': True,
             # Reject irrelevant junk by title/uploader + duration (see _reject_junk).
-            'match_filter': _reject_junk,
+            'match_filter': (lambda info, *, incomplete=False:
+                             _reject_junk(info, incomplete=incomplete,
+                                          negative_terms=negative_terms)),
             # Grab only the first N seconds, snapping to keyframes.
             'download_ranges': download_range_func(None, [(0, max_seconds)]),
             'force_keyframes_at_cuts': True,
@@ -282,11 +594,24 @@ def _video_cache_path(query: str) -> Path:
 
 
 def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, target_h: int = 1080,
-                              max_seconds: int = 15) -> bool:
-    """Search for query, download first match (Pexels -> Pixabay -> YouTube) and cache it."""
+                              max_seconds: int = 15,
+                              negative_terms: list[str] | None = None,
+                              forbid_text: bool = False) -> bool:
+    """Search for query, download first match (Pexels -> Pixabay -> YouTube) and cache it.
+
+    negative_terms: the storyboard cell's world-breaker words; a candidate whose
+    descriptor (Pexels slug / Pixabay tags) matches one is vetoed. The cache key
+    includes them — a clip cached without the veto may be exactly the asset the
+    veto exists to block."""
     _VIDEO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    cache_file = _video_cache_path(query)
+    cache_key = query if not negative_terms else (
+        query + " -" + " -".join(sorted(_content_tokens(" ".join(negative_terms)))))
+    if forbid_text:
+        # A clip cached before the on-frame gates existed may be exactly the
+        # asset the gates block — separate keyspace (bumped when gates change).
+        cache_key += " +vgate4"
+    cache_file = _video_cache_path(cache_key)
 
     # 1. Check Cache
     if cache_file.exists() and cache_file.stat().st_size > 0:
@@ -311,37 +636,63 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
     # 'person reading nutrition label' -> 'person reading' -> clothing-tag footage.
     # Pexels results can't be content-filtered, so a too-generic query is dangerous;
     # let anything shorter fall through to the junk-filtered yt-dlp path instead.
-    words = query.split()
-    pexels_queries = [query]
+    search_q = _searchable_query(query)
+    words = search_q.split()
+    pexels_queries = [search_q]
     if len(words) > 3:
         pexels_queries.append(" ".join(words[:3]))
+    def _reject(source: str, reason: str, detail: str = "") -> bool:
+        logger.info("stock_video.frame_veto", query=query, source=source,
+                    reason=reason, detail=detail[:60])
+        try:
+            cache_file.unlink()
+        except Exception:
+            pass
+        return False
+
+    def _accept(source: str, **extra) -> bool:
+        """Downloaded clip sits in cache_file — run the on-frame gates (OCR,
+        then one Sonnet look), then hand it to dest. A rejected clip is deleted
+        so the cache never pins a bad asset under this key."""
+        if forbid_text:
+            txt = _frame_text(cache_file)
+            if txt:
+                return _reject(source, "ocr_text", txt)
+            v = _vision_verdict(cache_file, search_q)
+            if v is not None:  # None = check unavailable → fail open
+                if v.get("readable_text"):
+                    return _reject(source, "vision_text")
+                if v.get("identifiable_person"):
+                    return _reject(source, "vision_person")
+                if not v.get("depicts"):
+                    return _reject(source, "vision_off_subject")
+        import shutil
+        shutil.copyfile(cache_file, dest)
+        logger.info(f"stock_video.resolved_via_{source}", query=query, **extra)
+        return True
+
     for pq in dict.fromkeys(pexels_queries):  # dedupe, keep order
-        pexels_url = fetch_pexels_video(pq, orientation)
-        if pexels_url and _download_file(pexels_url, cache_file):
-            import shutil
-            shutil.copyfile(cache_file, dest)
-            logger.info("stock_video.resolved_via_pexels", query=query, used=pq)
-            return True
+        # Up to 3 ranked candidates: the best-matching clip can still fail the
+        # on-frame text gate; the next one is usually clean.
+        for cand in fetch_pexels_candidates(pq, orientation, negative_terms)[:3]:
+            if _download_file(cand, cache_file) and _accept("pexels", used=pq):
+                return True
 
     # 3. Try Pixabay Video API
-    pixabay_url = fetch_pixabay_video(query)
+    pixabay_url = fetch_pixabay_video(search_q, negative_terms)
     if pixabay_url:
-        if _download_file(pixabay_url, cache_file):
-            import shutil
-            shutil.copyfile(cache_file, dest)
-            logger.info("stock_video.resolved_via_pixabay", query=query)
+        if _download_file(pixabay_url, cache_file) and _accept("pixabay"):
             return True
 
     # 4. Try yt-dlp YouTube Search
     # Append b-roll qualifiers if it does not contain NASA/specific terms and is short on keywords
-    refined_query = query
-    if "b-roll" not in query.lower() and "timelapse" not in query.lower() and "footage" not in query.lower():
-        refined_query = f"{query} b-roll stock footage"
+    refined_query = search_q
+    if "b-roll" not in search_q.lower() and "timelapse" not in search_q.lower() and "footage" not in search_q.lower():
+        refined_query = f"{search_q} b-roll stock footage"
 
-    if fetch_ytdlp_video(refined_query, cache_file, max_seconds=max_seconds):
-        import shutil
-        shutil.copyfile(cache_file, dest)
-        logger.info("stock_video.resolved_via_ytdlp", query=query)
+    if fetch_ytdlp_video(refined_query, cache_file, max_seconds=max_seconds,
+                         negative_terms=negative_terms) \
+            and _accept("ytdlp"):
         return True
 
     logger.error("stock_video.all_sources_failed", query=query)

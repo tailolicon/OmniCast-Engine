@@ -18,6 +18,15 @@ from pathlib import Path
 
 from omnicast.media.providers.interfaces import ITTSProvider, ModelOption
 
+#: Retries for one utterance before the router is allowed to change voice.
+# Bulk dubbing puts hundreds of sequential requests through this endpoint and
+# it starts refusing partway: a 362-line video died at clip 255 with "no audio
+# received", having retried 3x over 4.5s — far too short for a rate limit that
+# wants tens of seconds. Backoff is exponential now, so the tail is patient
+# without slowing the common case.
+_MAX_ATTEMPTS = 6
+_RETRY_BACKOFF_S = 2.0
+
 _FEATURED = [
     ("en-US-GuyNeural", "Guy (US male)", "Energetic narrator"),
     ("en-US-AriaNeural", "Aria (US female)", "Conversational"),
@@ -54,6 +63,7 @@ class EdgeTTSProvider:
         output_path: str,
         rate: str = "+0%",
         pitch: str = "+0Hz",
+        volume: str = "+0%",
     ) -> str:
         try:
             import edge_tts
@@ -67,23 +77,9 @@ class EdgeTTSProvider:
         # edge-tts streams mp3; write to a temp .mp3 then convert if .wav asked
         mp3_path = out if out.suffix.lower() == ".mp3" else out.with_suffix(".mp3.tmp")
 
-        audio = bytearray()
-        words: list[dict] = []
-        comm = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-        async for chunk in comm.stream():
-            t = chunk.get("type")
-            if t == "audio":
-                audio.extend(chunk["data"])
-            elif t == "WordBoundary":
-                start = chunk["offset"] / 1e7  # 100ns ticks → seconds
-                words.append({
-                    "start": start,
-                    "end": start + chunk["duration"] / 1e7,
-                    "text": chunk.get("text", ""),
-                })
-
-        if not audio:
-            raise RuntimeError(f"edge-tts returned no audio (voice={voice})")
+        audio, words = await self._stream_with_retry(
+            edge_tts, text, voice, rate=rate, pitch=pitch, volume=volume,
+        )
         mp3_path.write_bytes(bytes(audio))
 
         if mp3_path != out:
@@ -101,3 +97,46 @@ class EdgeTTSProvider:
             out.with_suffix(".words.json").write_text(
                 json.dumps(words), encoding="utf-8")
         return str(out)
+
+    async def _stream_with_retry(
+        self, edge_tts, text: str, voice: str, *,
+        rate: str, pitch: str, volume: str,
+    ) -> tuple[bytearray, list[dict]]:
+        """Stream one utterance, retrying transient service failures.
+
+        Edge-TTS is a free public endpoint: it drops connections and
+        occasionally completes a stream with zero audio bytes. Without a retry
+        the router treats that blip as "this voice failed" and falls through to
+        the NEXT voice in the chain — so a network hiccup silently changes the
+        channel's narrator mid-catalogue. Retrying the same voice first keeps
+        the fallback chain for real failures (voice removed, wrong locale).
+        """
+        last_error: Exception | None = None
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            audio = bytearray()
+            words: list[dict] = []
+            try:
+                comm = edge_tts.Communicate(
+                    text, voice, rate=rate, pitch=pitch, volume=volume)
+                async for chunk in comm.stream():
+                    t = chunk.get("type")
+                    if t == "audio":
+                        audio.extend(chunk["data"])
+                    elif t == "WordBoundary":
+                        start = chunk["offset"] / 1e7  # 100ns ticks → seconds
+                        words.append({
+                            "start": start,
+                            "end": start + chunk["duration"] / 1e7,
+                            "text": chunk.get("text", ""),
+                        })
+                if audio:
+                    return audio, words
+                last_error = RuntimeError("stream completed with no audio")
+            except Exception as exc:
+                last_error = exc
+            if attempt < _MAX_ATTEMPTS:
+                # 2s, 4s, 8s, 16s, 32s — a linear ramp gave up while the
+                # service was still throttling.
+                await asyncio.sleep(_RETRY_BACKOFF_S * (2 ** (attempt - 1)))
+        raise RuntimeError(
+            f"edge-tts failed {_MAX_ATTEMPTS}x (voice={voice}): {last_error}")

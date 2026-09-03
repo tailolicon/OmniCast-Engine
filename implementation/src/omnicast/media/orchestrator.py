@@ -176,7 +176,7 @@ class MediaPipelineOrchestrator:
             state = state.model_copy(update={"video_gen": MediaStatus.SKIPPED})
 
         # Step 4: Subtitle
-        sub_result = await self._run_subtitle(tts_result, output_dir)
+        sub_result = await self._run_subtitle(tts_result, output_dir, script_text)
         state = state.model_copy(update={
             "subtitle": MediaStatus.DONE if sub_result else MediaStatus.FAILED
         })
@@ -339,11 +339,16 @@ class MediaPipelineOrchestrator:
             logger.error("Video gen failed", error=str(exc))
             return None
 
-    async def _run_subtitle(self, tts_result: TTSResult, output_dir: str) -> SubtitleResult | None:
+    async def _run_subtitle(self, tts_result: TTSResult, output_dir: str,
+                            script_text: str = "") -> SubtitleResult | None:
         try:
             req = SubtitleRequest(
                 audio_path=tts_result.audio_path,
                 output_path=f"{output_dir}/subtitle.srt",
+                # The spoken script is the last rung of the timing ladder: with
+                # it, a voice that emits no word boundaries still gets captions
+                # (proportional, marked `estimated`) instead of none.
+                text=script_text,
             )
             return await self.subtitle.process(req)
         except Exception as exc:
