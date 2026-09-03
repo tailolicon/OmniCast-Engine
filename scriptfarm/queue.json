@@ -23,7 +23,7 @@
       "channel_id": "true_dread_files_us",
       "title": "overnight medical courier runs between small clinics",
       "type": "narrative",
-      "status": "queued",
+      "status": "drafted",
       "prompt_paths": [
         "scriptfarm/narrative/20260904_overnight-medical-courier-runs-between-small-clinics-nu/story_1.prompt.md"
       ],
