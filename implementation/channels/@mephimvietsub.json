@@ -1,0 +1,9 @@
+{
+  "channel_id": "@mephimvietsub",
+  "name": "Mê phim Vietsub",
+  "niche": "review phim",
+  "enabled": true,
+  "cadence": "daily",
+  "shorts": false,
+  "upload": false
+}
