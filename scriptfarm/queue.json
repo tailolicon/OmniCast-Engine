@@ -1,4 +1,20 @@
 {
   "_doc": "Script Farm work queue. Protocol: scriptfarm/WORKER_START.md. Items append-only; workers flip status queued->drafted; operator sets approved/rejected.",
-  "items": []
+  "items": [
+    {
+      "item_id": "20260903_overnight-hotel-front-desk-off-the-highway-nu",
+      "channel_id": "true_dread_files_us",
+      "title": "overnight hotel front desk off the highway",
+      "type": "narrative",
+      "status": "queued",
+      "prompt_paths": [
+        "scriptfarm/narrative/20260903_overnight-hotel-front-desk-off-the-highway-nu/story_1.prompt.md"
+      ],
+      "response_paths": [
+        "scriptfarm/narrative/20260903_overnight-hotel-front-desk-off-the-highway-nu/story_1.md"
+      ],
+      "added_at": "2026-09-03T15:40:09+00:00",
+      "added_by": "farm_narrative.py"
+    }
+  ]
 }

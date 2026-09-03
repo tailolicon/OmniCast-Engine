@@ -1,0 +1,71 @@
+[
+ {
+  "plan": {
+   "topic": "overnight hotel front desk off the highway",
+   "cold_open": "There's a door in that motel's back office I still throw the deadbolt on before I do anything else, because of one guest who checked every other door.",
+   "target_word_count": 4500,
+   "stories": [
+    {
+     "story_id": "story_1",
+     "title": "The Room Closest to the Desk",
+     "narrator_profile": "A 27-year-old woman working the overnight front desk alone at a two-story highway motel, eight months into the job, saving for her own apartment deposit by picking up extra weeknight shifts.",
+     "setting": "Two-story roadside motel off a highway exit; front desk lobby behind locked glass, exterior breezeway rooms, rear office with a second exit.",
+     "setup_requirement": "Overnight desk clerk working alone at a highway motel, saving for her own apartment, on an ordinary Tuesday eight months into the job.",
+     "threat": "A lone male guest who checks in alone, then is watched on the lobby monitor lingering oddly near the ice machine before working down every breezeway door.",
+     "threat_type": "human",
+     "escape_action": "Dials 911 from the desk phone, shouts through the office door that deputies are already on the line, backs into the rear office, and throws the inner deadbolt as the crash bar shudders once more, then goes still.",
+     "ending_shape": "Deputies arrive four minutes later; the rear door sits shut, no one around, the siren having driven him off before headlights ever crossed the lot, and she now bolts that inner door first thing every shift.",
+     "evidence_allowance": "none",
+     "voice_rules": "narrates in shift-log logic (start of shift, end of shift) rather than clock precision; uses front-desk trade vocabulary: the drawer, walk-in, house count, no-show; short declarative sentences, avoids simile, states feelings plainly rather than describing the body",
+     "voice_seed": "",
+     "target_words": 4500,
+     "escalation_ladder": [
+      "He checks in near midnight alone, no car listed, pays cash, and requests the room closest to the office.",
+      "On the lobby monitor she watches him linger far too long at the ice machine alcove without filling a bucket.",
+      "Later he's seen moving door to door down the breezeway, quietly testing each handle without knocking.",
+      "He crosses the lot to the locked lobby door and stands at the glass, watching her through it without buzzing.",
+      "He knuckle-raps the glass twice, then pulls hard enough on the locked handle to rattle the frame.",
+      "He disappears from the corner camera, and the rear office's crash bar shudders as someone forces it, then stops the instant a siren rises somewhere down the highway and he's gone before headlights show."
+     ],
+     "already_line": "She later realizes his long stop at the ice machine that night was directly across from the rear office door he'd try hours afterward.",
+     "no_way_out": "The lobby door he stood at and the rear door being forced were her only two exits; her cell phone sat locked in her car.",
+     "threat_mind": "She reasoned the door-by-door checking wasn't theft but a search for which one opened without a key, ending at hers.",
+     "remainder": "The name on his registration card never matched anything on record, and no car of his was ever seen in the lot at all.",
+     "continuity_ledger": [
+      "hook_timeline: Single overnight shift, one motel; guest checks in near midnight, danger builds over two hours, deputies arrive four minutes after call.",
+      "people_objects: Two people: night clerk and one male guest; props: desk landline, lobby monitor, ice machine alcove, rear crash-bar door.",
+      "locations_exits: Front desk lobby with locked glass door; breezeway rooms; rear office with second deadbolt and crash-bar exit to lot.",
+      "props_threat_position: Guest stands at glass door, then breezeway doors, then rear crash-bar; clerk stationed behind desk, then inside locked office.",
+      "response_escape: Clerk dials 911, shouts deputies are on the line, bolts inner door; guest flees when a distant siren rises before deputies arrive."
+     ],
+     "threat_mechanism": "intrudes_space",
+     "progression_mechanism": "escalating_contact",
+     "escape_mechanism": "call_for_help",
+     "aftermath_mechanism": "routine_permanently_changed",
+     "threat_identity": "lone_stranger",
+     "topic_promise": "An overnight hotel front desk clerk works alone at a highway motel off an exit ramp.",
+     "distinguishing_turn": "Stock has him linger at the counter; here he silently maps every door before targeting the one she assumes is safe.",
+     "narrator_age_band": "adult",
+     "narrator_age_years": null,
+     "safety_obligation": "authorities_contacted",
+     "safety_omission_reason": ""
+    }
+   ]
+  },
+  "audit": {
+   "status": "valid",
+   "blockers": [],
+   "issues": [],
+   "summary": "Repaired escalation_ladder and escape_action now name the siren as the cause the threat disengages, resolving the prior human_behavior objection; no new issues in changed fields.",
+   "attempts": 1,
+   "escalated": true,
+   "provider_errors": [],
+   "primary_healthy": false,
+   "primary_provider_errors": [
+    "primary: skipped, deepseek already failed this run"
+   ],
+   "verdict_source": "escalation",
+   "contract_errors": []
+  }
+ }
+]
