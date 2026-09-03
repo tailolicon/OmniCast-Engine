@@ -15,6 +15,9 @@ Test cases:
 """
 
 import pytest
+import pytest_asyncio
+
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 from datetime import date
 
 from testcontainers.postgres import PostgresContainer
@@ -38,14 +41,17 @@ def postgres_container():
         yield postgres
 
 
-@pytest.fixture(scope="module")
+@pytest_asyncio.fixture(loop_scope="module", scope="module")
 async def db_setup(postgres_container: PostgresContainer):
     """Initialize database and run migrations."""
     # Get the connection URL from testcontainers
     # Note: testcontainers returns a sync URL, we need to convert to async
     sync_url = postgres_container.get_connection_url()
-    # Replace postgresql:// with postgresql+asyncpg://
-    async_url = sync_url.replace("postgresql://", "postgresql+asyncpg://")
+    # Replace the sync driver (testcontainers 4.x returns postgresql+psycopg2://)
+    # with the async one the engine expects.
+    async_url = sync_url.replace(
+        "postgresql+psycopg2://", "postgresql+asyncpg://"
+    ).replace("postgresql://", "postgresql+asyncpg://")
 
     init_db(async_url, pool_size=2, max_overflow=0)
 

@@ -29,6 +29,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("niche", sa.String(length=30), nullable=False),
+        sa.Column("sub_niche", sa.String(length=30), nullable=False, server_default=""),
         sa.Column("channel_type", sa.String(length=10), nullable=False),
         sa.Column("language", sa.String(length=5), nullable=True, server_default="en"),
         sa.Column("target_market", sa.String(length=5), nullable=False),

@@ -100,12 +100,10 @@ async def init_rabbitmq(url: str) -> None:
         )
 
         # Bind DLQ queues
-        await _channel.get_queue(QUEUE_DLQ_VIDEO).bind(
-            EXCHANGE_DLQ, routing_key="video"
-        )
-        await _channel.get_queue(QUEUE_DLQ_ALERT).bind(
-            EXCHANGE_DLQ, routing_key="alert"
-        )
+        dlq_video = await _channel.get_queue(QUEUE_DLQ_VIDEO)
+        await dlq_video.bind(EXCHANGE_DLQ, routing_key="video")
+        dlq_alert = await _channel.get_queue(QUEUE_DLQ_ALERT)
+        await dlq_alert.bind(EXCHANGE_DLQ, routing_key="alert")
 
         # Declare video queues with DLQ args
         video_queues = [

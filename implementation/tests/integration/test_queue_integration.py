@@ -14,6 +14,9 @@ Test cases:
 """
 
 import pytest
+import pytest_asyncio
+
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 import asyncio
 import orjson
 from datetime import datetime, timezone
@@ -41,14 +44,14 @@ def rabbitmq_container():
         yield rabbitmq
 
 
-@pytest.fixture(scope="module")
+@pytest_asyncio.fixture(loop_scope="module", scope="module")
 async def rabbitmq_setup(rabbitmq_container: RabbitMqContainer):
     """Initialize RabbitMQ connection and declare topology."""
-    # Get connection URL from testcontainers
-    url = rabbitmq_container.get_connection_url()
-    # Replace amqp:// with amqp://guest:guest@ for testcontainers
-    if "amqp://" in url:
-        url = url.replace("amqp://", "amqp://guest:guest@")
+    # testcontainers 4.x dropped get_connection_url(); build the AMQP URL from
+    # the pika connection params it exposes instead.
+    params = rabbitmq_container.get_connection_params()
+    creds = params.credentials
+    url = f"amqp://{creds.username}:{creds.password}@{params.host}:{params.port}/"
 
     await init_rabbitmq(url)
     yield url
