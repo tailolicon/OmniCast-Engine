@@ -145,3 +145,27 @@ rules bind here too).
 Workers never set `approved`/`rejected`. The render pipeline on the operator's machine
 imports `drafted`/`approved` scripts through `OMNICAST_SCRIPT_FARM=1` and re-scores them
 with its own critic — quality gates downstream stay authoritative.
+
+## 9. Narrative items (`"type": "narrative"`) — different contract
+
+Queue items carrying `"type": "narrative"` are **writer-only** units for the
+operator's unit_first release gate (exported by
+`implementation/scripts/farm_narrative.py`). For these items, sections 3-5
+above do NOT apply:
+
+1. Claim exactly as in section 2 (same claim file, same expiry rules).
+2. **Ignore the channel SYSTEM/TASK templates and FORMAT.md entirely.** For
+   each path in the item's `prompt_paths`, read the file: it contains a
+   SYSTEM line (adopt it as your persona) and a complete, self-contained
+   prompt that defines its own output format.
+3. Answer each prompt exactly as it instructs, and commit your **raw answer**
+   — no commentary, no markdown fences around it, nothing added — to the
+   matching path in the item's `response_paths`.
+4. Flip the item's status to `drafted` and release your claim (section 6
+   rules). Do not touch any other field.
+
+There is no CI validation for narrative responses: the operator's machine
+parses your answer with the same adapter the live writer path uses, then runs
+the full narrative release gate (compliance, judges, repair waves, final
+editor, release challenger) locally. The gate — not you, not CI — decides
+`approved`/`rejected` for these items.
