@@ -6,7 +6,7 @@
       "channel_id": "true_dread_files_us",
       "title": "overnight hotel front desk off the highway",
       "type": "narrative",
-      "status": "drafted",
+      "status": "rejected",
       "prompt_paths": [
         "scriptfarm/narrative/20260903_overnight-hotel-front-desk-off-the-highway-nu/story_1.prompt.md"
       ],
@@ -14,7 +14,9 @@
         "scriptfarm/narrative/20260903_overnight-hotel-front-desk-off-the-highway-nu/story_1.md"
       ],
       "added_at": "2026-09-03T15:40:09+00:00",
-      "added_by": "farm_narrative.py"
+      "added_by": "farm_narrative.py",
+      "gate_verdict": "REJECTED/FAILED after 1716.1s: Script failed release gate (89/100); candidate saved at /home/tailolicon/Projects/OmniCast Engine/implementation/output/products/true_dread_files_us/20260904_0006_overnight_hotel_front_desk_off_the_highway/needs_edit.txt",
+      "gated_at": "2026-09-03T17:06:36+00:00"
     }
   ]
 }
