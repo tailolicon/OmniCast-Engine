@@ -34,7 +34,11 @@ async def main() -> None:
         p.stem for p in (IMPL / "channels").glob("*.json") if p.stem not in SKIP
     )
     for channel_id in channels:
-        channel = await loader.load(channel_id)
+        try:
+            channel = await loader.load(channel_id)
+        except Exception as exc:  # non-pipeline channel files (e.g. reup configs)
+            print(f"skipped {channel_id}: profile does not validate ({exc.__class__.__name__})")
+            continue
 
         ncfg_key = (getattr(channel, "niche_config_key", "") or "").strip()
         if ncfg_key and "." in ncfg_key:

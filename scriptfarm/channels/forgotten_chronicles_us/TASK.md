@@ -7,6 +7,7 @@ NICHE: mythology | MARKET: US
 TARGET LENGTH: 12 minutes (~1800 spoken words)
 VOICE: historian who connects ancient texts to modern discoveries
 
+
 ANGLE: Open with the EXACT dollar amount or percentage the viewer is losing RIGHT NOW. Make them feel the pain in the first sentence.
 
 KEY POINTS TO COVER:
@@ -33,13 +34,15 @@ Use EXACTLY these section labels. Output valid JSON arrays only.
 HOOK EXAMPLE (follow this energy and specificity):
   H scene vo: "The Greek gods had a weapon that matches nuclear physics — 3,000 years before the atom bomb."
 
+
 HOOK:
 SCENES:
 [
-  {"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic, e.g. 'Hey, great to have you — today, [topic].']", "visual": "[ancient ruins, historical paintings, artifact close-ups, maps — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []},
-  {"vo": "[H — THE hook: pain-first, exact number/stat they are LOSING right now, a curiosity gap. Max 18 words. Self-contained (this becomes the TITLE). No 'imagine'/'picture this'.]", "visual": "[ancient ruins, historical paintings, artifact close-ups, maps — most alarming version]", "sfx": "thunder", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key number/word]"]},
-  {"vo": "[P — credible data point: 'According to archaeological records, X%...']", "visual": "[archaeological records report cover or chart displayed full screen]", "sfx": "dramatic-sting", "pace": "normal", "pause_after_ms": 0, "emphasis": ["[the stat]"]}
+  {"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic.]", "visual": "[ancient ruins, historical paintings, artifact close-ups, maps — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []},
+  {"vo": "[H — pain-first hook with a sourced number or concrete stake. Max 18 words.]", "visual": "[ancient ruins, historical paintings, artifact close-ups, maps — most alarming version]", "sfx": "thunder", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key word]"]},
+  {"vo": "[P — one verified proof point.]", "visual": "[archaeological records report cover or chart]", "sfx": "dramatic-sting", "pace": "normal", "pause_after_ms": 0, "emphasis": []}
 ]
+
 
 SEGMENT 1: [Curiosity-gap heading — 5 words max]
 SCENES:
@@ -85,13 +88,13 @@ SCENES:
   {"vo": "[Final empowering takeaway. Actionable. What they can do TODAY.]", "visual": "[presenter direct-to-camera, confident]", "sfx": null}
 ]
 
+
 OUTRO:
 SCENES:
 [
-  {"vo": "Which fact in this video shocked you most? Drop it below — I read everything.", "visual": "[presenter leaning forward, engaged, direct camera]", "sfx": null},
-  {"vo": "[EXPLICIT subscribe invite — MUST contain the word 'subscribe', framed with empathy/shared-identity tied to this topic, NOT generic. E.g.: 'If you are fighting this every single day, subscribe — I break down one real fix like this every week, and you should not have to figure it out alone.']", "visual": "[presenter direct-to-camera, warm]", "sfx": null},
-  {"vo": "[Next video tease — use the NEXT QUEUED VIDEO title from above, add a curiosity gap. E.g.: 'Next: [exact title] — that one could save you even more.']", "visual": "[thumbnail-style teaser or presenter pointing]", "sfx": "whoosh"}
+  {"vo": "Which fact in this video shocked you most? Drop it below — I read everything.", "visual": "[presenter direct to camera]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}
 ]
+
 
 TOPICS ALREADY PUBLISHED ON THIS CHANNEL (do NOT duplicate):
 - {{TOPICS_DONE}}

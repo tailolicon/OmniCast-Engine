@@ -3,9 +3,9 @@
 Write a production-ready YouTube script optimized for 70%+ audience retention.
 
 TOPIC: {{TITLE}}
-NICHE: health | MARKET: US
-TARGET LENGTH: 10 minutes (~1500 spoken words)
-VOICE: evidence-based health researcher
+NICHE: psychology | MARKET: US
+TARGET LENGTH: 8 minutes (~1200 spoken words)
+VOICE: behavioral scientist who studies what people do vs what they say
 
 
 ANGLE: Open with the EXACT dollar amount or percentage the viewer is losing RIGHT NOW. Make them feel the pain in the first sentence.
@@ -18,73 +18,73 @@ KEY POINTS TO COVER:
 OUTPUT FORMAT — scene-based JSON, one object per 3-5 second screen cut:
   "vo"     — MAX 25 words. Natural spoken English. ZERO scripting jargon.
   "visual" — stock footage query, MAX 6 plain words: a concrete filmable subject (never text popups, graphics, or camera directions).
-  "sfx"    — "heartbeat" | "flatline" | "whoosh" | "ting" | null
+  "sfx"    — "brain-zap" | "alarm" | "whoosh" | "ting" | null
   "pace"   — "slow" | "normal" | "fast" — delivery speed for THIS scene (see PROSODY rules;
              slow = hook/big-stat/outro, fast = explanation runs & montage, mix required).
   "pause_after_ms" — 0 normally; 400-700 after a twist/question; 800-1500 for the 2-4
              biggest dramatic beats only.
   "emphasis" — array of 1-3 EXACT words from vo to vocally stress (numbers, twist words). [] if none.
 
-For this niche, typical visuals include: medical imagery, healthy lifestyle, lab results
-Primary SFX for key reveals: "heartbeat"
-Authority proof source: PubMed studies
+For this niche, typical visuals include: brain scans, social experiments, facial expressions
+Primary SFX for key reveals: "brain-zap"
+Authority proof source: APA journals
 
 Use EXACTLY these section labels. Output valid JSON arrays only.
 
 HOOK EXAMPLE (follow this energy and specificity):
-  H scene vo: "72% of Americans over 40 have this vitamin deficiency — and your doctor isn't testing for it."
+  H scene vo: "You make 35,000 decisions daily — and a cognitive bias you've never heard of corrupts 40% of them."
 
 
 HOOK:
 SCENES:
 [
-  {"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic.]", "visual": "[medical imagery, healthy lifestyle, lab results — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []},
-  {"vo": "[H — pain-first hook with a sourced number or concrete stake. Max 18 words.]", "visual": "[medical imagery, healthy lifestyle, lab results — most alarming version]", "sfx": "flatline", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key word]"]},
-  {"vo": "[P — one verified proof point.]", "visual": "[PubMed studies report cover or chart]", "sfx": "heartbeat", "pace": "normal", "pause_after_ms": 0, "emphasis": []}
+  {"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic.]", "visual": "[brain scans, social experiments, facial expressions — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []},
+  {"vo": "[H — pain-first hook with a sourced number or concrete stake. Max 18 words.]", "visual": "[brain scans, social experiments, facial expressions — most alarming version]", "sfx": "alarm", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key word]"]},
+  {"vo": "[P — one verified proof point.]", "visual": "[APA journals report cover or chart]", "sfx": "brain-zap", "pace": "normal", "pause_after_ms": 0, "emphasis": []}
 ]
 
 
 SEGMENT 1: [Curiosity-gap heading — 5 words max]
 SCENES:
 [
-  {"vo": "[First punchy sentence setting up the core problem.]", "visual": "[medical imagery, healthy lifestyle, lab results]", "sfx": null},
-  {"vo": "[Key statistic with source attribution.]", "visual": "[text-popup or chart animation showing the number]", "sfx": "heartbeat"},
-  {"vo": "[Build tension — what happens if they do nothing.]", "visual": "[consequence visual matching niche: medical imagery, healthy lifestyle, lab results]", "sfx": null},
+  {"vo": "[First punchy sentence setting up the core problem.]", "visual": "[brain scans, social experiments, facial expressions]", "sfx": null},
+  {"vo": "[Key statistic with source attribution.]", "visual": "[text-popup or chart animation showing the number]", "sfx": "brain-zap"},
+  {"vo": "[Build tension — what happens if they do nothing.]", "visual": "[consequence visual matching niche: brain scans, social experiments, facial expressions]", "sfx": null},
   {"vo": "[Natural open-loop in plain speech — MUST sound like normal conversation, NOT a label. E.g.: 'And there is a second trap most people never catch — I will show you in a few minutes.']", "visual": "[presenter on camera leaning forward]", "sfx": null}
 ]
 
 SEGMENT 2: [Heading]
 SCENES:
 [
-  {"vo": "[Continue story or data. Short punchy sentence.]", "visual": "[medical imagery, healthy lifestyle, lab results]", "sfx": null},
-  {"vo": "[Key insight or data point with source.]", "visual": "[chart or text popup — blue-medical]", "sfx": "flatline"},
+  {"vo": "[Continue story or data. Short punchy sentence.]", "visual": "[brain scans, social experiments, facial expressions]", "sfx": null},
+  {"vo": "[Key insight or data point with source.]", "visual": "[chart or text popup — purple-mind]", "sfx": "alarm"},
   {"vo": "[Rhetorical punch: restate the number simply. 'That is the real cost. Let it land.']", "visual": "[zoom in on number filling screen]", "sfx": null},
-  {"vo": "[Bridge to next point.]", "visual": "[medical imagery, healthy lifestyle, lab results]", "sfx": null}
+  {"vo": "[Bridge to next point.]", "visual": "[brain scans, social experiments, facial expressions]", "sfx": null}
 ]
 
 SEGMENT 3: [Heading]
 SCENES:
 [
-  {"vo": "[Continue with next data point or evidence.]", "visual": "[medical imagery, healthy lifestyle, lab results]", "sfx": null},
-  {"vo": "[Key data — most surprising finding.]", "visual": "[chart or graphic — concrete data]", "sfx": "heartbeat"},
+  {"vo": "[Continue with next data point or evidence.]", "visual": "[brain scans, social experiments, facial expressions]", "sfx": null},
+  {"vo": "[Key data — most surprising finding.]", "visual": "[chart or graphic — concrete data]", "sfx": "brain-zap"},
   {"vo": "[Second natural open-loop in plain speech. E.g.: 'Before I show you the fix, there is one more thing most people miss — stay with me.']", "visual": "[presenter direct-to-camera]", "sfx": null},
-  {"vo": "If this is changing how you see your health — tap Like. It keeps this research coming.", "visual": "[presenter smiling, relaxed, direct camera]", "sfx": "ting"}
+  {"vo": "If this explained something about yourself you never had words for — tap Like.", "visual": "[presenter smiling, relaxed, direct camera]", "sfx": "ting"}
 ]
 
 SEGMENT 4: [Heading]
 SCENES:
 [
-  {"vo": "[Continue with solution or key action step.]", "visual": "[medical imagery, healthy lifestyle, lab results]", "sfx": null},
+  {"vo": "[Continue with solution or key action step.]", "visual": "[brain scans, social experiments, facial expressions]", "sfx": null},
   {"vo": "[Most actionable takeaway — specific and concrete.]", "visual": "[chart, comparison, or step graphic]", "sfx": null},
-  {"vo": "I covered the exact protocol in another video — link below if you want the full breakdown.", "visual": "[presenter gestures to side or below]", "sfx": null}
+  {"vo": "I covered the full behavioral framework in another video — link in the description.", "visual": "[presenter gestures to side or below]", "sfx": null}
 ]
 
 SEGMENT 5: [Heading — resolve BOTH open loops from segments 1 and 3]
 SCENES:
 [
-  {"vo": "[Resolve open loop from segment 1 — deliver the exact payoff promised.]", "visual": "[the reveal: specific number, chart, or comparison]", "sfx": "heartbeat"},
+  {"vo": "[Resolve open loop from segment 1 — deliver the exact payoff promised.]", "visual": "[the reveal: specific number, chart, or comparison]", "sfx": "brain-zap"},
   {"vo": "[Key resolution data — the proof the payoff is real.]", "visual": "[chart or animation showing result]", "sfx": null},
-  {"vo": "[Resolve open loop from segment 3 — deliver that payoff too.]", "visual": "[second reveal — concrete visual]", "sfx": "heartbeat"},
+  {"vo": "[Resolve open loop from segment 3 — deliver that payoff too.]", "visual": "[second reveal — concrete visual]", "sfx": "brain-zap"},
   {"vo": "[Final empowering takeaway. Actionable. What they can do TODAY.]", "visual": "[presenter direct-to-camera, confident]", "sfx": null}
 ]
 
@@ -92,7 +92,7 @@ SCENES:
 OUTRO:
 SCENES:
 [
-  {"vo": "One question: what is the one health habit you want to fix this month? Drop it below.", "visual": "[presenter direct to camera]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}
+  {"vo": "One question: which bias from this video do you catch yourself doing? Comment below.", "visual": "[presenter direct to camera]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}
 ]
 
 
@@ -113,13 +113,13 @@ HARD RULES — non-negotiable:
    "in today's video", "don't forget to like", "smash that subscribe button"
 4. Open loops MUST be natural speech in 'vo' — not labels or brackets.
 5. Segment 5 MUST resolve BOTH open loops from segments 1 and 3.
-6. LENGTH IS MANDATORY: total vo words across ALL scenes MUST be 1500-1750
-   words (a ~10-minute video at ~150 wpm). A short script is a FAILURE — YouTube
+6. LENGTH IS MANDATORY: total vo words across ALL scenes MUST be 1200-1400
+   words (a ~8-minute video at ~150 wpm). A short script is a FAILURE — YouTube
    needs 8+ minutes of content to enable mid-roll ads. Since each scene is capped at 25
-   words, you MUST write MANY scenes (70+ total) to reach the word count.
+   words, you MUST write MANY scenes (56+ total) to reach the word count.
 7. Each SEGMENT's SCENES array MUST contain 10-16 scenes (the examples above show only
    3-4 — EXPAND every segment to 10-16 rich scenes with distinct visuals). Keep adding
-   substantive scenes (more data points, examples, mini-stories) until total ≥ 1500 words.
+   substantive scenes (more data points, examples, mini-stories) until total ≥ 1200 words.
 8. YOUTUBE POLICY (mandatory — violations make the video unusable/demonetized):
    - NO scam/false promises: "get rich quick", "guaranteed income/profit", "100% guaranteed",
      "miracle cure", "double your money", "risk-free", "free money", "doctors hate".

@@ -1,14 +1,14 @@
 <!-- GENERATED — replace every {{PLACEHOLDER}} with the queue item's fields before writing. -->
 
-Write a production-ready first-person HORROR NARRATION script for 15 minutes (~2250 spoken words).
+Write a production-ready first-person HORROR NARRATION script for 30 minutes (~4500 spoken words).
 
 TOPIC / TITLE SEED: {{TITLE}}
 This is a compilation of separate allegedly-true first-person stories on this theme, told back-to-back — usually 3, but use 2 (longer each) or 4 if the topic and the seeds below fit that better. Let the material decide the count; do not pad to hit a number.
 
 LENGTH — HIT THE TARGET, THEN STOP (hard ceiling, no runaway):
-- TOTAL spoken words across the whole script: MINIMUM 2250, ideal 2325, HARD CAP 2475. A draft below the minimum triggers a costly repair call; budget the stories before writing. Do NOT exceed the cap — padding is a FAIL.
-- TOTAL scene objects across all SCENES arrays combined: MINIMUM 105, aim for 120, HARD CAP 150. At roughly 18–22 spoken words per scene, this reaches the word target without bloated lines.
-- Split the total roughly evenly across however many stories you choose: each story is a FULL arc of about 5-7 minutes — never a rushed 2-minute sketch, but never padded either. VARY the runway length per story (one slow build; at least one that opens fast, mid-crisis, in a single night).
+- TOTAL spoken words across the whole script: MINIMUM 4500, ideal 4650, HARD CAP 4950. A draft below the minimum triggers a costly repair call; budget the stories before writing. Do NOT exceed the cap — padding is a FAIL.
+- TOTAL scene objects across all SCENES arrays combined: MINIMUM 210, aim for 240, HARD CAP 300. At roughly 18–22 spoken words per scene, this reaches the word target without bloated lines.
+- Split the total roughly evenly across however many stories you choose: each story is a FULL arc of about 10-15 minutes — never a rushed 2-minute sketch, but never padded either. VARY the runway length per story (one slow build; at least one that opens fast, mid-crisis, in a single night).
 - Every scene's "vo" stays ≤28 words. Advance the story each scene — NEVER repeat a beat, re-describe the same moment, or restate a feeling to fill space. When the LAST story's lingering line lands, STOP and emit the OUTRO. Depth and escalation fill the runtime, not repetition.
 
 STORY SEEDS / BEATS TO USE:

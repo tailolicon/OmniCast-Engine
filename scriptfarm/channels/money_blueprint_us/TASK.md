@@ -7,6 +7,7 @@ NICHE: finance | MARKET: US
 TARGET LENGTH: 10 minutes (~1500 spoken words)
 VOICE: financial insider who sees behind the curtain
 
+
 ANGLE: Open with the EXACT dollar amount or percentage the viewer is losing RIGHT NOW. Make them feel the pain in the first sentence.
 
 KEY POINTS TO COVER:
@@ -33,13 +34,15 @@ Use EXACTLY these section labels. Output valid JSON arrays only.
 HOOK EXAMPLE (follow this energy and specificity):
   H scene vo: "A single 1% number hidden in your contract is stealing $500,000 from you."
 
+
 HOOK:
 SCENES:
 [
-  {"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic, e.g. 'Hey, great to have you — today, [topic].']", "visual": "[stock charts, financial offices, worried investors — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []},
-  {"vo": "[H — THE hook: pain-first, exact number/stat they are LOSING right now, a curiosity gap. Max 18 words. Self-contained (this becomes the TITLE). No 'imagine'/'picture this'.]", "visual": "[stock charts, financial offices, worried investors — most alarming version]", "sfx": "alarm", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key number/word]"]},
-  {"vo": "[P — credible data point: 'According to SPIVA data, X%...']", "visual": "[SPIVA data report cover or chart displayed full screen]", "sfx": "cash-register", "pace": "normal", "pause_after_ms": 0, "emphasis": ["[the stat]"]}
+  {"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic.]", "visual": "[stock charts, financial offices, worried investors — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []},
+  {"vo": "[H — pain-first hook with a sourced number or concrete stake. Max 18 words.]", "visual": "[stock charts, financial offices, worried investors — most alarming version]", "sfx": "alarm", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key word]"]},
+  {"vo": "[P — one verified proof point.]", "visual": "[SPIVA data report cover or chart]", "sfx": "cash-register", "pace": "normal", "pause_after_ms": 0, "emphasis": []}
 ]
+
 
 SEGMENT 1: [Curiosity-gap heading — 5 words max]
 SCENES:
@@ -85,13 +88,13 @@ SCENES:
   {"vo": "[Final empowering takeaway. Actionable. What they can do TODAY.]", "visual": "[presenter direct-to-camera, confident]", "sfx": null}
 ]
 
+
 OUTRO:
 SCENES:
 [
-  {"vo": "Drop a number below: how many years until you retire? I read every reply.", "visual": "[presenter leaning forward, engaged, direct camera]", "sfx": null},
-  {"vo": "[EXPLICIT subscribe invite — MUST contain the word 'subscribe', framed with empathy/shared-identity tied to this topic, NOT generic. E.g.: 'If you are fighting this every single day, subscribe — I break down one real fix like this every week, and you should not have to figure it out alone.']", "visual": "[presenter direct-to-camera, warm]", "sfx": null},
-  {"vo": "[Next video tease — use the NEXT QUEUED VIDEO title from above, add a curiosity gap. E.g.: 'Next: [exact title] — that one could save you even more.']", "visual": "[thumbnail-style teaser or presenter pointing]", "sfx": "whoosh"}
+  {"vo": "Drop a number below: how many years until you retire? I read every reply.", "visual": "[presenter direct to camera]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}
 ]
+
 
 TOPICS ALREADY PUBLISHED ON THIS CHANNEL (do NOT duplicate):
 - {{TOPICS_DONE}}

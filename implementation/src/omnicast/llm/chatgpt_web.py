@@ -24,10 +24,13 @@ import structlog
 
 logger = structlog.get_logger()
 
-# Shiro's relay allows 30 minutes per answer (ANSWER_TIMEOUT_MS=1800000);
-# the read timeout must sit above that or long Thinking turns get cut off
-# client-side — and aborting the HTTP request presses ChatGPT's stop button.
-_READ_TIMEOUT_S = 1860.0
+# Shiro's relay allows 30 minutes per answer (ANSWER_TIMEOUT_MS=1800000),
+# but real answers land in 5-10 minutes; every observed 30-minute wait was a
+# wedged tab, never a long Thinking turn. Cut off at 15 minutes so a wedge
+# costs one recovery cycle instead of the relay's full ceiling. Aborting the
+# HTTP request presses ChatGPT's stop button, which is acceptable here:
+# _recover() reselects/restarts the tab before the retry anyway.
+_READ_TIMEOUT_S = 900.0
 _CONNECT_TIMEOUT_S = 30.0
 
 _DEFAULT_RELAY_ENV = Path.home() / "Projects" / ".ShiroRuntime" / "state" / "chatgpt-relay.env"
@@ -120,6 +123,70 @@ class ChatGPTWebClient:
                 "open/log into chatgpt.com in the Shiro browser profile"
             )
         return pool[0]["id"]
+
+    async def _recover(self) -> None:
+        """Self-heal the relay's browser side between retries.
+
+        Live failure mode (2026-09-03): every /chat opened or left conversation
+        tabs behind until the relay hit needsSelection, the one blank tab sat
+        quarantined, and three 30-minute reads timed out in a row. Selection is
+        an API call; a wedged tab set is only fixed by bouncing the dedicated
+        chromium profile (proven manually). Both are safe to automate on this
+        operator-local stack. Failures here are swallowed — the retry that
+        follows will surface the real state."""
+        import subprocess
+        import httpx
+
+        base, token = self._resolve()
+        headers = {"Authorization": f"Bearer {token}"}
+        timeout = httpx.Timeout(20.0, connect=10.0)
+        try:
+            async with httpx.AsyncClient(timeout=timeout, headers=headers) as http:
+                r = await http.get(f"{base}/browser/clients")
+                clients = r.json().get("clients", []) if r.status_code == 200 else []
+                usable = [c for c in clients
+                          if c.get("ready") and not c.get("quarantined")
+                          and not c.get("activeRequest")]
+                blank = [c for c in usable if "/c/" not in (c.get("url") or "")]
+                if blank:
+                    await http.post(f"{base}/browser/select",
+                                    json={"clientId": blank[0]["id"]})
+                    logger.info("chatgpt_web recovered via select",
+                                client=blank[0]["id"][:40])
+                    return
+        except Exception as exc:  # noqa: BLE001 - recovery is best-effort
+            logger.warning("chatgpt_web recover probe failed", error=str(exc)[:120])
+        if os.environ.get("OMNICAST_CHATGPT_WEB_AUTORESTART", "1") == "0":
+            return
+        profile = str(Path.home() / "Projects" / ".ShiroRuntime" / "chrome-profile")
+        ext = str(Path.home() / "Projects" / ".ShiroRuntime" / "chatgpt-extension")
+        logger.warning("chatgpt_web restarting dedicated chromium", profile=profile)
+        try:
+            subprocess.run(["pkill", "-f", f"--user-data-dir={profile}"],
+                           capture_output=True, timeout=20)
+            await asyncio.sleep(4)
+            subprocess.Popen(
+                ["chromium", f"--user-data-dir={profile}", f"--load-extension={ext}",
+                 "--no-first-run", "--no-default-browser-check",
+                 "--disable-background-timer-throttling", "--ozone-platform-hint=auto",
+                 "--start-minimized", "https://chatgpt.com/"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL, start_new_session=True)
+            # wait for exactly one fresh client to register
+            import httpx as _hx
+            async with _hx.AsyncClient(timeout=timeout, headers=headers) as http:
+                for _ in range(24):
+                    await asyncio.sleep(5)
+                    try:
+                        h = await http.get(f"{base}/health")
+                        hd = h.json()
+                        if hd.get("ok") and int(hd.get("clients") or 0) >= 1:
+                            logger.info("chatgpt_web chromium back", clients=hd.get("clients"))
+                            return
+                    except Exception:  # noqa: BLE001
+                        continue
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("chatgpt_web chromium restart failed", error=str(exc)[:120])
 
     async def _chat_once(self, message: str) -> str:
         import httpx
@@ -214,6 +281,7 @@ class ChatGPTWebClient:
                 last = str(exc)
                 logger.warning("chatgpt_web transient failure",
                                attempt=attempt, error=last[:200])
+                await self._recover()
                 await asyncio.sleep(5 * (attempt + 1))
         else:
             raise ChatGPTWebTransient(last or "chatgpt_web: failed after retries")
