@@ -37,6 +37,7 @@ dependencies = [
     "Pillow>=10,<12",          # Image/thumbnail processing
     "imagehash>=4.3,<5",       # Perceptual hashing
     "librosa>=0.10,<1",        # Audio analysis (fingerprint)
+    "matplotlib>=3.9,<4",      # Audited finance charts (chart_gen)
     # Phase 5: Upload Pipeline
     "google-auth>=2.29,<3",    # OAuth2
     "google-auth-oauthlib>=1.2,<2",  # OAuth2 consent flow
@@ -56,6 +57,30 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Competitor research (analytics.transcript / analytics.competitor_intel).
+# These were imported at runtime but never declared, so a fresh environment
+# silently lost the capability: no captions, no ASR fallback, and the only
+# symptom was a thinner sample that looked like competitors with nothing to say.
+competitor-research = [
+    "youtube-transcript-api>=0.6,<2",  # captions (primary transcript source)
+    "yt-dlp>=2024.1",                  # audio pull for the ASR fallback
+    "faster-whisper>=1.0,<2",          # local ASR when captions are absent
+]
+# Chinese-video reup: Douyin ingest (omnicast.ingest.douyin) + the zh->vi
+# translate/dub pipeline (omnicast.reup). Optional because a channel that never
+# republishes Douyin content should not pay for the download stack.
+reup = [
+    "pysubs2>=1.7,<2",       # ASS/SRT read+write for the subtitle layer
+    "faster-whisper>=1.1,<2",  # zh ASR
+    "aiohttp>=3.9",          # vendored Douyin client transport
+    "aiofiles>=23.2.1",      # manifest + media writes
+    "aiosqlite>=0.19",       # imported by the vendored storage layer
+    "gmssl>=3.2.2",          # SM3 hashing inside a_bogus request signing
+    # Vietnamese TTS: 6 shipped voices (Bac/Nam, nam/nu) + reference-audio
+    # cloning. 3.x phonemises via the bundled sea_g2p wheel, so unlike the 2.x
+    # line it needs no separate eSpeak NG install.
+    "vieneu>=3.2,<4",
+]
 dev = [
     "pytest>=8.2,<9",
     "pytest-asyncio>=0.23,<1",

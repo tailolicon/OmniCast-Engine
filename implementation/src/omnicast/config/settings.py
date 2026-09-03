@@ -163,6 +163,41 @@ class Settings(BaseSettings):
     # === Mode ===
     omnicast_mode: str = Field(default="dry_run", description="production | dry_run | staging")
 
+    # === Topic scoring ===
+    # Which scoring generation DECIDES auto_approved/needs_review.
+    #   v1     — the original weights (trend 30 / gap 40 / rpm 20 / novelty 10)
+    #   shadow — v2 is computed and recorded on every topic, but v1 still decides.
+    #            DEFAULT, and deliberately so: v2 removed a double-count that was
+    #            inflating YouTube-sourced topics by ~15 points, which moves the
+    #            approve/review boundary. Flipping that on before calibrating
+    #            against labelled topics would silently change what gets made.
+    #   v2     — v2 decides. Only switch after the shadow corpus says the new
+    #            thresholds are right (see discovery.scoring_calibration).
+    omnicast_scoring_mode: str = Field(
+        default="shadow", description="v1 | shadow | v2")
+
+    # Which component decides WHICH TOPICS GET MADE.
+    #   scorer_gate     — DEFAULT. TopicScorer's discard lane is binding; the
+    #                     Channel Architect ranks only what the scorer admits.
+    #   architect_only  — legacy: the Architect sees every raw topic and the
+    #                     scorer's verdict is ignored on this path.
+    # The two production paths disagreed: the orchestrator path already honoured
+    # the scorer's lanes (BriefGenerator only briefs 'approve'), while the API
+    # path handed the Architect `all_raw` and threw the scoring away. That
+    # inconsistency — not a policy choice — is what this setting resolves.
+    omnicast_topic_router: str = Field(
+        default="scorer_gate", description="scorer_gate | architect_only")
+
+    # Pull a low-res copy of competitor winners so §5 forensics can measure
+    # their frames (shot rhythm, motion, colour). OFF by default: it is
+    # bandwidth, disk and wall-clock time. Declared HERE, not read straight from
+    # os.environ, because this project configures through `.env` + Settings —
+    # an env-only flag is invisible to anyone reading the config surface, and
+    # would be the only setting in the system that works differently.
+    omnicast_competitor_forensics: bool = Field(
+        default=False,
+        description="Download competitor video to measure how it was cut")
+
     # === NAS ===
     nas_mount_path: str = Field(default="/Volumes/NAS")
     nas_fallback_path: str = Field(default="/tmp/omnicast_local")
@@ -195,6 +230,22 @@ class Settings(BaseSettings):
         allowed = {"production", "dry_run", "staging"}
         if v not in allowed:
             raise ValueError(f"omnicast_mode must be one of {allowed}, got '{v}'")
+        return v
+
+    @field_validator("omnicast_scoring_mode")
+    @classmethod
+    def validate_scoring_mode(cls, v: str) -> str:
+        allowed = {"v1", "shadow", "v2"}
+        if v not in allowed:
+            raise ValueError(f"omnicast_scoring_mode must be one of {allowed}, got '{v}'")
+        return v
+
+    @field_validator("omnicast_topic_router")
+    @classmethod
+    def validate_topic_router(cls, v: str) -> str:
+        allowed = {"scorer_gate", "architect_only"}
+        if v not in allowed:
+            raise ValueError(f"omnicast_topic_router must be one of {allowed}, got '{v}'")
         return v
 
     @field_validator("database_url")
