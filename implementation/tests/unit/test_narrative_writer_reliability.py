@@ -244,11 +244,12 @@ async def test_recovery_that_does_not_strictly_improve_keeps_original_bytes():
 
 @pytest.mark.asyncio
 async def test_recovery_tie_at_zero_local_failures_accepts_only_a_closer_length():
-    # Only the compilation total is short: every story passes its own band, so the
-    # shortest story ties at zero story-attributable failures and must win on length.
+    # Length is floors only now (operator rule: never force a word count). The
+    # shortest story sits under the genre floor; recovery must accept only a
+    # draft that is closer to (here: over) the floor.
     planner = _FakeStructuredLLM(lambda _p, _s: _plan())
     initial = {
-        "story_1": _draft(1, words=660),
+        "story_1": _draft(1, words=500),
         "story_2": _draft(2, words=680),
         "story_3": _draft(3, words=680),
     }
@@ -273,12 +274,12 @@ async def test_recovery_tie_at_zero_local_failures_accepts_only_a_closer_length(
 async def test_recovery_tie_that_moves_away_from_target_is_discarded():
     planner = _FakeStructuredLLM(lambda _p, _s: _plan())
     initial = {
-        "story_1": _draft(1, words=660),
+        "story_1": _draft(1, words=500),
         "story_2": _draft(2, words=680),
         "story_3": _draft(3, words=680),
     }
     original = initial["story_1"].narration
-    farther = _narration("farther", 640)
+    farther = _narration("farther", 450)
     write, calls = _writer_with_recovery(initial, {"story_1": farther})
     critic = _FakeStructuredLLM(lambda _p, _s: _passing_score())
     result = await NarrativeUnitPipeline(
@@ -319,10 +320,14 @@ async def test_recovery_provider_error_keeps_original_bytes_without_crashing():
 # 3. Concrete integer length envelope and explicit repair budgets.
 
 
-def test_story_prompt_gives_an_integer_word_envelope():
+def test_story_prompt_gives_the_estimate_as_a_shape_not_a_law():
+    """Operator rule, stated twice: never force a word count. The plan's
+    number is the planner's estimate; the writer is told what the account
+    needs, not an envelope."""
     prompt = np._story_prompt(_story_plan(1), 750, "cold open", _strategy())
-    assert f"{math.floor(750 * 0.9)}" in prompt
-    assert f"{math.ceil(750 * 1.1)}" in prompt
+    assert "estimates about 750 words" in prompt
+    assert "a shape, not a law" in prompt
+    assert "HARD LENGTH ENVELOPE" not in prompt
     assert "90%-110%" not in prompt
 
 
@@ -713,7 +718,7 @@ async def test_wave_length_shortfall_is_fixed_by_the_rewrite_fallback():
     patch budget cannot add ~120 words, and the compilation must not die on it."""
     planner = _FakeStructuredLLM(lambda _p, _s: _plan())
     initial = {f"story_{i}": _draft(i) for i in range(1, 4)}
-    initial["story_2"] = _draft(2, words=630)
+    initial["story_2"] = _draft(2, words=500)
     fixed = _narration("stretched", 760)
     log: dict = {}
     write = _rewrite_writer(initial, {"story_2": fixed}, log)

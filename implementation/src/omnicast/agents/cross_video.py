@@ -26,6 +26,10 @@ _STOP = {
     "January", "February", "March", "April", "May", "June", "July", "August",
     "September", "October", "November", "December", "Monday", "Tuesday", "Wednesday",
     "Thursday", "Friday", "Saturday", "Sunday", "Route", "Room", "Mile", "Level",
+    # Institutions and programme names recur legitimately in finance/news
+    # explainers; they are not fictional character names.
+    "Social", "Security", "Administration", "Government", "Medicare",
+    "Retirement", "Benefits", "Federal", "Congress", "Treasury",
 }
 
 # Motifs that become a "generator fingerprint" if they recur video after video.

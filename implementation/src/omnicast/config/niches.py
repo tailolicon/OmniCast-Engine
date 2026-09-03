@@ -37,6 +37,11 @@ class NicheConfig:
     # no 'according to', no stats/charts) and writes immersive prose instead.
     content_format: str = "explainer"
 
+    # Optional critic-rubric override (see agents/rubrics/). Empty = the format's
+    # default dimension set. Lets a niche swap the VALUE SYSTEM (e.g. YMYL
+    # accuracy-first) without a new content_format or a pipeline fork.
+    rubric_id: str = ""
+
 
 NICHE_CONFIGS: dict[str, NicheConfig] = {
     "finance": NicheConfig(
@@ -74,6 +79,41 @@ NICHE_CONFIGS: dict[str, NicheConfig] = {
         retention_weight=25,
         insider_angle="retirement planning specialist",
         proof_sources=["Fidelity retirement report", "Social Security Administration data"],
+    ),
+    # Senior-retirement YMYL explainer (flagship "The Retirement Desk", 60-75 US).
+    # Same routing as any explainer, but the critic swaps to the accuracy-first
+    # finance_explainer_v1 rubric and the script step runs the fact-citation
+    # ledger gate. Evidence: docs/FLAGSHIP_CompetitorDossier_SeniorFinance.md.
+    "finance.retirement_senior": NicheConfig(
+        hook_format=(
+            "One concrete consequence with a real, sourced number in the first "
+            "15 seconds — a decision cost, a rule change, a deadline"
+        ),
+        hook_examples=[
+            "Claiming at 62 instead of 67 costs this retiree $612 every month, for life.",
+            "The IRS owes millions of Americans a refund — but only if one form is filed by July 10th.",
+        ],
+        sfx_primary="page-turn",
+        sfx_secondary="clock-tick",
+        sfx_accent="soft-chime",
+        broll_style="real documents and forms (SSA letters, IRS forms, statements), calm desk scenes, rendered data charts",
+        chart_palette="navy-trust",
+        accuracy_weight=25,  # YMYL: accuracy is the product
+        engagement_weight=20,
+        production_weight=25,
+        retention_weight=25,
+        insider_angle=(
+            "a careful editor who reads official sources (SSA, IRS, CFPB, FBI IC3) "
+            "so the viewer doesn't have to — never a credentialed advisor persona"
+        ),
+        proof_sources=[
+            "Social Security Administration (ssa.gov)",
+            "IRS (irs.gov)",
+            "FBI IC3 report",
+            "CFPB",
+            "Vanguard/Fidelity published research",
+        ],
+        rubric_id="finance_explainer_v1",
     ),
     "finance.crypto": NicheConfig(
         hook_format="Open with dramatic price movement or regulatory shock",
@@ -191,7 +231,7 @@ NICHE_CONFIGS: dict[str, NicheConfig] = {
         insider_angle=(
             "a first-person horror storyteller (Mr. Nightmare style). The narrator "
             "IS the person each thing happened to and tells it as 'I/we' in a plain, "
-            "shaken, everyday voice — NOT a host reading someone else's submission. "
+            "shaken, everyday voice — NOT a host reading someone else's story. "
             "NEVER say 'this account comes from', 'in her own words', 'word for "
             "word what she sent', 'according to', 'the storyteller said', or frame "
             "it as a file/report/case — that meta-framing instantly kills the fear. "

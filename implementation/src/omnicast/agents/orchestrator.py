@@ -41,6 +41,22 @@ class DebateResult:
     approved: bool
     converged: bool
     rounds: list[DebateRound] = field(default_factory=list)
+    # The review that produced `final_score`. Only the debate flow fills
+    # `rounds`; claude_first and unit_first build a result with `rounds=[]`
+    # and used to drop the critic's verdict on the floor. A rejected script
+    # then reached the operator as a bare number — 62/100 and no way to learn
+    # which dimension lost the points or what the critic said.
+    final_feedback: CriticFeedback | None = None
+    # Where this variant's text was actually written. Callers used to rebuild
+    # the name from `variant_{id}_score{final_score}.txt`, which is a filename
+    # encoding a MUTABLE number: a gate that adjusts the score after the file
+    # is on disk makes the path unfindable, and the run dies looking for
+    # variant_claude_revised_score70.txt while holding score 72.
+    variant_path: str = ""
+    # Deterministic pre-verified-source conflicts.  A draft with fewer of these
+    # must outrank a subjectively higher-scoring draft that violates more hard
+    # evidence boundaries.
+    evidence_problems: list[str] = field(default_factory=list)
     total_cost_usd: float = 0.0
     binary_eval_results: dict[str, bool] = field(default_factory=dict)
     exit_reason: str = ""

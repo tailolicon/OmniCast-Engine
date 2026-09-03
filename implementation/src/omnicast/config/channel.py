@@ -1,17 +1,43 @@
 """Channel profile configuration - single source of truth for channel identity."""
 
 from __future__ import annotations
+
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
-import json
+
 from pydantic import BaseModel, Field, field_validator
 
-from omnicast.models.enums import Niche, Market, ChannelType
+from omnicast.models.enums import ChannelType, Market, Niche
 from omnicast.platforms.models import Destination
 
 if TYPE_CHECKING:
-    from omnicast.models.schemas import BrandConfig
     from omnicast.discovery.models import DiscoveryConfig
+    from omnicast.discovery.scorer import StackProfile
+    from omnicast.models.schemas import BrandConfig
+
+
+# Capabilities NO OmniCast channel has, because the engine has no camera, no
+# crew and no presenter: it renders TTS narration over generated or licensed
+# visuals. This is a property of the pipeline, not an operator preference, which
+# is why it is a module constant rather than a per-channel default that someone
+# would eventually have to re-type for every channel file.
+# Vocabulary: omnicast.shared.production_signals.ALL_TAGS.
+PIPELINE_UNSUPPORTED_PRODUCTION: frozenset[str] = frozenset({
+    "face_cam", "interview", "on_location", "live_footage", "in_person_demo",
+    # `screen_capture` belongs here for the same reason as the rest: there is no
+    # screen-recording step in the render pipeline, which
+    # `production_router.APPROXIMATED_MODES` says in its own words. The router
+    # was fixed to stop granting it, but the TOPIC SCORER does not go through
+    # the router — it reads this set — so a software tutorial still looked
+    # producible at the moment the system decides what to make.
+    "screen_capture",
+})
+
+# Band around `target_duration_min` that counts as "the runtime we produce".
+# Half to double: a 5-minute cut of a 10-minute format is still our format;
+# a 40-minute reference video is a different one.
+DURATION_BAND_FACTOR: tuple[float, float] = (0.5, 2.0)
 
 
 class ChannelProfile(BaseModel):
@@ -51,6 +77,14 @@ class ChannelProfile(BaseModel):
     image_gen_mode: str = "sdxl"
     use_video_gen: bool = False
     target_duration_min: int = 10
+    # Fail-closed policy for competitor intelligence. False (default): when the
+    # learned playbook is uncontrolled, stale, legacy or unreadable, the writer
+    # skips it and logs why. True: this channel would rather stop than write
+    # from patterns never verified against a control group.
+    # Lives HERE, not only on TopicBrief: the flag was previously declared on
+    # the brief alone, and no production brief builder set it — so the
+    # fail-closed branch was unreachable outside hand-built unit tests.
+    competitor_intel_required: bool = False
 
     # Content Style (drives Writer + Critic)
     niche_config_key: str = ""  # override key into NICHE_CONFIGS; defaults to niche.value
@@ -95,6 +129,55 @@ class ChannelProfile(BaseModel):
     trends_keywords: list[str] = []
     rpm_floor: float = 7.0
 
+    # Production capability — feeds TopicScorer's stack_fit dimension.
+    # Before these existed, `TopicScorer()` was constructed with no profile on
+    # every production path, so stack fit returned the neutral 7.5 for every
+    # topic on every run: a scored dimension that could not move.
+    #
+    # Empty/None means "derive it" (see `to_stack_profile`), not "disable".
+    production_duration_band_min: tuple[float, float] | None = None
+    #   Runtime band we actually produce well, in minutes. None derives a band
+    #   around `target_duration_min`.
+    unsupported_production: list[str] = []
+    #   EXTRA capabilities this channel lacks, on top of the engine-wide set in
+    #   `PIPELINE_UNSUPPORTED_PRODUCTION`. Vocabulary: shared.production_signals.
+    supported_production: list[str] = []
+    #   Escape hatch: capabilities from the engine-wide set this channel CAN in
+    #   fact deliver (e.g. a channel with a licensed stock-interview library).
+    proven_title_patterns: list[str] = []
+    #   Title shapes we have shipped successfully. Vocabulary:
+    #   shared.title_patterns. Empty = unknown, scored as half credit.
+    blocked_topic_keywords: list[str] = []
+    #   Topics we refuse regardless of demand — a HARD zero on stack fit.
+    #   Deliberately NOT `forbidden_words`: that list is about wording inside a
+    #   script ("guys", "crazy"), and vetoing a whole topic because its title
+    #   contains a word we avoid saying would be a different, much blunter rule.
+
+    # Competitor-intelligence scope (strategic review §4.2). Playbooks used to
+    # be keyed by `niche` alone, so every finance channel in the system shared —
+    # and overwrote — one thumbnail playbook. Empty means "not declared", which
+    # widens the key rather than narrowing it wrongly.
+    intel_archetype: str = ""      # defaults to channel_id: whose playbook is this
+    audience_segment: str = ""     # "55plus_preretiree", "25_35_beginner", ...
+    content_format: str = ""       # "longform_narration", "shorts", "explainer", ...
+    content_pillars: list[dict] = []
+    #   [{"id": "annuities", "name": "Annuities", "keywords": ["annuity", ...],
+    #     "role": "core"}]   role: core | supporting | experimental (§11.2)
+    #   See analytics.pillars — declared, never auto-discovered.
+
+    # Channel thesis (§11.1). Five questions an experienced operator can answer
+    # about their channel and this system never could. DECLARED, never generated:
+    # an LLM would write a plausible thesis for any channel in four seconds, and
+    # it would agree with whatever the channel already does — which is exactly
+    # what makes it useless as evidence of drift.
+    #   {"audience": ..., "promise": ..., "return_reason": ..., "moat": ...,
+    #    "owned_format": ...}
+    channel_thesis: dict = {}
+    # Which experiment lane this channel occupies: proven | adjacent |
+    # asymmetric (§11.5). Empty means undeclared, which spends the proven lane's
+    # budget without saying so.
+    experiment_lane: str = ""
+
     # Schedule
     upload_cadence: str = "3x_weekly"  # "daily", "3x_weekly", "weekly"
     prime_time_hours: list[int] = [9, 12, 17]  # UTC hours
@@ -127,6 +210,64 @@ class ChannelProfile(BaseModel):
             thumbnail_style=self.thumbnail_style,
             image_gen_mode=self.image_gen_mode,
             use_video_gen=self.use_video_gen,
+        )
+
+    def to_stack_profile(self) -> "StackProfile":
+        """What this channel can actually produce — for TopicScorer.stack_fit.
+
+        Every value is derived from configuration that already exists, so an
+        untouched channel file yields a REAL profile rather than the neutral
+        7.5 that made the dimension inert. The derivations:
+
+        * niches   — the primary niche plus any same-theme niches assigned to
+          this channel. Unknown niche ids are skipped, not guessed.
+        * markets  — the channel's market.
+        * runtime  — `production_duration_band_min` if set, else a band around
+          `target_duration_min` (see `DURATION_BAND_FACTOR`). "The runtime we
+          are tuned for" is precisely what `target_duration_min` states; a
+          reference video at 4x our target is a different format, not a longer
+          version of ours.
+        * unsupported — the engine-wide set (OmniCast has no camera, no crew and
+          no presenter, on any channel) plus per-channel additions, minus any
+          the channel explicitly declares it can deliver.
+        """
+        from omnicast.discovery.scorer import StackProfile
+
+        niches = {self.niche}
+        for entry in self.niches or []:
+            raw = (entry or {}).get("niche_id") or (entry or {}).get("niche")
+            if not raw:
+                continue
+            try:
+                niches.add(Niche(raw))
+            except ValueError:
+                # An unrecognised niche id is a config error to surface, not a
+                # reason to silently widen or narrow what we claim to cover.
+                continue
+
+        if self.production_duration_band_min:
+            band = (float(self.production_duration_band_min[0]),
+                    float(self.production_duration_band_min[1]))
+        elif self.target_duration_min:
+            low, high = DURATION_BAND_FACTOR
+            band = (round(self.target_duration_min * low, 1),
+                    round(self.target_duration_min * high, 1))
+        else:
+            band = (0.0, 0.0)
+
+        unsupported = (set(PIPELINE_UNSUPPORTED_PRODUCTION)
+                       | {str(x).strip() for x in self.unsupported_production if str(x).strip()})
+        unsupported -= {str(x).strip() for x in self.supported_production if str(x).strip()}
+
+        return StackProfile(
+            niches=niches,
+            markets={self.market},
+            duration_minutes=band,
+            proven_title_patterns={str(p).strip() for p in self.proven_title_patterns
+                                   if str(p).strip()},
+            unsupported_requirements=unsupported,
+            blocked_keywords={str(k).strip() for k in self.blocked_topic_keywords
+                              if str(k).strip()},
         )
 
     def to_discovery_config(self) -> "DiscoveryConfig":

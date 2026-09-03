@@ -1,0 +1,175 @@
+{
+  "channel_id": "senior_wealth_us",
+  "name": "The Retirement Desk",
+  "youtube_handle": "@TheRetirementDesk-ays",
+  "youtube_channel_id": "UChHsEnEh2QceXN2V1SBEzgg",
+  "niche": "finance",
+  "sub_niche": "retirement finance for 60-75 US viewers: Social Security decisions, retirement taxes, outliving-your-money risk, senior-targeted scams",
+  "niche_config_key": "finance.retirement_senior",
+  "supported_production": [
+    "chart_render"
+  ],
+  "competitor_intel_required": true,
+  "content_pillars": [
+    {
+      "pillar_id": "scam_protection",
+      "label": "Scam protection for retirees",
+      "keywords": [
+        "scam",
+        "fraud",
+        "impersonation",
+        "phishing",
+        "stolen",
+        "draining"
+      ]
+    },
+    {
+      "pillar_id": "social_security_rules",
+      "label": "Social Security rules and changes",
+      "keywords": [
+        "social security",
+        "earnings limit",
+        "claiming",
+        "benefit",
+        "ssa",
+        "cola"
+      ]
+    },
+    {
+      "pillar_id": "decision_numbers",
+      "label": "The numbers behind one decision",
+      "keywords": [
+        "how much",
+        "your number",
+        "portfolio",
+        "expenses",
+        "at 62",
+        "at 65",
+        "at 67"
+      ]
+    },
+    {
+      "pillar_id": "retirement_taxes",
+      "label": "Taxes and deadlines in retirement",
+      "keywords": [
+        "tax",
+        "irs",
+        "rmd",
+        "irmaa",
+        "withdrawal",
+        "deadline",
+        "refund"
+      ]
+    },
+    {
+      "pillar_id": "document_readthrough",
+      "label": "Official reports, read for you",
+      "keywords": [
+        "report",
+        "study",
+        "vanguard",
+        "fidelity",
+        "fact sheet",
+        "released"
+      ]
+    }
+  ],
+  "market": "US",
+  "visual_style": "clean_trust",
+  "channel_style": "footage",
+  "music_mood": "warm_neutral",
+  "voice_profile": "edge:en-US-AndrewMultilingualNeural",
+  "voice_fallback": [
+    "edge:en-US-RogerNeural",
+    "edge:en-US-DavisNeural"
+  ],
+  "voice_persona": "calm_experienced_male_60",
+  "brand_voice": "A sharp, seasoned desk editor with a personality: dry wit, genuine curiosity, and a point of view stated in the first person. He reads the official documents so you don't have to, sells his reaction before the fact ('this stopped me'), and disagrees with the document at least once per read - educational stance, never personal advice, never invented credentials or clients. The SYSTEM is always the villain, never the viewer: he legitimizes the viewer's confusion or fear as reasonable BEFORE correcting it, so every correction lands as relief, not lecture. Talks TO the viewer like a smart friend, conversational but urgent - never a stiff newscast. Plain English, concrete dollar examples metered (never three raw figures without a worked example or story), zero hype, zero fear-mongering; fear appears at most once and is immediately followed by the fix; every number carries its source and year. He is an advisor-friend, not a wire service: he gives a provisional opinion early, takes at least one position viewers can argue with, allows himself one moment of play per video, and keeps recurring brand phrases alive across videos ('this desk', coined metaphors from past reads) - judgment spoken as judgment, never dressed as statistics.",
+  "tone": "warm_direct",
+  "hook_format": "Open on the viewer's own questions or one concrete consequence with a real number, spec the official document being read (issuer + year, page count if striking) within 15 seconds, and schedule ONE held-back reveal out loud ('I'll get there near the end') that the body pays off at 55-80%. No greeting.",
+  "brand_color_hex": "#1B3A5C",
+  "font_vibe": "serif_trust_large",
+  "competitor_handles": [
+    "@HolySchmidt",
+    "@DevinCarroll",
+    "@foundryfinancial",
+    "@RootFP",
+    "@AzulWells",
+    "@joekuhnlovesretirement",
+    "@rob_berger"
+  ],
+  "audience": {
+    "age_range": "60-75",
+    "pain_points": [
+      "when to claim Social Security and the fear of choosing wrong forever",
+      "outliving savings — the money has to last 25+ years",
+      "taxes in retirement nobody explained: 401k withdrawals, RMDs, IRMAA",
+      "scams that specifically target retirees",
+      "feeling patronized by advisors and by young-finance YouTube"
+    ],
+    "content_triggers": [
+      "one decision explained end-to-end with real dollar amounts",
+      "current-year rules and thresholds, dated and sourced",
+      "checklists they can act on this week",
+      "scam anatomies with the exact phrases criminals use"
+    ],
+    "engagement_drivers": [
+      "ask which decision they're facing this year",
+      "clear chapter markers so they can rewatch one section"
+    ]
+  },
+  "trends_keywords": [
+    "when to take social security",
+    "retirement taxes explained",
+    "401k withdrawal strategy",
+    "RMD rules",
+    "retirement scams seniors",
+    "how much do I need to retire at 65"
+  ],
+  "rss_feeds": [],
+  "subreddits": [
+    "retirement",
+    "SocialSecurity",
+    "personalfinance"
+  ],
+  "rpm_floor": 25.0,
+  "target_duration_min": 14,
+  "destinations": [
+    {
+      "destination_id": "senior_wealth_us_youtube",
+      "platform_id": "youtube",
+      "account_id": "senior_wealth_us",
+      "format_variant": "youtube_16x9",
+      "enabled": false,
+      "approval_required": true,
+      "schedule_policy": "prime_time",
+      "market": "US",
+      "metadata_overrides": {}
+    }
+  ],
+  "channel_type": "hub",
+  "language": "en",
+  "ref_channels": [
+    "@HolySchmidt",
+    "@DevinCarroll",
+    "@RootFP"
+  ],
+  "strip_script_outro": false,
+  "description_disclaimer": "This channel is educational only and is not financial, tax, or legal advice. Rules and numbers change - verify current figures with official sources (ssa.gov, irs.gov) or a licensed professional before acting.",
+  "ymyl": true,
+  "shorts": {
+    "cadence_days": 2,
+    "modes": [
+      "cut_from_long",
+      "single_question"
+    ],
+    "cta": "full breakdown in the linked video"
+  },
+  "render": {
+    "subtitle": true
+  },
+  "ban_generated_images": true,
+  "sfx_style": "restrained",
+  "visual_match_qc_required": true,
+  "visual_match_qc_threshold": 6
+}

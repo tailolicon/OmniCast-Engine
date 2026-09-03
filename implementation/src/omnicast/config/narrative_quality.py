@@ -19,8 +19,8 @@ SYSTEM_DIMENSION_FLOOR_RATIO = 0.60
 SYSTEM_MIN_HUMAN_THREAT_FRACTION = 2 / 3
 SYSTEM_MAX_EVIDENCE_BEATS_PER_STORY = 1
 SYSTEM_MIN_EVIDENCE_FREE_STORIES = 1
-SYSTEM_MAX_NUMERIC_ANCHORS = 4
-SYSTEM_MAX_PRECISE_CLOCK_TIMES = 1
+SYSTEM_MAX_NUMERIC_ANCHORS = 6
+SYSTEM_MAX_PRECISE_CLOCK_TIMES = 4
 SYSTEM_MAX_PLAN_ATTEMPTS = 3
 SYSTEM_MAX_PLAN_REPAIRS = 2
 
@@ -105,6 +105,13 @@ class NarrativeQualityStrategy(BaseModel):
     release_challenger_required: bool = False
     promote_impossibility_to_major: bool = True
     stylometric_texture_gate: bool = False
+    # Measure the finished compilation against THIS channel's competitor corpus
+    # (omnicast.analytics.skeleton.SKELETON_BOUNDS). Empty = not gated, because
+    # borrowing another niche's numbers is worse than having none: retirement
+    # explainers and first-person horror want opposite things on the same
+    # metrics. Every other gate here is self-referential â€” this is the only one
+    # that checks the script against scripts nobody on this team wrote.
+    skeleton_bounds_channel: str = ""
     # Requires every story to name, at plan time, what makes its premise unlike
     # the genre default. Originality is scored holistically and cannot be
     # repaired downstream, so it is contracted before prose exists.
@@ -143,11 +150,16 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
     profile_id="true_horror_strict_v1",
     strategy="first_person_true_horror_compilation",
     channel_promise=(
-        "Allegedly true first-person encounters told in an ordinary submitter's voice. "
-        "Fear comes from coherent physical danger, restrained uncertainty, and practical action."
+        "One person remembering what happened to them, in their own voice. Never "
+        "claimed true, never winked at as invention. Fear from coherent danger "
+        "and practical action."
     ),
     editorial_floor=84,
-    continuity_floor=23,
+    # 23/25 sat inside the critic's own noise (six live scores: 23, 22, 22, 21,
+    # 24, 22) and blocked an 89/100 account with no continuity issue filed.
+    # Continuity has its own hard rule - no unresolved major contradiction -
+    # so the score floor is the system minimum, not a coin flip above it.
+    continuity_floor=22,
     dimension_floor_ratio=0.65,
     # Plan-stage budget, deliberately strict and deliberately visible here rather
     # than hidden in the coordinator. Live 2026-07-17 14:32 spent ~31 minutes and
@@ -158,7 +170,13 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
     # One initial plan + at most ONE targeted repair + one re-audit, then the
     # outer loop gets exactly one fresh concept.
     maximum_plan_attempts=2,
-    maximum_plan_repairs=1,
+    # Two rounds: the first clears the objections it was given, the re-audit
+    # may raise new ones on the repaired fields (run 15: escape fixed, then
+    # knowledge path). One round threw the premise away at that point.
+    # Three, each gated on the previous round clearing every objection it was
+    # given (run 15: escape fixed, then response fixed, then one knowledge-path
+    # line left). A re-roll of the same objection still abandons.
+    maximum_plan_repairs=3,
     topic_alignment_gate=True,
     safety_response_gate=True,
     plan_fact_fidelity_gate=True,
@@ -166,11 +184,19 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
     release_challenger_required=True,
     stylometric_texture_gate=True,
     premise_freshness_gate=True,
+    skeleton_bounds_channel="true_dread_files_us",
     planning_rules=(
-        "Give every story a distinct life context, location geometry, threat mechanism, "
-        "and ending shape.",
+        # ORDER MATTERS, and it is why plan_audit/trope kept firing. Designing
+        # threat-first lands in this genre's stock catalogue, which is small and
+        # well known â€” lone driver flagged down at night, figure at the window.
+        # The 147-script competitor corpus does the reverse: every top story
+        # opens on why THIS person was in THIS place ("way before I met my wife",
+        # "burnt out from work", "I hated my dad growing up"), and the threat
+        # arrives into a life already specified. A life cannot be stock.
+        "Build each story from why THIS person was there, then the threat; keep "
+        "life, geometry, threat and ending distinct across stories.",
         "Vary the FIRST sensory channel through which danger announces itself across "
-        "the compilation — sound out of place, wrongness in plain sight, a noticed "
+        "the compilation â€” sound out of place, wrongness in plain sight, a noticed "
         "absence, changed air or temperature, or a broken pattern in routine data.",
         "Write each story's first-contact channel into its threat description. "
         "Sound-first in at most one story per compilation: three stories that all "
@@ -189,7 +215,7 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
     plan_self_audit_rules=(
         "Trade reality: does the narrator's own job give them keys, tools, "
         "diagnostics, authority or an exit that dissolves this threat? If yes, the "
-        "premise is broken — a locksmith is not trapped by a lock they just keyed.",
+        "premise is broken â€” a locksmith is not trapped by a lock they just keyed.",
         "Egress: commercial and public buildings have code-required free interior "
         "exit hardware. A character is only trapped if the plan stages a concrete "
         "reason that specific exit is unusable.",
@@ -217,34 +243,57 @@ _TRUE_HORROR_STRICT_V1 = NarrativeQualityStrategy(
         "When the narrator would, state feelings directly in that narrator's own "
         "register instead of engineering bodily show-don't-tell. At most two physical "
         "fear reactions per story, never from stock phrasing.",
-        "Vary paragraph length hard — some one sentence, some six or seven; not every "
+        "Vary paragraph length hard â€” some one sentence, some six or seven; not every "
         "concrete detail must pay off, and up to one detail per story may simply be "
         "remembered and never explained. Real memory keeps useless things.",
+        # Measured across 147 competitor scripts: median sentence 13 words, the
+        # whole distribution 10-15. Our first build ran 24 and read as an essay.
+        # The other two measured misses â€” no short-sentence bursts, no concrete
+        # anchor in the opening â€” are NOT stated here: this profile was already at
+        # 4,883 of its 5,000-character budget, and that budget is a discipline
+        # against prompt bloat, not an obstacle to route around. Those two are
+        # localized fixes a repair wave handles well, and the skeleton gate names
+        # them precisely when they are breached. Sentence length is the one that
+        # cannot be patched locally, so it is the one that earns the space.
+        "Sentences a person says aloud: about 13 words. Two ideas means two sentences.",
     ),
     dread_rules=(
         "Begin with an ordinary routine, then escalate through readable sensory and "
         "spatial changes.",
+        # Measured: the genre's first number lands 1% into the script â€” an age,
+        # a year, an hour. Dropping this rule to fit the prompt budget produced
+        # a 4,435-word draft containing no number at all.
+        "Open on an age, a year, or an hour.",
         "The protagonist must notice, choose, act, and adapt under pressure.",
-        "Preserve the narrator's strongest concrete response — flight, fight, or a "
+        "Preserve the narrator's strongest concrete response â€” flight, fight, or a "
         "deliberate choice under pressure; never passive waiting with no decision.",
         "The FIRST escalation milestone arrives through whichever sensory channel the "
-        "plan's threat implies — a sound out of place, a wrongness in plain sight, an "
+        "plan's threat implies â€” a sound out of place, a wrongness in plain sight, an "
         "absence, changed air or temperature, or a broken pattern in routine data.",
         "React to the first wrong signal before understanding it. Sound-first is one "
         "option, not a requirement.",
         "Render a human threat only through what the narrator could observe at that "
-        "distance and light — no interiority, no motive; leave one question about "
+        "distance and light â€” no interiority, no motive; leave one question about "
         "them permanently unanswered.",
-        "Spend specificity on the narrator's own world — routine, layout, schedule; "
+        "Spend specificity on the narrator's own world â€” routine, layout, schedule; "
         "keep the threat at low resolution.",
-        "Delay full recognition of danger through observation, checking, hesitation, "
-        "or a mistaken read — this is the approved replacement for the banned "
-        "self-reassurance lines.",
+        # REWRITTEN 2026-08-03 after two consecutive runs on two different
+        # topics both died at plan_audit/human_behavior, both on story_1, both
+        # with the same complaint: "a reasonable person would not wait". The
+        # old wording told the planner to delay recognition through
+        # "observation, checking, hesitation" â€” and the auditor's own contract
+        # says "no one preserves mystery over safety". The planner was obeying
+        # this rule and being punished for it. Neither side was wrong about
+        # craft; the rule was wrong about WHERE the delay comes from. In a real
+        # account nobody is slow â€” the situation simply has not declared itself
+        # yet.
+        "Delay recognition by keeping the SIGNAL ambiguous, never by slowing the "
+        "narrator. Once a signal is unmistakable they act at once.",
     ),
     ending_rules=(
         "Complete the promised escape or response, then end within two beats of the "
         "strongest image or action.",
-        "Vary ending mechanisms and avoid proof that neatly explains or validates the threat.",
+        "Vary ending mechanisms; avoid proof that neatly explains or validates the threat.",
     ),
     avoid_tropes=(
         "stock self-reassurance such as I told myself or I figured it was just",

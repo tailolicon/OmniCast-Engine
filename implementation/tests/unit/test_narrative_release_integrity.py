@@ -79,6 +79,19 @@ def _artifact_plan(**overrides) -> CompilationPlan:
     for item in _FIXTURE["stories"]:
         payload = dict(item)
         payload.update(_FIXTURE["honest_labels"][item["story_id"]])
+        # The 2026-07-17 plan predates escalation ladders; the horror profile
+        # now requires one (run 15 accepted a plan with none). A minimal
+        # present-tense ladder keeps the artifact valid under the live contract.
+        payload.setdefault("escalation_ladder", [
+            "A tap on the glass after midnight.",
+            "Another tap, this time closer to the center of the glass.",
+            "Footsteps on the porch, stopping outside the door.",
+            "The door handle turns once, hard, while he stands behind it.",
+        ])
+        payload.setdefault("already_line", "The padlock bracket was on the outside; the door had only ever locked from out there.")
+        payload.setdefault("no_way_out", "The gate that let me in was locked behind me and the office phone was dead.")
+        payload.setdefault("threat_mind", "He never tried the door while the lights were on; he was waiting for me to leave.")
+        payload.setdefault("remainder", "Nobody at the company would say who had the gate key that week.")
         payload.update(overrides.get(item["story_id"], {}))
         stories.append(NarrativeStoryPlan.model_validate(payload))
     return CompilationPlan(
@@ -1304,7 +1317,11 @@ async def test_a_same_model_challenger_veto_still_blocks_on_the_fallback_path():
 def test_the_strict_horror_profile_bounds_the_plan_stage():
     strategy = _horror_strategy()
     assert strategy.max_plan_attempts == 2, "one initial plan + one fresh concept"
-    assert strategy.max_plan_repairs == 1, "one targeted repair, then abandon"
+    # 2026-08-22: a second round is allowed ONLY when the first cleared every
+    # objection it was given and the re-audit raised new ones on the repaired
+    # fields (run 15: escape fixed, then knowledge path). A re-roll of the same
+    # objection is still a regression and still abandons.
+    assert strategy.max_plan_repairs == 3, "targeted repairs, each only if the last cleared everything"
 
 
 def _budget_pipeline(audits, *, planner_log=None, repair_story=None):

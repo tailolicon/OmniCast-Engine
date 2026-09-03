@@ -49,6 +49,15 @@ NICHE_FATAL_RULES: dict[str, list[str]] = {
         "Specific stock/fund recommendation without disclaimer → niche_compliance ≤ 2",
         "Claiming specific future price targets → niche_compliance = 0",
         "Promising viewer will achieve specific dollar outcome → niche_compliance = 0",
+        "Narrator claiming to BE a licensed advisor/CPA/planner or to have clients "
+        "('as a financial advisor…', 'my clients…') → niche_compliance = 0 "
+        "(synthetic-voice channel: credentials would be fabricated)",
+    ],
+    "finance.retirement_senior": [
+        "Same rules as finance PLUS:",
+        "'You will have $X at retirement' without showing math/assumptions → niche_compliance = 0",
+        "Social Security / IRS / Medicare number without naming source + year → niche_compliance ≤ 2",
+        "Personalized directive ('you should claim at 62') instead of educational framing → niche_compliance ≤ 2",
     ],
     "finance.retirement": [
         "Same rules as finance PLUS:",
@@ -100,14 +109,19 @@ def _get_fatal_rules(niche_key: str) -> list[str]:
 
 
 from omnicast.agents.rubrics import narrative_horror as _nh
+from omnicast.agents.rubrics import finance_explainer as _fe
 
 
-def _rubric_dims(is_narrative: bool):
+def _rubric_dims(is_narrative: bool, rubric_id: str = ""):
     """(VO_DIMS, PROD_DIMS, VO_PASS, PROD_PASS) for the genre. Narrative horror uses
-    its own story-dimension set (continuity/voice/fear/variety/originality); the
-    subtotals still land in the 70/30 buckets so routing + approval are unchanged."""
+    its own story-dimension set (continuity/voice/fear/variety/originality); a
+    niche may also name an explicit rubric (NicheConfig.rubric_id) that swaps the
+    explainer value system (e.g. YMYL accuracy-first finance). The subtotals still
+    land in the 70/30 buckets so routing + approval are unchanged."""
     if is_narrative:
         return _nh.VO_DIMS, _nh.PROD_DIMS, _nh.VO_PASS, _nh.PROD_PASS
+    if rubric_id == _fe.RUBRIC_ID:
+        return _fe.VO_DIMS, _fe.PROD_DIMS, _fe.VO_PASS, _fe.PROD_PASS
     return VO_DIMS, PROD_DIMS, VO_PASS, PROD_PASS
 
 
@@ -265,8 +279,9 @@ class CriticAgent(BaseAgent):
             f"{channel_rules}"
             "You score scripts across TWO independent groups: VO quality (70pts) and "
             "Production quality (30pts). "
-            "Be harsh but precise. A script that retains 70%+ of viewers for 10 minutes "
-            "scores 80+ total. Most scripts fail — be skeptical. "
+            "Be harsh but precise. A script that plausibly retains 70%+ of viewers "
+            "through its brief-specific target duration scores 80+ total. Most "
+            "scripts fail — be skeptical. "
             "Score based on YOUTUBE PERFORMANCE, not academic quality. "
             "ALWAYS respond with valid JSON only. No markdown, no text outside JSON."
             + self._load_active_policy_rules()
@@ -311,9 +326,17 @@ class CriticAgent(BaseAgent):
             # dims, and — for the variance re-score — average PER DIMENSION so the
             # final total ALWAYS equals sum(dimensions) and caps can't be bypassed.
             _is_narr = getattr(niche_cfg, "content_format", "explainer") == "narrative"
-            _VOD, _PRD, _VP, _PP = _rubric_dims(_is_narr)
+            _rid = getattr(niche_cfg, "rubric_id", "") or ""
+            _VOD, _PRD, _VP, _PP = _rubric_dims(_is_narr, _rid)
             _MAXES = {**_VOD, **_PRD}                       # canonical name -> max
-            _caps = _narrative_slop_signals(_canonical_spoken(draft))[1] if _is_narr else {}
+            if _is_narr:
+                _caps = _narrative_slop_signals(_canonical_spoken(draft))[1]
+            elif _rid == _fe.RUBRIC_ID:
+                # YMYL hard caps (persona ban, guarantees, personalized advice)
+                # are enforced HERE in Python, not requested from the LLM.
+                _caps = _fe.finance_slop_signals(_canonical_spoken(draft))[1]
+            else:
+                _caps = {}
 
             def _normalize(dims) -> dict:
                 got: dict[str, int] = {}
@@ -390,15 +413,28 @@ class CriticAgent(BaseAgent):
             # path now re-expands to the floor.
             _words = len(_canonical_spoken(draft).split())
             _floor = spoken_word_floor(getattr(brief, "target_duration_min", None))
-            length_ok = _words >= int(_floor * 0.9)
+            length_ok = _words >= _floor
+
+            # Hard gate 3 — FINANCE FATAL. A deterministic persona/guarantee/
+            # advice hit is a policy violation, not a scoring matter: a capped
+            # script can still total 84 and clear both group floors (measured),
+            # so the flag itself must force rejection (codex audit finding 4).
+            _fin_fatal = (not _is_narr and _rid == _fe.RUBRIC_ID
+                          and bool(_caps) and _fe.fatal_caps(_caps))
 
             _updates = {
                 "voiceover_score": vo_score,
                 "production_score": prod_score,
                 "total_score": total,
-                "approved": total >= threshold and both_groups_pass and length_ok,
+                "approved": (total >= threshold and both_groups_pass
+                             and length_ok and not _fin_fatal),
             }
             _reasons = list(feedback.rejection_reasons)
+            if _fin_fatal:
+                _reasons.append(
+                    "HARD GATE (finance YMYL, machine-verified): advisor-persona / "
+                    "guarantee / personalized-advice language — never approved; "
+                    "rewrite in educational register (sources speak, narrator explains)")
             if not length_ok:
                 _reasons.append(
                     f"HARD GATE: only {_words} spoken words (needs {_floor}+ for "
@@ -416,7 +452,7 @@ class CriticAgent(BaseAgent):
             # NEVER to the VisualDirector (which only touches visuals).
             if feedback.approved:
                 route = "approved"
-            elif (not length_ok) or (_is_narr and feedback.continuity_issues):
+            elif _fin_fatal or (not length_ok) or (_is_narr and feedback.continuity_issues):
                 route = "writer"
             elif vo_score >= _VP and prod_score < _PP:
                 route = "visual_director"
@@ -558,22 +594,37 @@ class CriticAgent(BaseAgent):
         # miss these — surface them as hard evidence with deduction orders) ────
         full_text = _canonical_spoken(draft).lower()
         total_words = len(full_text.split())
+        target_duration = max(
+            8, int(getattr(brief, "target_duration_min", 0) or 0))
+        duration_contract = (
+            f"\nTARGET DURATION: {target_duration} minutes | "
+            f"CURRENT SPOKEN WORDS: {total_words} "
+            f"(~{total_words / 150:.1f} minutes at 150 wpm)\n"
+            "Judge duration against this brief and the deterministic length "
+            "flag below. Do not call a script under-length or over-length when "
+            "the deterministic flag does not say so; critique repetition or "
+            "pacing by name instead.\n"
+        )
         _BANNED = [
             "keeps this channel going", "smash that", "don't forget to like",
             "in today's video", "let's dive in", "i publish every week",
             "i share every week",
         ]
         import re as _re
+        _is_fin = (getattr(niche_cfg, "rubric_id", "") or "") == _fe.RUBRIC_ID
         flags: list[str] = []
         for phrase in _BANNED:
             if phrase in full_text:
                 flags.append(f'banned phrase in VO: "{phrase}"')
-        if _re.search(r"\b(trial|study|journal|review|meta-analysis)\s+(found|showed|shows|confirmed)", full_text):
+        # Spoken attribution is a TRUST FEATURE in the senior-finance niche
+        # (cohort evidence: winners cite FBI/IRS/Vanguard aloud) — the
+        # read-citation-aloud tell only applies to the default explainer register.
+        if not _is_fin and _re.search(r"\b(trial|study|journal|review|meta-analysis)\s+(found|showed|shows|confirmed)", full_text):
             flags.append("citation read ALOUD in VO (show-don't-read: source belongs in visual)")
         # Length flag scales with THIS brief's target (8-12+ min), never a hard
         # word count. 10% tolerance so a near-target script isn't nagged.
         _floor = spoken_word_floor(getattr(brief, "target_duration_min", None))
-        if total_words < int(_floor * 0.9):
+        if total_words < _floor:
             _tgt = max(8, int(getattr(brief, "target_duration_min", 0) or 0))
             flags.append(f"script only {total_words} spoken words (~{total_words/150:.1f} min) — "
                          f"below the {_tgt}-minute target (needs ~{_floor}+; hard mid-roll floor is 8 min)")
@@ -632,12 +683,19 @@ class CriticAgent(BaseAgent):
         # ── (b) MECHANICAL LISTICLE (rule 10a): a counted spine instead of named
         # mechanisms ("snack one… number two… step 3"). ─────────────────────────
         if not _is_narrative:
+            # Finance carve-out: a single numbered CHECKLIST in the closing
+            # section is the channel's format (tangible-utility winner pattern
+            # + codex-audited spec) — only counting used as the BODY's spine is
+            # the AI-tell. Hits confined to the final quarter don't flag.
+            _scan_text = full_text
+            if _is_fin:
+                _scan_text = full_text[: int(len(full_text) * 0.75)]
             _list_hits = _re.findall(
                 r"\b(?:number|step|snack|tip|reason|way|point|mistake|sign|rule|secret|"
                 r"food|habit|type|phase|stage|method|trick|factor)\s+"
                 r"(?:one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b",
-                full_text)
-            _ord_hits = set(_re.findall(r"\b(first|second|third|fourth|fifth)\b", full_text))
+                _scan_text)
+            _ord_hits = set(_re.findall(r"\b(first|second|third|fourth|fifth)\b", _scan_text))
             if len(_list_hits) >= 3 or len(_ord_hits) >= 3:
                 _ex = ", ".join((_list_hits or sorted(_ord_hits))[:4])
                 flags.append(f"mechanical listicle spine detected ({_ex}…) — rule 10a: "
@@ -647,6 +705,11 @@ class CriticAgent(BaseAgent):
         if _is_narrative:
             _nflags, _ = _narrative_slop_signals(full_text)
             flags.extend(_nflags)
+        # ── FINANCE YMYL FLAGS (same scan is ENFORCED as hard caps in execute()
+        # via finance_slop_signals — here they're shown to the LLM too) ─────────
+        if _is_fin:
+            _fflags, _ = _fe.finance_slop_signals(full_text)
+            flags.extend(_fflags)
 
         if flags:
             prosody_stats += (
@@ -793,14 +856,77 @@ class CriticAgent(BaseAgent):
   "visual_fixes": ["<specific visual fix 1: Scene X — replace 'Y' with 'Z'>"]
 }}
 """
-        _dim_and_json = (
-            _nh.dimension_rubric() + "\n\n" + _nh.json_template()
-            if _is_narrative else _explainer_block
-        )
+        if _is_narrative:
+            _dim_and_json = _nh.dimension_rubric() + "\n\n" + _nh.json_template()
+        elif _is_fin:
+            _dim_and_json = _fe.dimension_rubric() + "\n\n" + _fe.json_template()
+            _narrative_note = (
+                "\n═══ CONTENT FORMAT: SENIOR-FINANCE YMYL EXPLAINER (accuracy-first rubric) ═══\n"
+                "Educational retirement-finance for 60-75 US viewers. ACCURACY IS THE PRODUCT:\n"
+                "  • Every dollar amount, percentage, threshold, age rule and deadline must be "
+                "attributed to a named source WITH a year (SSA, IRS, CFPB, FBI IC3, published "
+                "fund research). An uncited precise number is the worst failure in this format.\n"
+                "  • Spoken attribution (\"according to SSA's 2026 fact sheet\") is REQUIRED "
+                "trust-building, never an AI-tell.\n"
+                "  • The narrator is an EDITOR who reads official sources — never an advisor. "
+                "Any credential claim or 'my clients' framing is a fatal persona violation.\n"
+                "  • Educational framing only: worked examples (\"for this example retiree…\"), "
+                "never personal directives (\"you should claim at…\").\n"
+                "  • Register: plain English at a normal adult pace (~180 wpm), short sentences, "
+                "jargon defined on first use, zero condescension toward older viewers.\n")
+        else:
+            _dim_and_json = _explainer_block
+        _angle_note = ""
+        if getattr(draft, "editorial_angle", None):
+            _a = draft.editorial_angle
+            _angle_note = (
+                "\n═══ PRE-WRITING EDITORIAL CONTRACT ═══\n"
+                f"THESIS: {_a.get('thesis', '')}\n"
+                f"PUSHES AGAINST: {_a.get('against', '')}\n"
+                f"FAIR COUNTERPOINT: {_a.get('counterpoint', '')}\n"
+                f"NARRATOR ATTITUDE: {_a.get('narrator_attitude', '')}\n"
+                f"PLANNED REACTION BEATS: {' | '.join(_a.get('reaction_beats', []))}\n"
+                f"WALK-AWAY: {_a.get('walk_away', '')}\n"
+                "Judge whether the script actually argues this thesis, treats "
+                "the counterpoint fairly, and places reactions next to the facts "
+                "they interpret. Merely repeating the vocabulary is not delivery.\n")
+
+        _evidence_note = ""
+        if _is_fin and getattr(brief, "evidence_points", None):
+            _verified_rows = "\n".join(
+                "- {evidence_id}: {claim}; VALUE={value}; SOURCE={source_name}; "
+                "AS_OF={as_of}; URL={source_url}".format(**{
+                    "evidence_id": item.get("evidence_id", ""),
+                    "claim": item.get("claim", ""),
+                    "value": item.get("value", "") or "(qualitative)",
+                    "source_name": item.get("source_name", ""),
+                    "as_of": item.get("as_of", ""),
+                    "source_url": item.get("source_url", ""),
+                })
+                for item in brief.evidence_points
+            )
+            _evidence_note = (
+                "\n═══ VERIFIED EVIDENCE — FACTUAL CEILING ═══\n"
+                + _verified_rows
+                + "\nTreat these entries as the complete factual ceiling for "
+                  "this draft. Penalize any precise figure, mechanism, prevalence "
+                  "claim, historical claim, automatic process, behavioral claim, "
+                  "or unsupported causal story that goes beyond them. A source "
+                  "name in a visual does not make an unsupported claim true. "
+                  "Hypothetical inputs must be explicitly labelled and must not "
+                  "masquerade as sourced rule values. A human-anchor story may "
+                  "add ordinary illustrative context, but it may not invent an "
+                  "agency letter/action, payment timing, tax or Medicare effect, "
+                  "spousal-benefit effect, or any other factual consequence "
+                  "outside these entries.\n")
+
         prompt = f"""Review this script for: {brief.title}
 Niche: {niche_key} | Market: {brief.market.value}
 Variant: {draft.variant_id}
+{duration_contract}
 {_narrative_note}
+{_angle_note}
+{_evidence_note}
 ═══ SHOOTING SCRIPT (scene-level detail) ═══
 {shooting_script}
 {pacing_warn}

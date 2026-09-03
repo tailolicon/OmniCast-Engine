@@ -10,9 +10,8 @@ from enum import Enum
 
 from pydantic import Field, model_validator
 
+from omnicast.models.enums import Market, Niche, TopicSource
 from omnicast.models.schemas import OmnicastSchema
-from omnicast.models.enums import Niche, Market, TopicSource
-
 
 # ── Spoken-length calibration (shared: Writer floor, Critic length flag, media gate) ──
 # Video length is DRIVEN BY the topic/target (8-12+ min), never a hard-coded word
@@ -78,6 +77,10 @@ class TopicBrief(OmnicastSchema):
     source: TopicSource = TopicSource.YOUTUBE_COMPETITOR
     angle: str = ""
     key_points: list[str] = Field(default_factory=list)
+    # Source-backed claims verified before a YMYL EditorialAngle is planned.
+    # Dict shape is kept JSON-friendly for CLI/API boundaries:
+    # evidence_id, claim, value, source_name, source_url, as_of, quote.
+    evidence_points: list[dict[str, str]] = Field(default_factory=list)
     source_urls: list[str] = Field(default_factory=list)
     target_duration_min: int = 10
     brand_voice: str = ""
@@ -91,6 +94,55 @@ class TopicBrief(OmnicastSchema):
     # Channel content memory — prevents duplicate topics, enables accurate "Next:" teasers
     topics_done: list[str] = Field(default_factory=list)   # titles already published/scripted
     next_topic: str = ""                                    # next queued topic (for outro teaser)
+    # Fail-closed policy for competitor intelligence. False (default): if the
+    # learned playbook is uncontrolled, stale or unreadable, the writer skips it
+    # and logs why. True: the channel would rather stop than write from patterns
+    # that were never verified against a control group.
+    # This has to be a declared field — the writer previously read it with
+    # getattr(), and OmnicastSchema drops unknown keys, so the flag could never
+    # be set and the fail-closed branch was unreachable.
+    competitor_intel_required: bool = False
+    # Competitor-intel scope (strategic review §4.2). The learner writes under
+    # archetype|audience|format|market|pillar; the writer has to be able to
+    # build the SAME key or it walks straight past the row learned for this
+    # channel and borrows the niche-wide one — the exact failure §4.2 names.
+    #
+    # These are declared fields for the same reason `competitor_intel_required`
+    # is: `OmnicastSchema` drops unknown keys, so reading them off the brief
+    # with getattr() silently yields "" forever and the mismatch is invisible.
+    intel_archetype: str = ""
+    audience_segment: str = ""
+    content_format: str = ""
+    pillar_id: str = ""
+
+    @classmethod
+    def scope_fields_from_channel(cls, channel, *, title: str = "",
+                                  description: str = "",
+                                  pillar_id: str = "") -> dict:
+        """The scope fields a brief builder must copy off the channel.
+
+        `pillar_id` is the fourth dimension and the one most easily lost: the
+        scorer classifies it, but a builder that does not carry it leaves the
+        pillar as `*` all the way to the writer, so §4.2's finest scope level
+        never actually exists. Pass the scorer's answer when there is one;
+        otherwise pass the topic text and it is classified here from the
+        channel's own declared pillars — the same deterministic function, so
+        the two paths cannot disagree."""
+        resolved = (pillar_id or "").strip()
+        if not resolved and (title or description):
+            from omnicast.analytics.pillars import classify_pillar, load_pillars
+
+            pillars = load_pillars(getattr(channel, "content_pillars", None))
+            if pillars:
+                match = classify_pillar(title, description, pillars)
+                resolved = match.pillar_id if match.is_classified else ""
+
+        return {
+            "intel_archetype": getattr(channel, "intel_archetype", "") or "",
+            "audience_segment": getattr(channel, "audience_segment", "") or "",
+            "content_format": getattr(channel, "content_format", "") or "",
+            "pillar_id": resolved,
+        }
 
 
 class ScriptScene(OmnicastSchema):
@@ -152,6 +204,9 @@ class ScriptDraft(OmnicastSchema):
     estimated_duration_seconds: int = 0
     word_count: int = 0
     thinking_notes: str = ""
+    # The pre-writing argument contract. Stored on the draft so the critic and
+    # release artifact judge the same thesis the Writer was asked to deliver.
+    editorial_angle: dict[str, object] = Field(default_factory=dict)
     version: int = 1
 
 

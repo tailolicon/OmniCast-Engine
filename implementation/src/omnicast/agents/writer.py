@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import threading
+
 import structlog
 
 from omnicast.agents.base import BaseAgent
@@ -12,6 +15,7 @@ from omnicast.models.script import TopicBrief, ScriptDraft, CriticFeedback, Scri
 from omnicast.kb.patterns import PatternStore
 from omnicast.shared.errors import AgentError
 from omnicast.config.niches import NicheConfig, get_niche_config
+from omnicast.agents.editorial_angle import EditorialAngle, EditorialAnglePlanner
 
 logger = structlog.get_logger()
 
@@ -82,6 +86,129 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
 
 # Backward compatibility alias
 WRITER_SYSTEM = WRITER_SYSTEM_FINANCE
+
+
+# `_build_generation_prompt` is synchronous but is called from the async
+# generate loop once per variant — three sqlite reads per script, each pulling a
+# row that can carry hundreds of KB of playbook text, all on the event loop.
+# Making the prompt builder async is a wider change than this pass; a short TTL
+# collapses the repeats, which is where the cost actually was.
+_INTEL_CACHE_TTL_SECONDS = 60.0
+_INTEL_CACHE: dict[str, tuple[float, object]] = {}
+_INTEL_CACHE_LOCK = threading.Lock()
+
+
+def invalidate_competitor_intel_cache(scope: str | None = None) -> None:
+    """Drop cached rows after a learning run rewrites them.
+
+    Without this, discovery calling `learn_for_channel` immediately before
+    production — which `server.py` does — leaves the writer serving the PREVIOUS
+    playbook (or, worse, the cached absence of one) for the rest of the TTL."""
+    with _INTEL_CACHE_LOCK:
+        if scope is None:
+            _INTEL_CACHE.clear()
+        else:
+            _INTEL_CACHE.pop(scope, None)
+
+
+def _load_competitor_intel(scope: str, *, ttl: float = _INTEL_CACHE_TTL_SECONDS):
+    """Blocking vault read, isolated so callers can see it is blocking."""
+    import time as _time
+
+    now = _time.monotonic()
+    with _INTEL_CACHE_LOCK:
+        cached = _INTEL_CACHE.get(scope)
+        if cached and now - cached[0] < ttl:
+            return cached[1]
+
+    from pathlib import Path as _P
+
+    from omnicast.vault import db as _vdb
+    _VDB = _P(__file__).resolve().parents[3] / "output" / "vault.db"
+    _vdb.init_db(_VDB)
+    row = _vdb.get_competitor_intel(scope, _VDB)
+    if row is None:
+        # NEVER cache an absence. A run that learns intel seconds later would
+        # otherwise keep seeing "nothing learned yet" — and on a channel with
+        # competitor_intel_required=True that is a hard generation failure on a
+        # niche whose intel was just written.
+        return None
+    with _INTEL_CACHE_LOCK:
+        _INTEL_CACHE[scope] = (_time.monotonic(), row)
+    return row
+
+
+def resolve_competitor_playbook(brief, artifact: str = "script_playbook"):
+    """Gate + policy for one brief, as a testable unit.
+
+    Lives at module level on purpose. While this logic was inline in
+    `_build_generation_prompt`, an audit reverted BOTH halves of it — the
+    policy read and the load-failure branch — and the entire test suite stayed
+    green, because nothing exercised the prompt builder's gate. A rule nothing
+    can fail is not a rule."""
+    from omnicast.analytics.intel_gate import (
+        STATUS_ERROR,
+        CompetitorIntelRequired,
+        IntelDecision,
+        resolve_for_writer,
+    )
+
+    # §4.2: intel is written under a channel/audience/format/market/pillar key.
+    # Reading only the niche key would find nothing on every scoped row; reading
+    # ONLY the specific key would find nothing on a channel's first run while a
+    # usable niche-level playbook sat one row away. So walk the chain, and
+    # record which level answered — a borrowed niche-wide playbook is a
+    # reasonable default and a terrible thing to apply silently.
+    from omnicast.analytics.intel_scope import describe_level, fallback_chain
+
+    channel = getattr(brief, "channel", None) or brief
+    chain = fallback_chain(channel, pillar_id=getattr(brief, "pillar_id", ""))
+    scope = chain[0][1]
+    required = bool(brief.competitor_intel_required)
+    try:
+        intel = None
+        matched_level = ""
+        for level, key in chain:
+            intel = _load_competitor_intel(key)
+            if intel is not None:
+                scope, matched_level = key, level
+                break
+        if intel is not None and matched_level != "exact":
+            logger.info("competitor intel borrowed from a broader scope",
+                        scope=scope, level=matched_level,
+                        detail=describe_level(matched_level))
+    except Exception as exc:
+        # Load failure is its own outcome. Passing None to the gate would report
+        # it as STATUS_MISSING ("nothing learned yet"), a different fact that
+        # would then be counted as one in metrics.
+        decision = IntelDecision(STATUS_ERROR, reason=f"vault read failed: {exc}")
+        logger.warning("competitor intel rejected", scope=scope,
+                       artifact=artifact, **decision.as_dict())
+        if required:
+            raise CompetitorIntelRequired(
+                f"{scope} requires competitor intel but the vault could not be "
+                f"read: {exc}") from exc
+        return decision
+
+    return resolve_for_writer(intel, artifact=artifact, required=required,
+                              scope=scope)
+
+
+def production_competitor_rules(text: str) -> str:
+    """Return only the independently-proven production steering block.
+
+    Vault rows historically concatenated an older learner playbook with a
+    measured craft block, then attached the measured run's provenance to the
+    whole string. This defensive boundary prevents old qualitative prose from
+    being executed even before every existing row has been republished.
+    """
+    value = (text or "").strip()
+    marker = "=== MEASURED CRAFT (caption forensics, cohort-derived) ==="
+    if marker in value:
+        value = value.split(marker, 1)[1].strip()
+    if not value.startswith("PRODUCTION-ELIGIBLE COMPETITOR CRAFT RULES"):
+        return ""
+    return value
 
 
 def _long_output_llm(llm) -> bool:
@@ -209,18 +336,85 @@ Every word must sound like it comes from THIS specific channel identity, not a g
             return self._build_narrative_system_prompt(
                 niche_cfg, channel_identity_block, audience_block,
                 effective_hook_format)
+        if ((getattr(niche_cfg, "rubric_id", "") or "")
+                == "finance_explainer_v1"):
+            return self._build_finance_system_prompt(
+                niche_cfg, channel_identity_block, audience_block)
+
+        # WRITTEN TO BE SPOKEN. The first YMYL build was accurate, sourced and
+        # lifeless — an essay read aloud. The operator's verdict: it must feel
+        # like a friend telling you something. These six mechanics are the
+        # difference, and the critic scores them (spoken_presence, 12pts).
+        spoken_block = f"""
+{'=' * 74}
+WRITE IT TO BE SPOKEN, BY SOMEONE WITH A SELF (scored: spoken_presence)
+{'=' * 74}
+Correct, sourced and voiceless is a FAILING script on this channel. Six
+mechanics — use all six, spread through the whole video, never in a clump:
+
+1. TRAVEL TOGETHER. "we / let's / our example" — you and the viewer walking
+   through it, not you lecturing at them.
+     ✗ "Viewers should subtract the limit from total wages."
+     ✓ "Let's do this one together. Take the wages, take the limit…"
+2. REACT TO YOUR OWN FACTS. Never state a big number and walk away — respond
+   to it the way a person would, THEN continue. This is the single strongest
+   fix for the AI-slop feeling.
+     ✗ "Social Security holds back $7,760."
+     ✓ "Social Security holds back $7,760. Read that again — that's real money,
+        already promised to you."
+3. INVITE THEM IN. Imperatives that make the viewer do something in their head:
+   "picture the booth", "look at this number for a second", "grab your last
+   statement", "try this".
+4. USE YOUR MOUTH, NOT YOUR PEN. Contractions everywhere. Short fragments. Real
+   spoken connectives ("so", "but here's the thing", "honestly", "and yes").
+   BANNED: essay register — long balanced clauses, participial stacking, and
+   em-dash pile-ups. Use at most ONE em-dash per ~120 words; prefer a full stop.
+     ✗ "The rule, having originated in the Depression era, applies broadly —
+        catching retirees who assume otherwise — and rarely gets explained."
+     ✓ "This rule is from the Depression. It's still here. And almost nobody
+        explains it properly."
+5. SAY WHERE WE ARE. Speak the transitions out loud at every section change:
+   "that's the history — now the part that costs money", "so far so good. Next
+   question:".
+6. ONE FELT METAPHOR. Not just a structural analogy — something the viewer can
+   FEEL (a scar that still aches, a door that quietly closes), used at least
+   twice so it lands.
+
+Keep every number, source and date exactly as accurate as before. Personality
+is in the DELIVERY, never in the facts.
+{'=' * 74}
+"""
+
+        # COLD OPEN vs greeting: channels whose critic penalises greeting
+        # openers (finance/YMYL) must not be TOLD to greet — that contradiction
+        # cost a full revision cycle once. The winner cohort cold-opens on the
+        # consequence; the greeting formula stays for niches that want it.
+        _cold_open = (getattr(niche_cfg, "rubric_id", "") or "") == "finance_explainer_v1"
+        if _cold_open:
+            hook_formula_name = "COLD OPEN (no greeting — the critic penalises one)"
+            greeting_rule = (
+                "   NO GREETING, NO CHANNEL INTRO. The video opens on a PERSON IN A\n"
+                "     SITUATION with real stakes — a specific human, a specific number,\n"
+                "     something at risk. Never open on a chart, a definition, or a\n"
+                "     welcome; charts land AFTER the stake is felt.\n")
+            hook_position = "The VERY FIRST line"
+        else:
+            hook_formula_name = "G.H.P Formula"
+            greeting_rule = (
+                "   G (Greeting): The VERY FIRST scene opens with a short, warm spoken\n"
+                "     greeting (≤8 words) then flows STRAIGHT into the topic — like a real\n"
+                "     host. E.g. \"Hey, so glad you're here — today we're tackling [topic].\"\n"
+                "     Friendly, natural, NOT corporate.\n")
+            hook_position = "IMMEDIATELY after the greeting"
 
         return f"""You are a professional YouTube scriptwriter specializing in {niche_cfg.insider_angle}.
+{spoken_block}
 {channel_identity_block}{audience_block}
 
 YOUR SCRIPTS MUST FOLLOW THESE RULES:
 
-1. HOOK — G.H.P Formula (first 20 seconds), in THIS order:
-   G (Greeting): The VERY FIRST scene opens with a short, warm spoken greeting (≤8 words)
-     then flows STRAIGHT into the topic — like a real host. E.g. "Hey, so glad you're here —
-     today we're tackling [topic]." Friendly, natural, NOT corporate. (This greeting is the
-     channel's on-camera welcome; write a fresh natural one each video.)
-   H (Hook): IMMEDIATELY after the greeting, the single most striking line of the whole video
+1. HOOK — {hook_formula_name} (first 20 seconds), in THIS order:
+{greeting_rule}   H (Hook): {hook_position}, the single most striking line of the whole video
      — pain-first, specific, a curiosity gap they cannot ignore. THIS exact line is also used
      as the video TITLE, so make it punchy and self-contained (≤70 chars ideal).
      Format/energy: {effective_hook_format}
@@ -356,6 +550,138 @@ YOUR SCRIPTS MUST FOLLOW THESE RULES:
 
 UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insider knowledge — something a viewer could not find in 5 minutes of Googling.""" + self._load_active_policy_rules()
 
+    def _build_finance_system_prompt(
+        self,
+        niche_cfg: NicheConfig,
+        channel_identity_block: str,
+        audience_block: str,
+    ) -> str:
+        """One coherent contract for the senior-finance flagship.
+
+        The generic explainer prompt contains health examples, presenter shots,
+        citation-hiding, mandatory SFX and fixed open-loop positions. All five
+        contradict this channel's accuracy-first, faceless document-desk format.
+        Keeping a dedicated prompt is safer than accumulating carve-outs.
+        """
+        return f"""You are the senior script editor for a faceless, accuracy-first
+retirement-finance YouTube channel. The viewer is a smart older adult, not a
+beginner to patronize and not a prospect to sell.
+{channel_identity_block}{audience_block}
+
+EDITORIAL CONTRACT
+- The pre-writing EditorialAngle is binding: one thesis, one opposing belief,
+  one fair counterpoint, planned reactions tied to specific facts, and one
+  walk-away. An accurate topic summary with no argument is a failed script.
+- The narrator may be curious, dryly amused, skeptical, or irritated by a rule.
+  Never invent biography, clients, credentials, interviews, or first-hand
+  professional experience to manufacture authority.
+- Distinguish FACT → REACTION → INTERPRETATION. A reaction follows the exact
+  fact it responds to and changes what the viewer understands. Generic
+  "honestly/that's shocking" filler earns nothing.
+- Use the one planned felt metaphor and its callback. Do not force a metaphor
+  into every section.
+
+TWO LANGUAGE LANES (this is a license, not a warning)
+- FACT lane: every specific number, date, threshold, named rule, or named
+  entity comes from the brief's evidence, sourced aloud once. This lane is
+  audited by the fact ledger.
+- JUDGMENT lane: you are an advisor-friend, not a wire service. You are
+  EXPECTED to hold and voice opinions, interpretations, and professional
+  common knowledge — spoken as your own read, never dressed as statistics.
+  "My read: bills that sit in committee this long usually stay there" is
+  good judgment; "87% of bills die in committee" without a source is a fact
+  violation. Take at least one position a reasonable viewer could argue
+  with, and allow yourself one moment of play (wit, a coined metaphor, a
+  short digression that serves the story). A stiff, opinion-free bulletin
+  is a FAILED script on this channel even when every fact is clean.
+- Common-knowledge judgment that needs no ledger entry (keep it numberless):
+  how the legislative process usually goes, that agency prose is hard to
+  read, that headlines oversell, that paperwork confuses people.
+- Recurring channel metaphors and phrases ("the desk", a coined image from a
+  past video) are brand assets — reuse them across videos freely; that is
+  identity, not repetition.
+
+EVIDENCE AND YMYL
+- In the FACT lane, use only facts supplied in the brief or verified by a
+  traceable primary source. Never invent a percentage, dollar amount,
+  deadline, study, form, or current-year rule.
+- For every load-bearing figure or rule, name the primary source and rule year aloud
+  once in natural speech; show the exact document, date, and relevant line on
+  screen. Vary the phrasing so sourcing does not become a verbal tic.
+- If the chosen structure uses an illustrative example, mark its backstage
+  section heading as EXAMPLE so evidence tooling can distinguish inputs from
+  rules. Spoken framing is a creative choice, not a fixed phrase. Never claim
+  the example is a real client, witnessed case, testimonial, or proof when it
+  is not.
+- Educational framing only. Explain choices and trade-offs; never tell the
+  viewer personally to claim, buy, sell, withdraw, convert, or file.
+
+STRUCTURE AND DELIVERY (skeleton distilled from the 19-video winner/control
+cohort — docs/FLAGSHIP_CompetitorDossier_SeniorFinance.md §7; craft guidance
+for the writing, not a critic checklist)
+- COLD OPEN. No greeting, channel intro, fake emergency, or guaranteed loss.
+  Begin with a concrete human consequence supported by the supplied evidence,
+  or with the viewer's own questions in their own words. When the video reads
+  an official document, spec the artifact early (issuer, year, page count if
+  striking) — authority is borrowed from what is read, never from the narrator.
+- Schedule at most ONE held-back reveal out loud ("I'll get there near the
+  end") and pay it off at roughly the 55-80% mark with an explicit callback.
+  A scheduled wait the narrator names is retention; a vague tease is not.
+- EMPATHY BEFORE MATH, every time. Legitimize the misconception or fear as
+  reasonable BEFORE correcting it ("it does make sense to wonder..."), so the
+  correction lands as relief. Never instruct the viewer to set a feeling
+  aside. The SYSTEM is the villain; the viewer never is.
+- Let the EditorialAngle's driving questions create 4-6 causal chapters. Do not
+  impose a listicle or two mandatory "open loops." Curiosity comes from an
+  unresolved real question, and every promise is paid off promptly.
+- FORWARD MOTION ONLY: each chapter adds a new fact, consequence, opinion, or
+  audience segment — one honest both-things-are-true beat per tension, stated
+  cleanly, then move. When in doubt between restating a point and riffing on
+  it with a fresh reaction, riff.
+- OPINION EARLY: give the viewer a provisional read near the front (the way a
+  friend would), then complicate it as the layers arrive. Withholding every
+  verdict until the end reads as a device, not a conversation.
+- METER THE NUMBERS: after at most two raw figures, ground them in a worked
+  example — prefer the source document's own example when it has one (the
+  agency's arithmetic is self-authorizing). Close dense chapters with a
+  two-sentence staccato verdict; keep long flowing sentences for stories.
+- Myth-busting is welcome wherever the evidence supports a clean "no" —
+  each bust should end in relief, not a new fear. Fear may appear at most
+  once, and the very next beat must hand the viewer the fix or the lever.
+- When reading a document, DISAGREE with it once — name something the page
+  fails to show or say (a missing table, an unquantified promise). Critique
+  converts the narrator from messenger into analyst without any credential.
+- If the evidence pack contains adjacent in-system rules (spousal, survivor,
+  family, claiming-age interactions), CHAIN them — one rule's output is the
+  next rule's input. Never invent an adjacent effect the pack does not supply.
+- Spoken English: contractions, clean short sentences, varied cadence. Do not
+  stuff "let's", rhetorical questions, or reaction phrases to satisfy a quota.
+- KICKER, in order, kept tight (roughly five short spoken sentences): staccato
+  recap of the machine; one earned spoken subscribe invitation naming the channel
+  promise the viewer just experienced; optionally ONE wry, self-aware
+  like/algorithm aside (honest and brief — "mildly embarrassing to ask, but
+  true" — never generic algorithm begging, never a second subscribe); a comment question the
+  viewer can answer in one sentence, tied to this video's thesis, plus the
+  honest "I read every one"; then the final audience question as the last
+  spoken line. Never invent a personal relationship or authority to earn any
+  of it. Any next-video prompt is visual only.
+
+FACELESS VISUAL CONTRACT
+- Every scene uses one of: real-world licensed footage, an official document
+  close-up, a deterministic chart built from the fact ledger, or restrained
+  on-screen text. Never request a presenter, talking head, fabricated expert,
+  AI likeness, or AI-drawn financial chart.
+- SFX defaults to null. Silence and a clean cut are valid. Do not add whooshes,
+  alarms, cash registers, or novelty sounds unless a later art-direction stage
+  explicitly opts in.
+- Scene objects contain voiceover, a concrete visual instruction, pace,
+  deliberate pause, and exact emphasis words. The visual must clarify this
+  line, not merely match one keyword.
+
+Return only the requested script format. Accuracy and editorial integrity take
+priority over hype, volume of tactics, or imitation of a competitor.
+""" + self._load_active_policy_rules()
+
     async def execute(
         self,
         brief: TopicBrief,
@@ -364,6 +690,7 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
         niche_cfg: NicheConfig | None = None,
         audience: dict | None = None,
         channel_brand: dict | None = None,
+        editorial_angle: EditorialAngle | None = None,
     ) -> list[ScriptDraft]:
         """Generate script variants from brief.
 
@@ -377,6 +704,15 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
         # Get niche config if not provided
         if niche_cfg is None:
             niche_cfg = get_niche_config(brief.niche.value, brief.sub_niche)
+
+        # Explainer prose defaults to "accurate bulletin" unless the argument
+        # is decided before drafting. Plan ONCE and share the same contract
+        # across variants; otherwise each variant changes both rhetoric and
+        # thesis, so comparison says nothing. Narrative channels already have
+        # their own typed planner and do not use this layer.
+        if ((getattr(niche_cfg, "rubric_id", "") or "")
+                == "finance_explainer_v1" and editorial_angle is None):
+            editorial_angle = await EditorialAnglePlanner(self._llm).execute(brief)
 
         # Build system prompt: NicheConfig base + channel overrides on top
         system = self._build_system_prompt(niche_cfg, audience=audience, channel_brand=channel_brand)
@@ -401,7 +737,14 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
 
         for i, angle in enumerate(ANGLES[:num_variants]):
             variant_id = chr(ord("A") + i)
-            prompt = self._build_generation_prompt(brief, angle, patterns, niche_cfg)
+            # Warm the intel cache OFF the loop before the (synchronous) prompt
+            # builder reads it. Otherwise `_build_generation_prompt` opens
+            # sqlite on the event loop once per variant. The TTL cache alone
+            # only reduced how often that happened; this moves it.
+            await asyncio.to_thread(_load_competitor_intel, brief.niche.value.lower())
+            prompt = self._build_generation_prompt(
+                brief, angle, patterns, niche_cfg,
+                editorial_angle=editorial_angle)
 
             try:
                 response = await self.call_llm(
@@ -409,12 +752,20 @@ UNIQUE INSIDER ANGLE: Every script must include one insight that feels like insi
                     max_tokens=_gen_tokens,
                 )
                 draft = self._parse_draft(response.content, variant_id, brief.title)
+                if editorial_angle is not None:
+                    draft = draft.model_copy(update={
+                        "editorial_angle": editorial_angle.as_dict()})
                 # One-pass DeepSeek tops out ~1000 words; a single video needs 8+ min
                 # for mid-roll ads. If short, run an expand pass that ADDS scenes to
                 # reach the word floor (keeps the ≤25-word/scene caption discipline).
                 draft = await self._ensure_length(
                     draft, brief, system, response.content, variant_id,
-                    narrative=is_narrative)
+                    narrative=is_narrative,
+                    finance=((getattr(niche_cfg, "rubric_id", "") or "")
+                             == "finance_explainer_v1"))
+                if ((getattr(niche_cfg, "rubric_id", "") or "")
+                        == "finance_explainer_v1"):
+                    draft = self._normalize_finance_prosody(draft)
                 # Narrative CONTINUITY SELF-CHECK — the #1 reason horror scripts get
                 # capped at 65 is a hook↔body / timeline / prop contradiction the
                 # writer didn't notice. One focused pass finds + fixes them BEFORE
@@ -528,6 +879,117 @@ CURRENT SCRIPT:
         ] + list(draft.outro_scenes or [])
         return sum(len(sc.voiceover.split()) for sc in scenes)
 
+    def _normalize_finance_prosody(
+        self,
+        draft: ScriptDraft,
+    ) -> ScriptDraft:
+        """Keep deliberate silence rare enough to retain its meaning.
+
+        Models tend to mark every transition as dramatic. The measured house
+        benchmark is roughly 3-6 pauses per ten minutes, so preserve only the
+        most load-bearing beats and let the remaining explanation flow.
+        """
+        locations: list[tuple[str, int, int | None, ScriptScene]] = []
+        for index, scene in enumerate(draft.hook_scenes or []):
+            locations.append(("hook", index, None, scene))
+        for segment_index, segment in enumerate(draft.segments):
+            for scene_index, scene in enumerate(segment.scenes or []):
+                locations.append(
+                    ("segment", scene_index, segment_index, scene))
+        for index, scene in enumerate(draft.outro_scenes or []):
+            locations.append(("outro", index, None, scene))
+
+        words = sum(len(scene.voiceover.split()) for *_, scene in locations)
+        estimated_minutes = max(1.0, words / 150.0)
+        pause_cap = max(4, round(estimated_minutes * 0.6))
+        paused = [
+            item for item in locations
+            if int(getattr(item[3], "pause_after_ms", 0) or 0) >= 400
+        ]
+
+        def finish(current: ScriptDraft) -> ScriptDraft:
+            serialized = self._draft_to_script_text(current)
+            return current.model_copy(update={
+                "word_count": words,
+                "estimated_duration_seconds": round(estimated_minutes * 60),
+                "raw_content": serialized,
+            })
+
+        if len(paused) <= pause_cap:
+            return finish(draft)
+
+        def importance(
+            item: tuple[str, int, int | None, ScriptScene],
+        ) -> int:
+            location, scene_index, segment_index, scene = item
+            text = scene.voiceover.strip()
+            score = int(scene.pause_after_ms or 0)
+            if text.endswith("?"):
+                score += 3000
+            if re.search(
+                r"(?:\$|\b\d[\d,.]*\s*(?:%|percent)\b)",
+                text,
+                re.IGNORECASE,
+            ):
+                score += 2200
+            if re.search(
+                r"\b(?:but|except|instead|here's the part|that means|"
+                r"the catch|the turn)\b",
+                text,
+                re.IGNORECASE,
+            ):
+                score += 1400
+            if location in {"hook", "outro"}:
+                score += 900
+            if location == "segment" and segment_index is not None:
+                segment = draft.segments[segment_index]
+                if scene_index == len(segment.scenes or []) - 1:
+                    score += 600
+            return score
+
+        keep_ids = {
+            id(item[3])
+            for item in sorted(
+                paused, key=importance, reverse=True)[:pause_cap]
+        }
+
+        def normalize_scene(scene: ScriptScene) -> ScriptScene:
+            if (
+                int(getattr(scene, "pause_after_ms", 0) or 0) >= 400
+                and id(scene) not in keep_ids
+            ):
+                return scene.model_copy(update={"pause_after_ms": 0})
+            return scene
+
+        hook_scenes = [
+            normalize_scene(scene) for scene in draft.hook_scenes]
+        segments = []
+        for segment in draft.segments:
+            scenes = [normalize_scene(scene) for scene in segment.scenes]
+            segments.append(segment.model_copy(update={
+                "scenes": scenes,
+                "content": " ".join(scene.voiceover for scene in scenes),
+                "estimated_duration_seconds": max(
+                    1,
+                    round(
+                        sum(len(scene.voiceover.split()) for scene in scenes)
+                        / 150 * 60
+                    ),
+                ),
+            }))
+        outro_scenes = [
+            normalize_scene(scene) for scene in draft.outro_scenes]
+        normalized = draft.model_copy(update={
+            "hook_scenes": hook_scenes,
+            "hook": " ".join(
+                scene.voiceover for scene in hook_scenes),
+            "segments": segments,
+            "outro_scenes": outro_scenes,
+            "outro": " ".join(
+                scene.voiceover for scene in outro_scenes),
+        })
+        return finish(normalized)
+
     @staticmethod
     def _parse_json_object(text: str) -> dict:
         """Extract the first JSON object from an LLM response."""
@@ -618,6 +1080,7 @@ CURRENT SCRIPT:
         floor: int,
         previous_script: str,
         narrative: bool,
+        finance: bool = False,
     ) -> str:
         """Build a format-aware expansion prompt.
 
@@ -648,6 +1111,38 @@ CURRENT SCRIPT:
                 "unchanged scenes, commentary, markdown, HOOK, or OUTRO.\n\n"
                 f"CURRENT SCRIPT:\n{previous_script}"
             )
+        if finance or getattr(draft, "editorial_angle", None):
+            thesis = str(
+                (getattr(draft, "editorial_angle", None) or {}).get("thesis")
+                or "Preserve the script's current evidence-backed thesis."
+            )
+            return (
+                f"The faceless senior-finance script below is only {words} spoken "
+                f"words; add {need}-{need + 100} words without changing its "
+                f"editorial claim: {thesis!r}.\n"
+                "Insert scenes that deepen material ALREADY present: unpack the "
+                "mechanism step by step and deepen the existing example without "
+                "turning its backstage label into legalistic spoken dialogue, "
+                "give the fair counterpoint already present its strongest version, "
+                "and make an existing fact's practical meaning clearer.\n"
+                "Do NOT add data points, figures, dates, forms, sources, laws, "
+                "personal anecdotes, clients, credentials, new promises, new open "
+                "loops, or a second metaphor. Do not weaken or replace the thesis. "
+                "Every new visual remains faceless (real footage, primary document, "
+                "deterministic chart, restrained text). SFX stays null. Keep VO "
+                "10-18 words where possible and never above 25. Assign pace, "
+                "pause_after_ms and emphasis by meaning on new scenes.\n"
+                "Return exactly one JSON object with this schema:\n"
+                '{"insertions":[{"segment_index":1,"after_scene_index":4,'
+                '"scenes":[{"vo":"...","visual":"specific filmable subject",'
+                '"sfx":null,"pace":"slow|normal|fast","pause_after_ms":0,'
+                '"emphasis":[]}]}]}\n'
+                "segment_index is the printed SEGMENT number. after_scene_index "
+                "is ZERO-BASED in the ORIGINAL segment (-1 means prepend). "
+                "Distribute new scenes across existing segments. Do NOT output "
+                "the full script, unchanged scenes, HOOK, OUTRO, markdown, or "
+                "commentary. Do not alter the ending question.\n\n"
+                f"CURRENT SCRIPT:\n{previous_script}")
         return (
             f"The script below is only {words} spoken words (~{words/150:.0f} min) — too "
             f"short for a {target_min}-minute video. EXPAND it to at least {floor} "
@@ -662,7 +1157,8 @@ CURRENT SCRIPT:
         )
 
     async def _ensure_length(self, draft, brief, system, prev_json, variant_id,
-                             max_passes: int = 4, narrative: bool = False):
+                             max_passes: int = 4, narrative: bool = False,
+                             finance: bool = False):
         """Expand a too-short draft until it clears the target length (scaled to
         this brief's target_duration_min, never below the 8-min mid-roll floor).
         Adds NEW scenes per segment; never lengthens individual vo lines."""
@@ -676,7 +1172,7 @@ CURRENT SCRIPT:
                 return draft
             expand = self._build_expansion_prompt(
                 draft, brief, words=words, floor=floor,
-                previous_script=prev_json, narrative=True)
+                previous_script=prev_json, narrative=True, finance=False)
             try:
                 need = max(1, floor - words)
                 resp = await self.call_llm(
@@ -702,13 +1198,69 @@ CURRENT SCRIPT:
                     variant_id=variant_id, error=str(exc))
             return draft
 
+        if finance or getattr(draft, "editorial_angle", None):
+            # Finance expansion is an insertion patch, never four whole-script
+            # rewrites. A live 15-minute run spent ~30 minutes and >170k
+            # provider output tokens re-emitting the same storyboard, then
+            # still returned under-length. One bounded patch preserves the
+            # argument, evidence and clean scenes.
+            words = self._word_count(draft)
+            if words >= floor:
+                return draft
+            expand = self._build_expansion_prompt(
+                draft, brief, words=words, floor=floor,
+                previous_script=prev_json, narrative=False, finance=True)
+            try:
+                need = max(1, floor - words)
+                resp = await self.call_llm(
+                    [{"role": "system", "content": system},
+                     {"role": "user", "content": expand}],
+                    max_tokens=min(12000, max(3500, need * 9)),
+                )
+                payload = self._parse_json_object(resp.content)
+                grown = self._apply_narrative_expansion_patch(
+                    draft, payload, brief.title)
+                after = self._word_count(grown)
+                if after > words:
+                    logger.info(
+                        "Writer finance patch expansion applied",
+                        variant_id=variant_id, before=words, after=after,
+                        floor=floor)
+                    return grown
+                # Some CLI models ignore the patch contract and re-emit the
+                # full HOOK/SEGMENT script. Salvage a valid longer response
+                # instead of spending another call, but never accept a shorter
+                # or unparseable rewrite.
+                fallback = self._parse_draft(
+                    resp.content, variant_id, brief.title,
+                    version=draft.version)
+                if getattr(draft, "editorial_angle", None):
+                    fallback = fallback.model_copy(update={
+                        "editorial_angle": dict(draft.editorial_angle)})
+                fallback_words = self._word_count(fallback)
+                if fallback_words > words:
+                    logger.warning(
+                        "Finance patch backend returned a full script; "
+                        "salvaging longer parsed draft",
+                        variant_id=variant_id, before=words,
+                        after=fallback_words, floor=floor)
+                    return fallback
+                logger.warning(
+                    "Finance expansion patch made no progress — keeping original",
+                    variant_id=variant_id, before=words, floor=floor)
+            except Exception as exc:
+                logger.warning(
+                    "Finance expansion patch skipped",
+                    variant_id=variant_id, error=str(exc))
+            return draft
+
         for _ in range(max_passes):
             words = self._word_count(draft)
             if words >= floor:
                 break
             expand = self._build_expansion_prompt(
                 draft, brief, words=words, floor=floor,
-                previous_script=prev_json, narrative=narrative)
+                previous_script=prev_json, narrative=narrative, finance=False)
             try:
                 _mt = 22000 if _long_output_llm(self._llm) else 14000
                 resp = await self.call_llm(
@@ -717,6 +1269,9 @@ CURRENT SCRIPT:
                     max_tokens=_mt,
                 )
                 grown = self._parse_draft(resp.content, variant_id, brief.title)
+                if getattr(draft, "editorial_angle", None):
+                    grown = grown.model_copy(update={
+                        "editorial_angle": dict(draft.editorial_angle)})
                 if self._word_count(grown) > words:
                     draft, prev_json = grown, resp.content
                 else:
@@ -767,9 +1322,15 @@ CURRENT SCRIPT:
         system = self._build_system_prompt(
             niche_cfg, audience=audience, channel_brand=channel_brand)
         prev_json = self._draft_to_script_text(draft)
-        return await self._ensure_length(
+        result = await self._ensure_length(
             draft, brief, system, prev_json, draft.variant_id,
-            narrative=getattr(niche_cfg, "content_format", "explainer") == "narrative")
+            narrative=getattr(niche_cfg, "content_format", "explainer") == "narrative",
+            finance=((getattr(niche_cfg, "rubric_id", "") or "")
+                     == "finance_explainer_v1"))
+        if ((getattr(niche_cfg, "rubric_id", "") or "")
+                == "finance_explainer_v1"):
+            result = self._normalize_finance_prosody(result)
+        return result
 
     async def revise(
         self,
@@ -799,6 +1360,12 @@ CURRENT SCRIPT:
                 brief.title,
                 version=draft.version + 1,
             )
+            if getattr(draft, "editorial_angle", None):
+                revised = revised.model_copy(update={
+                    "editorial_angle": dict(draft.editorial_angle)})
+            if ((getattr(niche_cfg, "rubric_id", "") or "")
+                    == "finance_explainer_v1"):
+                revised = self._normalize_finance_prosody(revised)
             # A revision is exactly ONE paid rewrite. Length fill and quality
             # validation belong to the caller, which can inspect critic routing
             # before deciding whether another call is justified.
@@ -967,17 +1534,215 @@ HOOK LINE ENERGY (this becomes the video title — first person, curiosity gap, 
 
 Output HOOK:, then one SEGMENT N: <evocative place-name heading> block per story (usually 3), then OUTRO:, each with a SCENES: JSON array following the scene-object format from your instructions. Output valid JSON arrays only inside SCENES."""
 
+    def _build_finance_generation_prompt(
+        self,
+        brief: TopicBrief,
+        rhetorical_lens: str,
+        niche_cfg: NicheConfig,
+        editorial_angle: EditorialAngle | None,
+    ) -> str:
+        """Clean user prompt for the faceless senior-finance format."""
+        target_words = spoken_word_floor(brief.target_duration_min)
+        max_words = round(target_words * 1.08)
+        target_scenes = max(60, round(target_words / 15))
+        min_scenes = max(50, round(target_scenes * 0.9))
+        max_scenes = round(target_scenes * 1.12)
+
+        lens = {
+            "pain_hook": (
+                "CONCRETE CASE: open on one evidence-supported human consequence, "
+                "then widen to the rule. Do not invent a loss amount."),
+            "data_driven": (
+                "DOCUMENT-FIRST: open on what a named primary document changes or "
+                "clarifies, then show why it matters to one person."),
+            "contrarian": (
+                "MISCONCEPTION TEST: state the strongest common belief fairly, "
+                "test it against the evidence, and keep the counterpoint intact."),
+        }.get(rhetorical_lens, "Use the EditorialAngle's causal route.")
+
+        editorial = (
+            editorial_angle.as_prompt_block()
+            if editorial_angle is not None
+            else (
+                "── EDITORIAL ARGUMENT MISSING ──\n"
+                "This direct prompt inspection is not production-eligible. "
+                "Writer.execute must plan and validate an EditorialAngle first.\n"
+            )
+        )
+        if brief.evidence_points:
+            points = "\n".join(
+                "- {evidence_id}: CLAIM={claim}; VALUE={value}; "
+                "SOURCE={source_name}; AS_OF={as_of}; URL={source_url}; "
+                "VERIFIED_QUOTE={quote}".format(**{
+                    "evidence_id": item.get("evidence_id", ""),
+                    "claim": item.get("claim", ""),
+                    "value": item.get("value", "") or "(qualitative)",
+                    "source_name": item.get("source_name", ""),
+                    "as_of": item.get("as_of", ""),
+                    "source_url": item.get("source_url", ""),
+                    "quote": item.get("quote", ""),
+                })
+                for item in brief.evidence_points
+            )
+        else:
+            points = "\n".join(
+                f"- E{i}: {point}" for i, point in enumerate(brief.key_points, 1)
+            ) or "- No factual evidence was supplied. Do not invent facts or figures."
+
+        rules = ""
+        decision = resolve_competitor_playbook(brief)
+        if decision.usable:
+            eligible = production_competitor_rules(decision.playbook)
+            if eligible:
+                rules = (
+                    "\n\nMEASURED COMPETITOR RULES (the only competitor text "
+                    "eligible to steer production):\n" + eligible)
+
+        channel_memory = ""
+        if brief.topics_done:
+            channel_memory += (
+                "\n\nALREADY PUBLISHED — do not duplicate:\n"
+                + "\n".join(f"- {title}" for title in brief.topics_done))
+        if brief.next_topic:
+            channel_memory += (
+                "\n\nNEXT VIDEO FOR THE VISUAL END CARD ONLY (do not speak it):\n"
+                f"- {brief.next_topic}")
+
+        return f"""Write the finished shooting script for a faceless senior-finance
+YouTube video. Output the script only.
+
+TOPIC: {brief.title}
+MARKET: {brief.market.value}
+TARGET: {brief.target_duration_min} minutes; {target_words}-{max_words} spoken words
+RHETORICAL LENS: {lens}
+
+{editorial}
+
+UPSTREAM EVIDENCE/CONTEXT ANCHORS
+{points}
+{rules}{channel_memory}
+
+EVIDENCE BOUNDARY
+- An E-anchor is the only factual material supplied here. Do not extend it with
+  a guessed amount, date, threshold, form number, study result, or quotation.
+- Never substitute a remembered prior-year figure. If a current threshold is
+  absent from the E-anchors, omit the threshold rather than filling the gap.
+- Render every precise rule figure with digits in VO exactly as it appears in
+  its E-anchor so the deterministic evidence gate can compare it. Do not spell
+  a different remembered number out in words.
+- Name the source and rule year aloud when a load-bearing figure/rule is
+  supplied. Put the exact document/date/line in the visual field.
+- If the evidence does not support a precise statement, stay qualitative.
+- Label invented inputs in worked examples as hypothetical. Never cite the
+  example itself as proof.
+- Do not claim where specific withheld dollars are stored, transferred, or
+  later returned. State only the verified sequence: current benefits are
+  withheld; at full retirement age SSA recalculates the monthly benefit to
+  credit withheld months. A metaphor must not turn that recalculation into an
+  escrow account, refund, repayment, ledger, delayed release, or the same
+  dollars coming back.
+- Do not invent what agency letters, statements, calculators, forms, or public
+  pages do or do not show. Do not infer policy intent, audience prevalence,
+  retiree behavior, or a missing timeline from silence in the evidence.
+- No advisor/CPA persona, clients, personal practice, fabricated interview,
+  personal recommendation, guarantee, or urgency pressure.
+
+STRUCTURE
+- HOOK, then 4-6 causally named SEGMENT sections, then OUTRO.
+- The hook has NO GREETING and contains 3-5 scenes and 45-75 spoken words
+  total. It surfaces the central tension and a real human stake without
+  turning the thumbnail/title into a spoken slogan. If the supplied evidence
+  contains a load-bearing dollar threshold, place it by hook scene 2; do not
+  spend a minute on anonymous setup before stating the rule.
+- Let the planned driving questions determine chapter order. Each segment must
+  move the argument: evidence → narrator reaction → interpretation → fair
+  limitation or next question. Do not mechanically repeat that sequence.
+- No numbered-list spine. No fixed "open loop" positions. A real unresolved
+  question may cross a chapter boundary, but pay it off before opening another.
+- Use the planned felt metaphor only where it clarifies the mechanism, then
+  call it back once. It is explanation, never evidence.
+- The counterpoint gets its strongest fair version before the thesis wins,
+  narrows, or changes.
+- Include 3-5 first-person editorial reactions to specific facts. These may
+  express judgment ("I dislike calling that lost, because..."), but may not
+  invent an experience ("when I first read this"), biography, client, or
+  credential. Generic filler such as "that is frustrating" does not count.
+- If a worked example uses invented inputs, put them in exactly one section
+  whose backstage heading contains EXAMPLE. How the narrator enters that
+  example is a creative decision; do not force "Picture/Imagine/Suppose" or
+  any other stock wording. Do not make the narrator announce "these details
+  are invented", "not a client", or "not a case study". Official rule values
+  inside the example still must match E-anchors, and the script must never
+  falsely present an illustrative example as a true client or witnessed case.
+- Only when the OPERATOR BRIEF explicitly requests a HUMAN ANCHOR, carry that
+  person or household through the particular beats and details named there.
+  Otherwise choose the example shape that best serves this argument: a compact
+  calculation, anonymous household, timeline, document walkthrough, contrast,
+  or no worked example at all. Do not force every episode into one mold.
+  Do not invent an SSA letter, payment schedule, spouse-benefit effect, tax
+  effect, Medicare effect, agency action, or other consequence absent from the
+  E-anchors. A name alone does not make a story. A sad biography unrelated to
+  the rule does not make a story either.
+- Keep consequences interlocked only inside the evidence boundary. Show how
+  the verified rule touches the anchor's current calendar, household cash flow,
+  and later recalculation. Do not bolt on Roth conversions, IRMAA, taxes,
+  healthcare, inheritance, or spousal-benefit claims merely to sound deep.
+- OUTRO is at most three spoken sentences: the walk-away, ONE EARNED SPOKEN SUBSCRIBE INVITATION
+  tied to the channel promise the viewer just received,
+  then the planned ending question. Do not use a generic 'like and subscribe',
+  mention the algorithm, or manufacture friendship, biography, or credentials.
+  The final question ENDS the spoken script. Any next-video prompt is visual
+  end-card material only.
+
+SCENE CONTRACT
+- Produce {min_scenes}-{max_scenes} scene objects total (target about
+  {target_scenes}). Aim for 10-18 spoken words per scene, never more than 25.
+  A scene is one 4-7 second editorial beat; do not pad or split one sentence
+  merely to hit a count.
+- Every section uses exactly:
+  SECTION NAME:
+  SCENES:
+  [
+    {{"vo": "natural spoken line", "visual": "specific real footage, official document close-up, deterministic chart, or restrained text", "sfx": null, "pace": "slow|normal|fast", "pause_after_ms": 0, "emphasis": ["exact words from vo"]}}
+  ]
+- Valid JSON arrays, double quotes, no trailing commas.
+- Visuals are faceless: NO presenter/talking head/AI expert/AI likeness. NO
+  vague "worried senior" placeholder. A chart names the comparison and source.
+- SFX is null. Do not add whoosh, alarm, cash register, clock tick, or chime.
+- Pace follows meaning, not a quota: slow for a genuine turn, fast for a short
+  evidence chain, normal otherwise. Use a 400-900ms pause only when silence
+  changes how the previous line lands. Emphasis must copy exact VO words.
+
+FINAL PRIVATE AUDIT BEFORE OUTPUT
+1. Can a viewer state the thesis after minute one?
+2. Does every reaction sit next to the fact it interprets and advance the case?
+3. Is the counterpoint treated fairly?
+4. Does every precise claim stay inside supplied evidence and carry source/year?
+5. Are all promises paid off, with no formulaic retention filler?
+6. Is the narrator alive without fabricated biography or keyword stuffing?
+7. Does the subscribe invitation name the value this episode actually delivered?
+8. Does the final question land the real tension and then stop?
+9. If there is a worked example, is one transparent human anchor carried
+   through cause and consequence, rather than a calculator exercise or fake case?
+Repair silently. Output only HOOK/SEGMENT/OUTRO blocks."""
+
     def _build_generation_prompt(
         self,
         brief: TopicBrief,
         angle: str,
         patterns: list[str],
         niche_cfg: NicheConfig | None = None,
+        editorial_angle: EditorialAngle | None = None,
     ) -> str:
         """Build the user prompt for variant generation."""
         if niche_cfg is not None and getattr(
                 niche_cfg, "content_format", "explainer") == "narrative":
             return self._build_narrative_generation_prompt(brief, niche_cfg)
+        if (niche_cfg is not None
+                and (getattr(niche_cfg, "rubric_id", "") or "")
+                == "finance_explainer_v1"):
+            return self._build_finance_generation_prompt(
+                brief, angle, niche_cfg, editorial_angle)
         angle_instruction = {
             "pain_hook": (
                 "Open with the EXACT dollar amount or percentage the viewer is losing RIGHT NOW. "
@@ -1033,6 +1798,53 @@ Output HOOK:, then one SEGMENT N: <evocative place-name heading> block per story
             like_cta_ex = "If this was useful — tap Like. It helps others find this too."
             payoff_sfx = sfx1
 
+        is_finance_editorial = (
+            (getattr(niche_cfg, "rubric_id", "") or "")
+            == "finance_explainer_v1"
+        )
+        if is_finance_editorial:
+            hook_template = f"""
+HOOK:
+SCENES:
+[
+  {{"vo": "[COLD OPEN — NO GREETING. Put one specific person in a concrete situation with something real at stake. Max 18 words. Do not invent a number.]", "visual": "[real person in the exact situation]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}},
+  {{"vo": "[State the video argument or its central tension in plain English.]", "visual": "[official document or real object that grounds the issue]", "sfx": null, "pace": "slow", "pause_after_ms": 700, "emphasis": ["[the turn word]"]}},
+  {{"vo": "[Give only a fact present in the supplied evidence; name the source and year when a precise figure is used.]", "visual": "[{proof_src} source page, date and relevant line visible]", "sfx": null, "pace": "normal", "pause_after_ms": 0, "emphasis": ["[verified figure if any]"]}}
+]
+"""
+            outro_template = f"""
+OUTRO:
+SCENES:
+[
+  {{"vo": "[Land the WALK-AWAY from the editorial argument in one short sentence.]", "visual": "[return to the opening person or metaphor]", "sfx": null, "pace": "slow", "pause_after_ms": 500, "emphasis": ["[walk-away phrase]"]}},
+  {{"vo": "[One earned subscribe invitation tied to this channel promise and the value just delivered; no generic algorithm appeal.]", "visual": "[restrained subscribe end-card begins]", "sfx": null, "pace": "normal", "pause_after_ms": 0, "emphasis": []}},
+  {{"vo": "{comment_hook_ex}", "visual": "[quiet end-card continues; next video is visual only]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}}
+]
+The final question ENDS the spoken script. Do not add a recap, channel promotion,
+second CTA, or spoken next-video tease after it.
+"""
+        else:
+            hook_template = f"""
+HOOK:
+SCENES:
+[
+  {{"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic.]", "visual": "[{broll} — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}},
+  {{"vo": "[H — pain-first hook with a sourced number or concrete stake. Max 18 words.]", "visual": "[{broll} — most alarming version]", "sfx": "{sfx2}", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key word]"]}},
+  {{"vo": "[P — one verified proof point.]", "visual": "[{proof_src} report cover or chart]", "sfx": "{sfx1}", "pace": "normal", "pause_after_ms": 0, "emphasis": []}}
+]
+"""
+            outro_template = f"""
+OUTRO:
+SCENES:
+[
+  {{"vo": "{comment_hook_ex}", "visual": "[presenter direct to camera]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}}
+]
+"""
+
+        editorial_block = (
+            editorial_angle.as_prompt_block() + "\n"
+            if editorial_angle is not None else "")
+
         prompt = f"""Write a production-ready YouTube script optimized for 70%+ audience retention.
 
 TOPIC: {brief.title}
@@ -1040,6 +1852,7 @@ NICHE: {brief.niche.value} | MARKET: {brief.market.value}
 TARGET LENGTH: {brief.target_duration_min} minutes (~{brief.target_duration_min * 150} spoken words)
 VOICE: {niche_cfg.insider_angle if niche_cfg else "expert narrator"}
 
+{editorial_block}
 ANGLE: {angle_instruction}
 
 KEY POINTS TO COVER:
@@ -1064,13 +1877,7 @@ Use EXACTLY these section labels. Output valid JSON arrays only.
 HOOK EXAMPLE (follow this energy and specificity):
   H scene vo: "{hook_ex}"
 
-HOOK:
-SCENES:
-[
-  {{"vo": "[G — short warm spoken greeting (<=8 words) flowing straight into the topic, e.g. 'Hey, great to have you — today, [topic].']", "visual": "[{broll} — calm cinematic opener]", "sfx": null, "pace": "slow", "pause_after_ms": 0, "emphasis": []}},
-  {{"vo": "[H — THE hook: pain-first, exact number/stat they are LOSING right now, a curiosity gap. Max 18 words. Self-contained (this becomes the TITLE). No 'imagine'/'picture this'.]", "visual": "[{broll} — most alarming version]", "sfx": "{sfx2}", "pace": "slow", "pause_after_ms": 900, "emphasis": ["[the hook's key number/word]"]}},
-  {{"vo": "[P — credible data point: 'According to {proof_src}, X%...']", "visual": "[{proof_src} report cover or chart displayed full screen]", "sfx": "{sfx1}", "pace": "normal", "pause_after_ms": 0, "emphasis": ["[the stat]"]}}
-]
+{hook_template}
 
 SEGMENT 1: [Curiosity-gap heading — 5 words max]
 SCENES:
@@ -1116,30 +1923,25 @@ SCENES:
   {{"vo": "[Final empowering takeaway. Actionable. What they can do TODAY.]", "visual": "[presenter direct-to-camera, confident]", "sfx": null}}
 ]
 
-OUTRO:
-SCENES:
-[
-  {{"vo": "{comment_hook_ex}", "visual": "[presenter leaning forward, engaged, direct camera]", "sfx": null}},
-  {{"vo": "[EXPLICIT subscribe invite — MUST contain the word 'subscribe', framed with empathy/shared-identity tied to this topic, NOT generic. E.g.: 'If you are fighting this every single day, subscribe — I break down one real fix like this every week, and you should not have to figure it out alone.']", "visual": "[presenter direct-to-camera, warm]", "sfx": null}},
-  {{"vo": "[Next video tease — use the NEXT QUEUED VIDEO title from above, add a curiosity gap. E.g.: 'Next: [exact title] — that one could save you even more.']", "visual": "[thumbnail-style teaser or presenter pointing]", "sfx": "whoosh"}}
-]
+{outro_template}
 """
         if patterns:
             prompt += f"\nLEARNED PATTERNS FROM HIGH-PERFORMING VIDEOS:\n{chr(10).join(f'- {p.finding}' for p in patterns)}\n"
 
-        # Competitor SCRIPT playbook (hook/structure/pacing reverse-engineered from
-        # winning competitor transcripts) — mirror these proven patterns.
-        try:
-            from pathlib import Path as _P
-            from omnicast.vault import db as _vdb
-            _VDB = _P(__file__).resolve().parents[3] / "output" / "vault.db"
-            _vdb.init_db(_VDB)
-            _ci = _vdb.get_competitor_intel(brief.niche.value.lower(), _VDB)
-            if _ci and getattr(_ci, "script_playbook", ""):
-                prompt += ("\nCOMPETITOR SCRIPT PLAYBOOK (mirror these winning hook/"
-                           f"structure/pacing patterns):\n{_ci.script_playbook}\n")
-        except Exception:
-            pass
+        # Competitor SCRIPT playbook — injected ONLY when it passed the gate in
+        # analytics.intel_gate. An uncontrolled playbook (learned with no matched
+        # control group) describes what winning channels always do, not what made
+        # a video win; telling the model to "mirror" that is how survivorship
+        # bias gets written into every script. The old code pasted it in
+        # regardless and swallowed every error with `except: pass`, so a corrupt
+        # or stale row looked exactly like a healthy one.
+        _decision = resolve_competitor_playbook(brief)
+        if _decision.usable:
+            _eligible = production_competitor_rules(_decision.playbook)
+            if _eligible:
+                prompt += (
+                    "\nCOMPETITOR SCRIPT RULES (only RULE-grade matched-control "
+                    f"findings are eligible):\n{_eligible}\n")
 
         if brief.lessons:
             prompt += f"\nCHANNEL LESSONS:\n{chr(10).join(f'- {l}' for l in brief.lessons)}\n"
@@ -1257,6 +2059,116 @@ BRIEF: {brief.title}
 Privately audit the final result against the quality contract, then output the FULL revised
 script only: HOOK:, SEGMENT N: <heading>, OUTRO:, each followed by SCENES: and valid JSON.
 Start with "HOOK:" — no preamble."""
+
+        if (niche_cfg is not None
+                and (getattr(niche_cfg, "rubric_id", "") or "")
+                == "finance_explainer_v1"):
+            angle = getattr(draft, "editorial_angle", {}) or {}
+            floor = spoken_word_floor(brief.target_duration_min)
+            angle_block = "\n".join([
+                f"THESIS: {angle.get('thesis', '')}",
+                f"PUSHES AGAINST: {angle.get('against', '')}",
+                f"FAIR COUNTERPOINT: {angle.get('counterpoint', '')}",
+                f"NARRATOR ATTITUDE: {angle.get('narrator_attitude', '')}",
+                "REACTION BEATS: "
+                + " | ".join(angle.get("reaction_beats", []) or []),
+                f"WALK-AWAY: {angle.get('walk_away', '')}",
+            ])
+            evidence_block = "\n".join(
+                "- {evidence_id}: {claim}; VALUE={value}; SOURCE={source_name}; "
+                "AS_OF={as_of}; URL={source_url}".format(**{
+                    "evidence_id": item.get("evidence_id", ""),
+                    "claim": item.get("claim", ""),
+                    "value": item.get("value", "") or "(qualitative)",
+                    "source_name": item.get("source_name", ""),
+                    "as_of": item.get("as_of", ""),
+                    "source_url": item.get("source_url", ""),
+                })
+                for item in (brief.evidence_points or [])
+            ) or "- No verified entries supplied; remove all precise figures."
+            operator_blocks = []
+            for point in list(getattr(brief, "key_points", ()) or ()):
+                text = str(point or "").strip()
+                if text.startswith("Operator brief:"):
+                    operator_blocks.append(
+                        text.removeprefix("Operator brief:").strip())
+            operator_block = "\n\n".join(operator_blocks) or (
+                "No additional operator contract was supplied.")
+            return f"""Revise this faceless senior-finance shooting script with
+targeted edits. Preserve every clean scene, the word count, and the pre-writing
+argument. Do not turn this into a fresh generic explainer.
+
+EDITORIAL CONTRACT — STILL BINDING
+{angle_block}
+
+OPERATOR BRIEF — STILL BINDING
+{operator_block}
+
+VERIFIED EVIDENCE — OVERRIDES THE ORIGINAL SCRIPT
+{evidence_block}
+
+CRITIC FEEDBACK
+Score: {feedback.total_score}/100
+Rejection reasons: {"; ".join(feedback.rejection_reasons)}
+Specific fixes: {"; ".join(feedback.specific_fixes)}
+
+REVISION BOUNDARY
+- Fix only issues named above plus contradictions directly caused by those
+  edits. Do not add a new factual claim, number, date, form, study, source,
+  personal anecdote, client, credential, or open-loop promise to make the
+  revision sound richer.
+- A deterministic evidence-boundary complaint is a DELETE instruction. Remove
+  the offending claim/scene outright; do not paraphrase it, soften it, replace
+  it with a neighboring unsupported claim, or add filler to preserve length.
+- A human-anchor continuity complaint must be repaired with the same named,
+  explicitly hypothetical household and already-established props. Add no new
+  biographical detail or outcome. Put the callback beside the exact later rule
+  named by the complaint, not in an unrelated recap.
+- Ignore any critic fix that asks for a calculator, form, deadline, actuarial
+  claim, agency practice, or metaphor not present in the verified evidence.
+  Critic suggestions never override the evidence ceiling.
+- Rewrite an overlong opening to 3-5 scenes and 45-75 spoken words. Put a
+  load-bearing verified dollar threshold by hook scene 2 when one is supplied.
+  Do not preserve anonymous scene-setting that delays the actual rule.
+- Do not trace specific withheld dollars into a fund, account, ledger, escrow,
+  refund, repayment, delayed release, or later check. State only that benefits
+  are withheld now and the monthly benefit is recalculated at full retirement
+  age to credit withheld months.
+- Remove unsupported claims about agency letters, statements, calculators,
+  forms, policy intent, typical retiree behavior, prevalence, or what a public
+  page fails to specify.
+- Never preserve a conflicting number merely because it appears in the original.
+  Replace it with the exact verified E-anchor value or remove the sentence.
+- If any invented numeric illustration remains, consolidate all of it into
+  exactly one section whose heading begins "HYPOTHETICAL EXAMPLE". Say
+  "hypothetical" before its first input. Delete numeric illustrations from
+  every other section. Rule thresholds inside the example still use exact
+  E-anchor digits.
+- Return at least {floor} spoken words after revision. Remove repetition by
+  replacing it with evidence-led explanation, not by dropping below the floor.
+- Keep FACT → REACTION → INTERPRETATION distinct. A reaction must remain beside
+  the fact it interprets and advance the thesis; do not keyword-stuff attitude.
+- Use 3-5 first-person editorial reactions to facts without inventing an
+  experience. "I do not call that lost, because..." is allowed; "when I first
+  read this" or "my clients" is not.
+- Preserve the fair counterpoint. Do not make the thesis easier by deleting it.
+- Every load-bearing supplied figure/rule retains its source and rule year.
+- Faceless visuals only: real licensed footage, primary document close-up,
+  deterministic chart, or restrained text. No human-host shot or AI expert.
+  SFX remains null.
+- Keep 4-6 causally named segments; no listicle spine or fixed open-loop slots.
+- Keep scene JSON valid, VO <=25 words, and all pace/pause/emphasis fields.
+- OUTRO remains at most three sentences: walk-away, one earned spoken subscribe
+  invitation tied to the channel promise delivered by this episode, then the
+  ending question as the final spoken line. Reject generic "like and subscribe",
+  algorithm begging, invented relationship/authority, a second CTA, and any
+  spoken next-video prompt.
+
+FULL ORIGINAL SCRIPT (variant {draft.variant_id})
+{full_script}
+
+Output the complete revised script only, beginning HOOK:, followed by SEGMENT
+blocks and OUTRO:, each with a valid SCENES JSON array."""
 
         prompt = f"""Revise this YouTube script based on critic feedback. Keep what works, fix what doesn't.
 Do NOT rewrite from scratch — make targeted improvements to the script below, preserving its
@@ -1462,7 +2374,8 @@ Start output with "HOOK:" — no preamble.
 
         # ── SEGMENTS ──────────────────────────────────────────────────────
         seg_matches = re.findall(
-            r"SEGMENT\s*(\d+)\s*:\s*([^\n]*)\n(.*?)(?=\nSEGMENT\s*\d+|\nMID-ROLL|\nOUTRO|\Z)",
+            r"SEGMENT\s*(\d+)\s*(?::|[-–—])\s*([^\n]*)\n"
+            r"(.*?)(?=\nSEGMENT\s*\d+|\nMID-ROLL|\nOUTRO|\Z)",
             clean,
             re.DOTALL | re.IGNORECASE,
         )
@@ -1486,7 +2399,7 @@ Start output with "HOOK:" — no preamble.
                 duration_s = max(30, int(seg_words / 2.5))
             segments.append(ScriptSegment(
                 index=idx,
-                heading=heading.strip(),
+                heading=heading.strip().rstrip(":").strip(),
                 content=narration,
                 raw_content=body_clean,
                 scenes=scenes,

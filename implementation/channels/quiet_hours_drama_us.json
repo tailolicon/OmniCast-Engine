@@ -1,0 +1,83 @@
+{
+  "channel_id": "quiet_hours_drama_us",
+  "name": "Quiet Hours",
+  "niche": "psychology",
+  "sub_niche": "character-driven short drama",
+  "market": "US",
+  "visual_style": "cinematic_muted",
+  "channel_style": "drama",
+  "image_provider": "gemini",
+  "music_mood": "melancholy",
+  "voice_profile": "kokoro:af_heart",
+  "voice_fallback": [
+    "edge:en-US-AvaMultilingualNeural",
+    "edge:en-US-EmmaMultilingualNeural"
+  ],
+  "voice_persona": "close_narrator_female_30",
+  "brand_voice": "A close third-person narrator telling small, complete stories about ordinary people at a turning point — a shift ending, a debt coming due, a conversation that has been postponed for years. Restrained, specific, no moral at the end.",
+  "tone": "intimate",
+  "hook_format": "She had rehearsed the sentence for six years. She had ninety seconds to say it.",
+  "brand_color_hex": "#2C3A45",
+  "font_vibe": "serif_modern",
+  "competitor_handles": [],
+  "audience": {
+    "age_range": "25-55",
+    "pain_points": [
+      "short-form content that never resolves anything",
+      "wanting a complete story in one sitting",
+      "melodrama that tells you how to feel"
+    ],
+    "content_triggers": [
+      "one decision that cannot be taken back",
+      "two people and one unsaid thing",
+      "an ordinary job seen from the inside"
+    ],
+    "engagement_drivers": [
+      "tell us what you would have said",
+      "which character were you watching"
+    ]
+  },
+  "trends_keywords": [
+    "short drama story",
+    "animated short film story",
+    "emotional short story narration"
+  ],
+  "rss_feeds": [],
+  "subreddits": [],
+  "rpm_floor": 5.0,
+  "target_duration_min": 8,
+  "_image_style_note": "Leads with an observable, not with 'cinematic'. The anti-slop linter (omnicast/storyboard/slop.py) blocks empty evaluators in the opening clause: 'cinematic' names no camera, no light and no lens, so it spends the most heavily weighted clause in the prompt on an average of everything that word has ever labelled.",
+  "image_style_prompt": "16mm film grain, soft directional light from one window, shallow depth of field, desaturated restrained palette, unretouched naturalistic faces",
+  "image_style_negative": "cgi, 3d render, plastic skin, over-saturated, hdr, beauty retouching, watermark, text, logo, extra limbs, deformed hands, collage, split panel",
+  "image_style_lock": "as a single cinematic photograph with consistent film stock and lighting across the whole video",
+
+  "_storyboard_note": "This channel is the one that exercises omnicast.storyboard. Character consistency here means faces: a cast is extracted from the script, each member gets a multi-view reference sheet, and every frame binds its references by token. Approval is deliberately manual — a wrong reference image is wrong in every frame that attaches it, so a human confirms the cast once and the rest of the board runs unattended.",
+  "storyboard": {
+    "enabled": true,
+    "image_provider": "gemini",
+    "max_refs_per_frame": 4,
+    "view_count": 3,
+    "auto_approve_cast": false,
+    "target_shots": 0,
+    "operator_images": {}
+  },
+
+  "destinations": [
+    {
+      "destination_id": "quiet_hours_drama_us_youtube",
+      "platform_id": "youtube",
+      "account_id": "quiet_hours_drama_us",
+      "format_variant": "youtube_16x9",
+      "enabled": false,
+      "approval_required": true,
+      "schedule_policy": "prime_time",
+      "market": "US",
+      "metadata_overrides": {}
+    }
+  ],
+  "channel_created_at": null,
+  "channel_type": "hub",
+  "language": "en",
+  "ref_channels": [],
+  "strip_script_outro": false
+}

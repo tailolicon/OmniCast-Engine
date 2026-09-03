@@ -179,6 +179,7 @@ def test_spelled_out_numeric_anchors_count_toward_specificity_budget():
         "After six years there, I had worked three hundred closing shifts. "
         "The drive took eleven minutes. The gate lagged for forty seconds. "
         "The hallway had seventeen units. He stopped two hundred yards away. "
+        "The rent was nine hundred a month. There were twelve keys on the ring. The lot held fifty cars. The code had eight digits. It was ninety feet to the dock and thirty feet to the gate. "
         + _narration("specific", 680)
     )
     stories = [_draft(1, over_specific), _draft(2), _draft(3)]
@@ -216,6 +217,7 @@ def test_ordinary_number_words_are_not_treated_as_fake_precision():
 def test_spelled_out_clock_times_count_toward_clock_budget():
     clocks = (
         "The first call came at two seventeen a.m. The second came at three forty p.m. "
+        "The third came at four ten a.m., the fourth at five fifteen p.m., the fifth at six twenty a.m., the sixth at seven thirty p.m. "
         + _narration("clocks", 700)
     )
     report = np.gate_compilation(_plan(), [_draft(1, clocks), _draft(2), _draft(3)])
@@ -497,7 +499,7 @@ def test_pipeline_result_cannot_claim_lock_or_production_ready_when_final_gate_f
 
 def test_assembly_preserves_locked_voiceover_case_and_punctuation_exactly():
     narration = (
-        '“DON\'T move,” Mara whispered—then stopped... “Who IS there?”\n\n'
+        'ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œDON\'T move,ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Mara whisperedÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Âthen stopped... ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œWho IS there?ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â\n\n'
         "I couldn't answer; the latch clicked once. "
         + _narration("punctuation", 690)
     )

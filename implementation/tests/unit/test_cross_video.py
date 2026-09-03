@@ -35,3 +35,15 @@ def test_no_flags_on_first_video():
     with tempfile.TemporaryDirectory() as d:
         store = Path(d) / "fp.json"
         assert xv.check_and_record("ch", "A fresh story with Marcus and a payphone.", store) == []
+
+
+def test_finance_institution_words_are_not_character_names():
+    text = (
+        "According to Social Security, the rule changes here. We checked "
+        "Social Security again, and the Security Administration page agreed."
+    )
+    fp = xv.fingerprint(text)
+
+    assert "Social" not in fp["names"]
+    assert "Security" not in fp["names"]
+    assert "Administration" not in fp["names"]
