@@ -306,7 +306,16 @@ def test_dread_rules_offer_a_sensory_menu_not_a_sound_mandate():
     assert "through the ears before the eyes" not in joined
     assert "Sound-first is one option, not a requirement" in joined
     assert "low resolution" in joined
-    assert "approved replacement for the banned" in joined
+    # The delay rule used to end "...the approved replacement for the banned
+    # self-reassurance lines", pairing a ban with its substitute. That wording
+    # was rewritten on 2026-08-03 because it sourced the delay from the
+    # NARRATOR ("observation, checking, hesitation") and plan_audit rejects
+    # exactly that — "no one preserves mystery over safety". Two live runs on
+    # two topics died there. What the phrase protected is unchanged and still
+    # asserted, in the two places that now carry it: the ban, and a stated
+    # mechanism to use instead of it.
+    assert any("self-reassurance" in rule for rule in profile.avoid_tropes)
+    assert "SIGNAL ambiguous" in joined
     planning = " ".join(profile.planning_rules)
     assert "Vary the FIRST sensory channel" in planning
     assert "at most one story per compilation" in planning
