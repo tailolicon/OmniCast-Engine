@@ -1,0 +1,82 @@
+[
+ {
+  "plan": {
+   "topic": "overnight medical courier runs between small clinics",
+   "cold_open": "I still remember the night a car matched my speed for three empty miles between two clinics on my route.",
+   "target_word_count": 4500,
+   "stories": [
+    {
+     "story_id": "story_1",
+     "title": "The Manifest at Clinic A",
+     "narrator_profile": "Mid-30s courier driving overnight for a regional lab service, covering three rural clinics for extra pay to finish paying off her van, on this same route about a year.",
+     "setting": "Rural county roads at night; three small clinics with locked night-drop boxes; a courier van cabin as shelter.",
+     "setup_requirement": "Establish the narrator's nightly route delivering coolers alone between three unstaffed clinics for a courier job.",
+     "threat": "A man on foot follows her sedan then approaches at the unstaffed clinic, naming a specific patient from a manifest only visible at the earlier stop, and grabs her cooler and door handle.",
+     "threat_type": "human",
+     "escape_action": "she locks the door as his hand closes on the handle, then drives straight for the lit pharmacy hub, and calls 911 once the signal returns",
+     "ending_shape": "A deputy meets her at the pharmacy hub, takes her report, and confirms no vehicle matching her description was ever found registered nearby.",
+     "evidence_allowance": "none",
+     "voice_rules": "uses short declarative sentences broken by one comma clause each; refers to work objects by function ('the cooler', 'the box') never brand names; ends anxious thoughts with a trailing 'right up until' clause",
+     "voice_seed": "I've hauled coolers between the same three clinics for about a year now, mostly because the extra night shifts paid off my van faster than anything else did. The roads out there are flat and empty enough that you stop noticing the dark after a while. I liked the quiet of it, honestly, right up until the night I didn't.",
+     "target_words": 4500,
+     "escalation_ladder": [
+      "Clinic A's back door is propped slightly open though the drop procedure requires it locked.",
+      "A sedan holds the same distance behind her van for several miles on the county road.",
+      "The sedan pulls into Clinic B's lot behind her and idles with its headlights off.",
+      "A man gets out and asks for a cooler early, naming a patient by name.",
+      "He says the name matches a manifest she only saw open at Clinic A.",
+      "He reaches into the van for the cooler and grips the door handle as she pulls it shut."
+     ],
+     "already_line": "The patient name he used was on a manifest sheet left open at the first clinic, meaning he had been inside before I ever arrived.",
+     "no_way_out": "Clinic B's lot has no live staff and no cell signal; the nearest occupied building is a pharmacy hub several minutes down the highway.",
+     "threat_mind": "He didn't grab the nearest cooler; he named the one patient's medication specifically, meaning he'd already read the manifest and knew which delivery to intercept.",
+     "remainder": "No one ever explains how he knew her route stopped at Clinic B before she did, or why the manifest named the exact cooler she carried that night.",
+     "continuity_ledger": [
+      "hook_timeline: Nightly courier route across three rural clinics; incident occurs at second stop, Clinic B, during a normal shift.",
+      "people_objects: Narrator alone in van; one man on foot; a specimen cooler; her phone for calling for help.",
+      "locations_exits: Clinic B's unstaffed night-drop lot; van is her only shelter; nearest occupied building is a highway pharmacy hub.",
+      "props_threat_position: Man stands at the driver's door; cooler sits on passenger seat; he grips the handle as she drives off.",
+      "response_escape: She locks the door, drives to the pharmacy hub, and calls 911 once signal returns; a deputy meets her."
+     ],
+     "threat_mechanism": "intrudes_space",
+     "progression_mechanism": "escalating_contact",
+     "escape_mechanism": "call_for_help",
+     "aftermath_mechanism": "authority_response",
+     "threat_identity": "lone_stranger",
+     "topic_promise": "Overnight medical courier route delivering specimen coolers between small rural clinics",
+     "distinguishing_turn": "Not a random loiterer: he names the exact patient from a manifest left open at an earlier clinic, proving prior access.",
+     "narrator_age_band": "adult",
+     "narrator_age_years": null,
+     "safety_obligation": "authorities_contacted",
+     "safety_omission_reason": ""
+    }
+   ]
+  },
+  "audit": {
+   "status": "valid",
+   "blockers": [],
+   "issues": [
+    {
+     "story_id": "story_1",
+     "category": "haunting",
+     "severity": "minor",
+     "problem": "The repaired remainder is still framed as an unanswered logistics question ('how he knew her route', 'why the manifest named the exact cooler') rather than something about the threat's presence or intent. The rule explicitly excludes this pattern: 'how he knew which window is a logistics nit, not a remainder.' The already_line already covers presence (he'd been inside); the remainder needs to add a separate lingering presence/intent fact, not restate the mechanics of how he obtained information.",
+     "plan_fix": "Rewrite remainder to point at something about the man's continued presence or intent that nobody can explain — e.g., that the drop box was found relocked from the inside after she fled, or that a second cooler she never packed was found waiting at Clinic A — not at the logistics of how he acquired the manifest name.",
+     "evidence_quote": "No one ever explains how he knew her route stopped at Clinic B before she did, or why the manifest named the exact cooler she carried that night.",
+     "knowledge_scope": "universal",
+     "confidence": 0.85
+    }
+   ],
+   "summary": "The remainder was re-worded but still reads as an unanswered logistics question rather than a presence/intent fact, so the prior objection stands. (repeat objections demoted)",
+   "attempts": 1,
+   "escalated": true,
+   "provider_errors": [],
+   "primary_healthy": false,
+   "primary_provider_errors": [
+    "primary: skipped, deepseek already failed this run"
+   ],
+   "verdict_source": "escalation",
+   "contract_errors": []
+  }
+ }
+]
