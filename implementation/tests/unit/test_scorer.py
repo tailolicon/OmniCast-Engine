@@ -59,27 +59,32 @@ class TestCalcTrendMomentum:
 
 
 class TestCalcGapScore:
+    # Gap is now a 0-25 SATURATION dimension (it no longer re-reads
+    # outlier_ratio, which trend_momentum already scores in full).
     def test_youtube_default(self):
         topic = _raw(TopicSource.YOUTUBE_COMPETITOR)
         score = TopicScorer._calc_gap_score(topic)
-        # ratio=0 → minimum floor (any outlier that passed filter = 20)
-        assert score == 20
+        # No saturation evidence either way → the neutral baseline.
+        assert score == 12
 
     def test_reddit_default(self):
         topic = _raw(TopicSource.REDDIT)
         score = TopicScorer._calc_gap_score(topic)
-        assert score == 30
+        assert score == 19
 
     def test_podcast_highest_gap(self):
         topic = _raw(TopicSource.PODCAST)
         score = TopicScorer._calc_gap_score(topic)
-        assert score == 35
+        assert score == 22
+        # Ordering across sources is preserved from the old 0-40 scale.
+        assert score > TopicScorer._calc_gap_score(_raw(TopicSource.REDDIT))
+        assert score > TopicScorer._calc_gap_score(_raw(TopicSource.NEWS_RSS))
 
     def test_all_sources_in_range(self):
         for src in TopicSource:
             topic = _raw(src)
             score = TopicScorer._calc_gap_score(topic)
-            assert 0 <= score <= 40, f"Gap score out of range for {src}"
+            assert 0 <= score <= 25, f"Gap score out of range for {src}"
 
 
 class TestCalcRpmPotential:

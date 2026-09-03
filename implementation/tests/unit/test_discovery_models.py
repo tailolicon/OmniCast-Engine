@@ -108,8 +108,8 @@ class TestScoredTopic:
     def test_approve_action(self):
         s = ScoredTopic(
             raw=self._raw(),
-            trend_momentum=25, gap_score=30, rpm_potential=15, novelty_score=5,
-            total_score=75, auto_approved=True,
+            trend_momentum=25, gap_score=20, rpm_potential=15, novelty_score=5,
+            stack_fit=10, total_score=75, auto_approved=True,
         )
         assert s.action == "approve"
 
@@ -138,10 +138,11 @@ class TestScoredTopic:
         assert s.total_score == 0
 
     def test_score_bounds_max(self):
+        # Budget after the gap/stack-fit rebalance: 30 + 25 + 20 + 10 + 15 = 100.
         s = ScoredTopic(
             raw=self._raw(),
-            trend_momentum=30, gap_score=40, rpm_potential=20, novelty_score=10,
-            total_score=100,
+            trend_momentum=30, gap_score=25, rpm_potential=20, novelty_score=10,
+            stack_fit=15, total_score=100,
         )
         assert s.total_score == 100
 
@@ -154,18 +155,27 @@ class TestScoredTopic:
             )
 
     def test_gap_score_over_max_rejected(self):
+        # Gap is a 0-25 dimension now that it no longer re-reads outlier_ratio.
         with pytest.raises(ValidationError):
             ScoredTopic(
                 raw=self._raw(),
-                trend_momentum=0, gap_score=41, rpm_potential=0, novelty_score=0,
-                total_score=41,
+                trend_momentum=0, gap_score=26, rpm_potential=0, novelty_score=0,
+                total_score=26,
+            )
+
+    def test_stack_fit_over_max_rejected(self):
+        with pytest.raises(ValidationError):
+            ScoredTopic(
+                raw=self._raw(),
+                trend_momentum=0, gap_score=0, rpm_potential=0, novelty_score=0,
+                stack_fit=16, total_score=16,
             )
 
     def test_boundary_70_is_approve(self):
         s = ScoredTopic(
             raw=self._raw(),
-            trend_momentum=20, gap_score=30, rpm_potential=15, novelty_score=5,
-            total_score=70,
+            trend_momentum=20, gap_score=22, rpm_potential=15, novelty_score=5,
+            stack_fit=8, total_score=70,
         )
         assert s.action == "approve"
 

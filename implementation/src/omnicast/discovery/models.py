@@ -55,10 +55,56 @@ class ScoredTopic(OmnicastSchema):
     """Topic after scoring (0-100). Ready for threshold check."""
     raw: TopicRawData
     trend_momentum: float = Field(ge=0, le=30)
-    gap_score: float = Field(ge=0, le=40)
+    # Narrowed from 40 to 25 when gap stopped re-reading outlier_ratio (which
+    # trend_momentum already scores) and the freed budget moved to stack_fit.
+    gap_score: float = Field(ge=0, le=25)
     rpm_potential: float = Field(ge=0, le=20)
     novelty_score: float = Field(ge=0, le=10)
+    # Can WE make this well? Demand for a topic we cannot produce is not value.
+    stack_fit: float = Field(ge=0, le=15, default=0.0)
+    # v2 revision 2 (brief §3.1): the rest of the opportunity formula.
+    # Is it for OUR audience; can it become a series; what does it expose us to.
+    audience_fit: float = Field(ge=0, le=10, default=0.0)
+    repeatability: float = Field(ge=0, le=10, default=0.0)
+    risk_penalty: float = Field(ge=0, le=40, default=0.0)
+    # Which content pillar this topic belongs to (§4.2). The scorer already
+    # classifies it in order to score repeatability; carrying it here is what
+    # lets the brief, and then the writer's scope key, use the same answer
+    # instead of the pillar dimension silently staying `*` end to end.
+    pillar_id: str = ""
     total_score: float = Field(ge=0, le=100)
+    # Human-readable reasons for the stack_fit verdict — a topic rejected for
+    # fit should say which constraint it hit.
+    score_notes: list[str] = Field(default_factory=list)
+
+    # === Shadow scoring ===
+    # v2 changed the dimension budget (gap 40→25, +stack_fit 15) and stopped
+    # double-counting outlier_ratio. That shifts the approve/review boundary by
+    # up to ~20 points for YouTube-sourced topics, in a direction that depends on
+    # the competitor's channel size. Until the shift is calibrated against
+    # labelled topics, BOTH scores ride along on every topic and the active
+    # generation is a setting, not an assumption.
+    scoring_version: str = "v2"          # which generation decided the flags below
+    total_score_v1: float = Field(ge=0, le=100, default=0.0)
+    total_score_v2: float = Field(ge=0, le=100, default=0.0)
+    gap_score_v1: float = Field(ge=0, le=40, default=0.0)
+    # Which COMPOSITION of v2 produced total_score_v2. Rows from two revisions
+    # describe different functions; calibrating on a mixture would fit a scorer
+    # that never ran.
+    scoring_v2_revision: int = 1
+
+    @property
+    def shadow_delta(self) -> float:
+        """v2 minus v1. Positive = v2 is more generous on this topic."""
+        return round(self.total_score_v2 - self.total_score_v1, 2)
+
+    @property
+    def shadow_disagrees(self) -> bool:
+        """Would the two generations route this topic differently?"""
+        def action_of(total: float) -> str:
+            return "approve" if total >= 70 else "review" if total >= 50 else "discard"
+
+        return action_of(self.total_score_v1) != action_of(self.total_score_v2)
     auto_approved: bool = False       # total >= 70
     needs_review: bool = False        # 50 <= total < 70
 

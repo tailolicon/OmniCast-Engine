@@ -20,6 +20,9 @@ from omnicast.discovery.base import BaseScanner
 from omnicast.discovery.models import TopicRawData, DiscoveryConfig
 from omnicast.models.enums import TopicSource, Niche, Market
 from omnicast.shared.errors import DiscoveryError
+from omnicast.shared.production_signals import infer_production_requirements
+from omnicast.shared.title_patterns import classify_title
+from omnicast.shared.topic_coverage import MIN_CORPUS_FOR_COVERAGE, coverage_of
 
 logger = structlog.get_logger()
 
@@ -74,6 +77,9 @@ class YouTubeScanner(BaseScanner):
             return []
 
         all_outliers: list[TopicRawData] = []
+        # Every video we saw, across every channel — the denominator for
+        # "how many competitor videos already cover this topic".
+        corpus: list[dict] = []
         channels_scanned = 0
         channels_failed = 0
 
@@ -87,6 +93,7 @@ class YouTubeScanner(BaseScanner):
                     continue
 
                 videos = await self._get_video_stats(video_ids)
+                corpus.extend(videos)
                 market = self.config.markets[0] if self.config.markets else Market.US
                 outliers = self._find_outliers(videos, channel_id, self.config.niche, market)
                 all_outliers.extend(outliers)
@@ -108,6 +115,7 @@ class YouTubeScanner(BaseScanner):
         if channels_failed > 0 and channels_scanned == 0:
             raise DiscoveryError(f"All {channels_failed} channels failed to scan")
 
+        self._annotate_supply_signals(all_outliers, corpus)
         return all_outliers
 
     async def _resolve_handle(self, handle: str) -> str:
@@ -218,6 +226,44 @@ class YouTubeScanner(BaseScanner):
         return videos
 
     @staticmethod
+    def _annotate_supply_signals(
+        outliers: list[TopicRawData],
+        corpus: list[dict],
+    ) -> None:
+        """Fill in the two supply-side signals the scorer reads but nothing wrote.
+
+        `similar_competitor_videos` and `production_requirements` were both
+        consumed by `TopicScorer` and produced by nobody, so two documented,
+        tested dimensions were dead on every real run. They are computed here,
+        after all channels are scanned, because coverage is a property of the
+        WHOLE competitor set — a per-channel count would answer "did this one
+        channel repeat itself", which is a different question.
+
+        Coverage stays absent on a thin corpus rather than reading as zero; see
+        `shared.topic_coverage`.
+        """
+        titles = [v.get("title", "") for v in corpus]
+        index = {v.get("video_id", ""): i for i, v in enumerate(corpus)}
+        for topic in outliers:
+            metrics = topic.raw_metrics
+            requirements = infer_production_requirements(
+                topic.title, topic.description)
+            metrics["production_requirements"] = sorted(requirements)
+            metrics["coverage_corpus_size"] = len(titles)
+            covered = coverage_of(
+                topic.title, titles,
+                exclude_index=index.get(metrics.get("video_id", "")),
+            )
+            if covered is None:
+                metrics["coverage_note"] = (
+                    f"corpus of {len(titles)} videos is below the "
+                    f"{MIN_CORPUS_FOR_COVERAGE} needed to claim a topic is "
+                    "uncovered — signal withheld"
+                )
+            else:
+                metrics["similar_competitor_videos"] = covered
+
+    @staticmethod
     def _find_outliers(
         videos: list[dict],
         channel_id: str,
@@ -284,35 +330,30 @@ class YouTubeScanner(BaseScanner):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _parse_duration_minutes(iso_duration: str) -> float:
-    """Parse ISO 8601 duration string (PT1H2M30S) → float minutes."""
-    pattern = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
-    match = pattern.match(iso_duration)
+    """Parse ISO 8601 duration (P1DT2H3M4S) → float minutes.
+
+    The DAY component matters: YouTube reports multi-day livestreams as
+    `P1DT2H` and premieres as `P0D`. The old pattern started at `PT`, so every
+    one of those parsed as 0.0 minutes — and downstream, 0.0 was read as
+    "duration unknown, go ahead", which is how the ASR budget got bypassed by
+    precisely the videos it existed to reject."""
+    pattern = re.compile(
+        r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$")
+    match = pattern.match((iso_duration or "").strip())
     if not match:
         return 0.0
-    hours = int(match.group(1) or 0)
-    minutes = int(match.group(2) or 0)
-    seconds = int(match.group(3) or 0)
-    return round(hours * 60 + minutes + seconds / 60, 1)
+    days = int(match.group(1) or 0)
+    hours = int(match.group(2) or 0)
+    minutes = int(match.group(3) or 0)
+    seconds = float(match.group(4) or 0)
+    return round(days * 1440 + hours * 60 + minutes + seconds / 60, 1)
 
 
-def _classify_title(title: str) -> list[str]:
-    """Tag title structure — used to learn what formats win in this niche."""
-    patterns = []
-    if re.search(r"\b\d+\b", title):
-        patterns.append("number")          # "5 Mistakes", "10 Foods"
-    if re.search(r"\?", title):
-        patterns.append("question")        # "Why is X..."
-    if re.search(r"\b(how to|how i)\b", title, re.I):
-        patterns.append("how_to")          # "How to..."
-    if re.search(r"\b(you|your)\b", title, re.I):
-        patterns.append("second_person")   # "You're doing X wrong"
-    if re.search(r"\b(stop|never|don't|avoid|mistake|wrong)\b", title, re.I):
-        patterns.append("warning")         # "Stop doing X"
-    if re.search(r"\b(secret|truth|real|hidden|nobody|they won't)\b", title, re.I):
-        patterns.append("insider")         # "The truth about X"
-    if not patterns:
-        patterns.append("statement")
-    return patterns
+# The taxonomy itself moved to `omnicast.shared.title_patterns` so that cohort
+# matching can control for FORMAT without importing the scanner (and httpx) —
+# see that module's docstring. Re-exported under the old private name because
+# callers here and in `scorer.py` refer to it that way.
+_classify_title = classify_title
 
 
 def _infer_audience_signal(video: dict, outlier_ratio: float, avg_engagement: float) -> str:
