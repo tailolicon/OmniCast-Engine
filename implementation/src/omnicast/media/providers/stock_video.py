@@ -135,6 +135,27 @@ def _hits_negative(candidate_text: str, negative_terms: list[str] | None) -> str
 _OCR_SCRIPT = Path(__file__).resolve().parents[4] / "scripts" / "ocr_frame.ps1"
 
 
+def _frame_brightness(video_path: Path) -> float | None:
+    """Mean luma (0-255) of the clip, via ffmpeg signalstats YAVG. None if it
+    cannot be measured. A nocturnal channel (overnight horror) must not open on
+    a bright daylight clip — the on-frame subject gates never looked at
+    time-of-day, so a sunny drone shot of the truck stop shipped as the first
+    thing the viewer saw (live 2026-09-04)."""
+    import subprocess, re as _re
+    try:
+        # metadata=print emits YAVG lines at INFO level — "-v error" hides them.
+        pr = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "info", "-i", str(video_path),
+             "-vf", "signalstats,metadata=print", "-frames:v", "20",
+             "-f", "null", "-"],
+            capture_output=True, text=True, timeout=30)
+        vals = [float(m) for m in _re.findall(
+            r"lavfi\.signalstats\.YAVG=([0-9.]+)", pr.stderr)]
+        return sum(vals) / len(vals) if vals else None
+    except Exception:
+        return None
+
+
 def _frame_text(video_path: Path) -> str:
     """Readable text found in the clip's frames (Windows WinRT OCR, local, free).
     Samples two frames; returns the concatenated recognized text ('' = clean or
@@ -596,7 +617,8 @@ def _video_cache_path(query: str) -> Path:
 def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, target_h: int = 1080,
                               max_seconds: int = 15,
                               negative_terms: list[str] | None = None,
-                              forbid_text: bool = False) -> bool:
+                              forbid_text: bool = False,
+                              nocturnal_max_luma: float | None = None) -> bool:
     """Search for query, download first match (Pexels -> Pixabay -> YouTube) and cache it.
 
     negative_terms: the storyboard cell's world-breaker words; a candidate whose
@@ -611,6 +633,10 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
         # A clip cached before the on-frame gates existed may be exactly the
         # asset the gates block — separate keyspace (bumped when gates change).
         cache_key += " +vgate4"
+    if nocturnal_max_luma is not None:
+        # A bright daytime clip cached before the night gate must not be served
+        # from cache — separate keyspace.
+        cache_key += f" +night{int(nocturnal_max_luma)}"
     cache_file = _video_cache_path(cache_key)
 
     # 1. Check Cache
@@ -654,6 +680,10 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
         """Downloaded clip sits in cache_file — run the on-frame gates (OCR,
         then one Sonnet look), then hand it to dest. A rejected clip is deleted
         so the cache never pins a bad asset under this key."""
+        if nocturnal_max_luma is not None:
+            luma = _frame_brightness(cache_file)
+            if luma is not None and luma > nocturnal_max_luma:
+                return _reject(source, "too_bright_day", f"YAVG={luma:.0f}")
         if forbid_text:
             txt = _frame_text(cache_file)
             if txt:

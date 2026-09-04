@@ -142,8 +142,29 @@ from omnicast.media.providers.stock_video import download_best_stock_video
 from omnicast.media.providers.web_shot import capture_web_page
 from omnicast.media.providers.kinetic_overlay import render_kinetic_stat
 
-FONT_BOLD = "C:/Windows/Fonts/arialbd.ttf"
-FONT_REG = "C:/Windows/Fonts/arial.ttf"
+def _resolve_font(*candidates: str) -> str:
+    """First existing font file from the candidates. Windows paths first (dev
+    machine), then Liberation/DejaVu (Linux) — the Windows Arial paths do not
+    exist on the Linux render host and Pillow raises 'cannot open resource'."""
+    import os as _os
+    for path in candidates:
+        if path and _os.path.exists(path):
+            return path
+    return candidates[-1]  # let Pillow raise a clear error if truly none exist
+
+
+FONT_BOLD = _resolve_font(
+    "C:/Windows/Fonts/arialbd.ttf",
+    "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+)
+FONT_REG = _resolve_font(
+    "C:/Windows/Fonts/arial.ttf",
+    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+)
 W, H = 1920, 1080
 
 
@@ -573,7 +594,11 @@ def _stat_trigger_local(words_json: Path, number: str, label: str, clip_dur: flo
     return max(0.0, clip_dur * 0.35)
 
 
-FONT_HORROR = "C:/Windows/Fonts/CHILLER.TTF"
+FONT_HORROR = _resolve_font(
+    "C:/Windows/Fonts/CHILLER.TTF",
+    "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",  # no Chiller on Linux — bold fallback
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+)
 
 
 def _detect_story_segments(clips: list, scenes) -> list[tuple[float, str, int]]:
@@ -2712,6 +2737,16 @@ def main() -> None:
                 (ROOT / "channels" / f"{args.channel}.json").read_text(encoding="utf-8"))
         except Exception:
             channel_meta = {"name": cr.get("channel_name", args.channel)}
+        # NOCTURNAL CHANNELS reject bright daytime stock. Inferred from the
+        # channel's own image-style prompt naming night/dark/overnight — no new
+        # config key. YAVG(0-255) ceiling ~95 keeps sodium-glow/night clips and
+        # drops daylight (a sunny truck-stop drone shot opened the first render).
+        _style_txt = " ".join(str(channel_meta.get(k, "")) for k in
+                              ("image_style_prompt", "image_style_lock", "brand_voice")).lower()
+        _noct_luma = 95.0 if any(w in _style_txt for w in
+                                 ("night", "overnight", "nocturnal", "sodium", "after dark")) else None
+        if _noct_luma is not None:
+            print(f"[chan] nocturnal channel: stock brightness ceiling YAVG<={_noct_luma:.0f}")
         print(f"[chan] {args.channel} -> style={cr['style']} voice={cr['voice']} "
               f"subtitle={cr['subtitle']} beat={cr['beat_words']} motion={cr['motion']}")
         if args.style == "editorial":
@@ -3418,7 +3453,8 @@ def main() -> None:
                                                        negative_terms=_negs,
                                                        forbid_text=bool(
                                                            _style_policy and
-                                                           _style_policy.forbid_onscreen_text))
+                                                           _style_policy.forbid_onscreen_text),
+                                                       nocturnal_max_luma=_noct_luma)
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}"); ok = False
                     if ok and vclip.exists() and vclip.stat().st_size > 0:
@@ -3463,7 +3499,7 @@ def main() -> None:
                         vclip = work / f"scene_{i:02d}_stock.mp4"
                         print(f"[chart] [warn] chart failed scene {i}; stock fallback '{_sq}'")
                         try:
-                            if download_best_stock_video(_sq, vclip, W, H, max_seconds=15) \
+                            if download_best_stock_video(_sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma) \
                                     and vclip.exists() and vclip.stat().st_size > 0:
                                 stock_paths[i] = vclip
                                 # Record the downgrade — board_final must show
@@ -3500,7 +3536,8 @@ def main() -> None:
                                                        negative_terms=_negs,
                                                        forbid_text=bool(
                                                            _style_policy and
-                                                           _style_policy.forbid_onscreen_text))
+                                                           _style_policy.forbid_onscreen_text),
+                                                       nocturnal_max_luma=_noct_luma)
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}")
                         ok = False
@@ -3533,7 +3570,7 @@ def main() -> None:
                     vclip = work / f"scene_{i:02d}_stock.mp4"
                     print(f"[web-shot] [warn] failed scene {i}; falling back to stock '{sq}'")
                     try:
-                        if download_best_stock_video(sq, vclip, W, H, max_seconds=15) and vclip.exists() and vclip.stat().st_size > 0:
+                        if download_best_stock_video(sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma) and vclip.exists() and vclip.stat().st_size > 0:
                             stock_paths[i] = vclip
                             continue
                     except Exception as e:
@@ -4096,7 +4133,7 @@ def main() -> None:
                 _rclip = work / f"scene_{i:02d}_rescue.mp4"
                 try:
                     print(f"[rescue] scene {i}: policy/miss → dark stock '{_rq}'")
-                    if download_best_stock_video(_rq, _rclip, W, H, max_seconds=15) \
+                    if download_best_stock_video(_rq, _rclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma) \
                             and _rclip.exists() and _rclip.stat().st_size > 0:
                         overlay = _build_overlay()
                         veo_motion_scene(_rclip, overlay, audio, clip_dur, clip)
