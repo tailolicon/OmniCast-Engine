@@ -24,6 +24,7 @@ dependencies = [
     # Phase 2: AI Agent Core
     "anthropic>=0.18,<1",       # Claude API
     "openai>=1.40",             # DeepSeek client (OpenAI-compatible endpoint) — llm/deepseek.py
+    "yt-dlp>=2025.1",           # stock-video provider (media/providers/stock_video.py)
     "chromadb>=0.5,<1",         # Vector DB for KB
     "tiktoken>=0.7,<1",         # Token counting
     # Phase 3: Topic Discovery
