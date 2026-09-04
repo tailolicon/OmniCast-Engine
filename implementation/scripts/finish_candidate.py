@@ -54,7 +54,7 @@ async def main() -> int:
     )
     from omnicast.config.narrative_quality import resolve_script_profile
     from omnicast.config.settings import get_settings
-    from omnicast.pipeline.steps import _narrative_role_clients
+    from omnicast.pipeline.steps import _llm_client, _narrative_role_clients
 
     plan = CompilationPlan.model_validate(audit["plan"])
     stories = [StoryDraft.model_validate(s) for s in audit["stories"]]
@@ -62,7 +62,18 @@ async def main() -> int:
         resolve_script_profile(args.profile)
     )
 
-    roles = _narrative_role_clients(get_settings())
+    # The default (DeepSeek-first) roles ARE the deepseek clients; the live
+    # pipeline builds them and passes them in. Without this, critic/compliance/
+    # plan_audit resolve to None and _audit_stories fails instantly (0.0s,
+    # zero_score). claude_only mode ignores these and uses Claude CLI for all.
+    settings = get_settings()
+    vault_path = Path(__file__).resolve().parents[1] / "output" / "vault.db"
+    deepseek_pro = _llm_client("deepseek", model=settings.deepseek_pro_model, db_path=vault_path)
+    deepseek_flash = _llm_client("deepseek", model=settings.deepseek_flash_model, db_path=vault_path)
+    roles = _narrative_role_clients(
+        settings, vault_path=vault_path,
+        deepseek_pro=deepseek_pro, deepseek_flash=deepseek_flash,
+    )
     pipe = NarrativeUnitPipeline(
         planner_llm=roles["planner"],
         writer_llm=roles["writer"],

@@ -23,6 +23,7 @@ dependencies = [
     "orjson>=3.10,<4",          # Fast JSON
     # Phase 2: AI Agent Core
     "anthropic>=0.18,<1",       # Claude API
+    "openai>=1.40",             # DeepSeek client (OpenAI-compatible endpoint) — llm/deepseek.py
     "chromadb>=0.5,<1",         # Vector DB for KB
     "tiktoken>=0.7,<1",         # Token counting
     # Phase 3: Topic Discovery
