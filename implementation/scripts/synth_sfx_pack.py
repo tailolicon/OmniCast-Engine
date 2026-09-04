@@ -144,10 +144,38 @@ def screech(dur=1.4):
     return _fade(x, 0.005, 0.15)
 
 
+def knock(dur=1.6, hits=(0.0, 0.28, 0.56)):
+    # knuckles on a hollow door: three low thumps with woody resonance
+    n = int(dur * SR)
+    x = np.zeros(n)
+    for h in hits:
+        i0 = int(h * SR)
+        hn = int(0.22 * SR)
+        t = np.arange(hn) / SR
+        body = np.sin(2 * np.pi * 95 * t) * np.exp(-t * 28)
+        crack = _lowpass(rng.standard_normal(hn), 1800) * np.exp(-t * 60) * 0.5
+        seg = body + crack
+        x[i0:i0 + hn] += seg[:max(0, min(hn, n - i0))]
+    return _fade(_norm(x), 0.003, 0.2)
+
+
+def rattle(dur=1.8):
+    # a metal door handle / crash bar shaken: bright metallic jitter bursts
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    jitter = (rng.random(n) < 0.004).astype(float)   # sparse impulses
+    ring = np.sin(2 * np.pi * 2600 * t) * 0.5 + np.sin(2 * np.pi * 3900 * t) * 0.3
+    x = np.convolve(jitter, np.exp(-np.linspace(0, 10, int(0.05 * SR))), mode="same")
+    x = x * ring + _lowpass(rng.standard_normal(n), 500) * 0.15 * x
+    env = np.exp(-np.linspace(0, 1.6, n))
+    return _fade(_norm(x * env), 0.005, 0.25)
+
+
 PACK = {
     "thunder": thunder, "wind": wind, "heartbeat": heartbeat,
     "stinger": stinger, "drone": drone, "rain": rain,
     "static": static, "screech": screech,
+    "knock": knock, "rattle": rattle,
 }
 
 for name, fn in PACK.items():

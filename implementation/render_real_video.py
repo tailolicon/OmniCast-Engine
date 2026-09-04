@@ -1168,6 +1168,15 @@ _DIEGETIC_SFX = [
     ("stinger",  0.55, r"\bstanding\s+(?:at\s+my|there|exactly|right\s+(?:at|behind|beside))\b"
                       r"|\bfilled\s+the\s+\w*\s*window\b|\bright\s+(?:behind|beside|next\s+to)\s+me\b"
                       r"|\bhis\s+face\s+(?:filled|was\s+at)\b|\bwas\s+standing\s+at\s+my\b"),
+    # Door/handle events carry most rungs in this genre (handle turns,
+    # knuckle-raps, a crash bar shaken) — live 2026-09-04: a 7-minute video
+    # fired ONE cue because none of these had a sound or a pattern.
+    ("knock",    0.5,  r"\bknock\w*\b|\bknuckle[- ]?rap\w*|\brapp?\w*\s+(?:on|at)\s+the\b"
+                      r"|\bpound\w*\s+(?:on|at)\s+the\s+(?:door|glass|window)\b"
+                      r"|\bbang\w*\s+(?:on|at)\s+the\s+(?:door|glass|window)\b"),
+    ("rattle",   0.5,  r"\brattl\w*|\bshudder\w*|\b(?:handle|latch|crash\s+bar|knob)\s+"
+                      r"(?:turn\w*|give|gave|moved?|jiggl\w*|shook|press\w*)\b"
+                      r"|\b(?:shook|shaking|jiggl\w*)\s+the\s+(?:door|handle|frame)\b"),
 ]
 
 
