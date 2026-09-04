@@ -584,6 +584,13 @@ class _FlowSession:
         for round_ in range(2):
             waited = 0
             while not chip.count() and waited < 30_000:
+                # A changelog/credit popup that appears MID-SESSION (after a run
+                # of generations) covers the composer, so the chip poll times
+                # out even though the page finished loading. Dismiss it on every
+                # poll tick — the start-of-session dismiss cannot catch a popup
+                # Flow raises on generation 30+. Live 2026-09-04: renders died
+                # at ~shot 34 on exactly this, twice.
+                self._dismiss_welcome_popup(page)
                 page.wait_for_timeout(1500)
                 waited += 1500
             if chip.count():
