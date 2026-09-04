@@ -2747,6 +2747,10 @@ def main() -> None:
                                  ("night", "overnight", "nocturnal", "sodium", "after dark")) else None
         if _noct_luma is not None:
             print(f"[chan] nocturnal channel: stock brightness ceiling YAVG<={_noct_luma:.0f}")
+        # Per-render dedup: one dim clip that clears every gate otherwise fills
+        # many unrelated beats. A used clip is rejected so the scene falls back
+        # to a fresh generated image.
+        _used_stock_hashes: set = set()
         print(f"[chan] {args.channel} -> style={cr['style']} voice={cr['voice']} "
               f"subtitle={cr['subtitle']} beat={cr['beat_words']} motion={cr['motion']}")
         if args.style == "editorial":
@@ -3454,7 +3458,8 @@ def main() -> None:
                                                        forbid_text=bool(
                                                            _style_policy and
                                                            _style_policy.forbid_onscreen_text),
-                                                       nocturnal_max_luma=_noct_luma)
+                                                       nocturnal_max_luma=_noct_luma,
+                                                       used_hashes=_used_stock_hashes)
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}"); ok = False
                     if ok and vclip.exists() and vclip.stat().st_size > 0:
@@ -3499,7 +3504,8 @@ def main() -> None:
                         vclip = work / f"scene_{i:02d}_stock.mp4"
                         print(f"[chart] [warn] chart failed scene {i}; stock fallback '{_sq}'")
                         try:
-                            if download_best_stock_video(_sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma) \
+                            if download_best_stock_video(_sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma,
+                                                       used_hashes=_used_stock_hashes) \
                                     and vclip.exists() and vclip.stat().st_size > 0:
                                 stock_paths[i] = vclip
                                 # Record the downgrade — board_final must show
@@ -3537,7 +3543,8 @@ def main() -> None:
                                                        forbid_text=bool(
                                                            _style_policy and
                                                            _style_policy.forbid_onscreen_text),
-                                                       nocturnal_max_luma=_noct_luma)
+                                                       nocturnal_max_luma=_noct_luma,
+                                                       used_hashes=_used_stock_hashes)
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}")
                         ok = False
@@ -3570,7 +3577,8 @@ def main() -> None:
                     vclip = work / f"scene_{i:02d}_stock.mp4"
                     print(f"[web-shot] [warn] failed scene {i}; falling back to stock '{sq}'")
                     try:
-                        if download_best_stock_video(sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma) and vclip.exists() and vclip.stat().st_size > 0:
+                        if download_best_stock_video(sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma,
+                                                       used_hashes=_used_stock_hashes) and vclip.exists() and vclip.stat().st_size > 0:
                             stock_paths[i] = vclip
                             continue
                     except Exception as e:
@@ -4133,7 +4141,8 @@ def main() -> None:
                 _rclip = work / f"scene_{i:02d}_rescue.mp4"
                 try:
                     print(f"[rescue] scene {i}: policy/miss → dark stock '{_rq}'")
-                    if download_best_stock_video(_rq, _rclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma) \
+                    if download_best_stock_video(_rq, _rclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma,
+                                                       used_hashes=_used_stock_hashes) \
                             and _rclip.exists() and _rclip.stat().st_size > 0:
                         overlay = _build_overlay()
                         veo_motion_scene(_rclip, overlay, audio, clip_dur, clip)

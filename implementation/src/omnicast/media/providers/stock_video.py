@@ -135,6 +135,16 @@ def _hits_negative(candidate_text: str, negative_terms: list[str] | None) -> str
 _OCR_SCRIPT = Path(__file__).resolve().parents[4] / "scripts" / "ocr_frame.ps1"
 
 
+def _clip_hash(video_path: Path) -> str:
+    """Content hash of a clip, for per-render dedup. Full-file md5 (clips are a
+    few MB); '' if unreadable."""
+    import hashlib
+    try:
+        return hashlib.md5(video_path.read_bytes()).hexdigest()
+    except Exception:
+        return ""
+
+
 def _frame_brightness(video_path: Path) -> float | None:
     """Mean luma (0-255) of the clip, via ffmpeg signalstats YAVG. None if it
     cannot be measured. A nocturnal channel (overnight horror) must not open on
@@ -618,7 +628,8 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
                               max_seconds: int = 15,
                               negative_terms: list[str] | None = None,
                               forbid_text: bool = False,
-                              nocturnal_max_luma: float | None = None) -> bool:
+                              nocturnal_max_luma: float | None = None,
+                              used_hashes: set | None = None) -> bool:
     """Search for query, download first match (Pexels -> Pixabay -> YouTube) and cache it.
 
     negative_terms: the storyboard cell's world-breaker words; a candidate whose
@@ -684,6 +695,15 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
             luma = _frame_brightness(cache_file)
             if luma is not None and luma > nocturnal_max_luma:
                 return _reject(source, "too_bright_day", f"YAVG={luma:.0f}")
+        if used_hashes is not None:
+            # One dim stock clip that clears every gate gets returned for many
+            # different queries and dominates the video (live 2026-09-04: a
+            # receipt-rack clip filled 4 unrelated beats). Reject a clip already
+            # used in THIS render so the caller falls back to a fresh generated
+            # image instead of repeating footage.
+            h = _clip_hash(cache_file)
+            if h and h in used_hashes:
+                return _reject(source, "duplicate_clip", h[:8])
         if forbid_text:
             txt = _frame_text(cache_file)
             if txt:
@@ -696,6 +716,10 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
                     return _reject(source, "vision_person")
                 if not v.get("depicts"):
                     return _reject(source, "vision_off_subject")
+        if used_hashes is not None:
+            h = _clip_hash(cache_file)
+            if h:
+                used_hashes.add(h)
         import shutil
         shutil.copyfile(cache_file, dest)
         logger.info(f"stock_video.resolved_via_{source}", query=query, **extra)
