@@ -25,6 +25,10 @@ dependencies = [
     "anthropic>=0.18,<1",       # Claude API
     "openai>=1.40",             # DeepSeek client (OpenAI-compatible endpoint) — llm/deepseek.py
     "yt-dlp>=2025.1",           # stock-video provider (media/providers/stock_video.py)
+    "diffusers>=0.30",          # local-sd image provider (media/providers/image_local.py)
+    "transformers>=4.44",       # diffusers dependency for SD/SDXL pipelines
+    "accelerate>=0.33",         # fast GPU dispatch for diffusers
+    "safetensors>=0.4",
     "chromadb>=0.5,<1",         # Vector DB for KB
     "tiktoken>=0.7,<1",         # Token counting
     # Phase 3: Topic Discovery
