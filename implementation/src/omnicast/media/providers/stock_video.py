@@ -650,13 +650,28 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
         cache_key += f" +night{int(nocturnal_max_luma)}"
     cache_file = _video_cache_path(cache_key)
 
-    # 1. Check Cache
+    # 1. Check Cache — but a cached clip must STILL pass the per-render dedup:
+    # the cache is keyed per query, so the same clip cached under several query
+    # keys (from earlier renders) was served to many beats without ever hitting
+    # the accept-time dedup (live 2026-09-04: a receipt-rack clip repeated even
+    # after dedup shipped, because the repeats were cache hits). Brightness/text
+    # are already enforced by the cache key suffixes; only dedup is stateful.
     if cache_file.exists() and cache_file.stat().st_size > 0:
+        if used_hashes is not None:
+            h = _clip_hash(cache_file)
+            if h and h in used_hashes:
+                logger.info("stock_video.frame_veto", query=query,
+                            source="cache", reason="duplicate_clip", detail=h[:8])
+                return False  # fall back to a fresh generated image
         try:
             logger.info("stock_video.cache_hit", query=query)
             dest.parent.mkdir(parents=True, exist_ok=True)
             import shutil
             shutil.copyfile(cache_file, dest)
+            if used_hashes is not None:
+                h = _clip_hash(cache_file)
+                if h:
+                    used_hashes.add(h)
             return True
         except Exception as e:
             logger.warn("stock_video.cache_copy_failed", error=str(e))
