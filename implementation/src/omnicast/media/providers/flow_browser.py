@@ -34,7 +34,7 @@ from omnicast.media.providers.interfaces import ModelOption
 # Confirmed selectors (calibrated from a live logged-in Flow project, 2026-05).
 _PROMPT_SEL = '[contenteditable="true"]'  # the agent-chat composer ("Bạn muốn tạo gì?")
 _GENERATE_SEL = 'button:has-text("arrow_forward")'
-_RESULT_IMG_SEL = 'img[alt="Hình ảnh được tạo"]'  # "Generated image" (vi locale)
+_RESULT_IMG_SEL = 'img[alt*="enerated" i], img[alt="Hình ảnh được tạo"]'  # EN "Generated image" first, vi fallback
 _MODEL_CHIP_RE = r"Nano Banana|Veo"
 # ENGLISH ONLY: every selector/mode-check in this file targets Flow's English
 # UI. The old value pinned the Vietnamese locale path (/fx/vi/) and the account
@@ -493,7 +493,7 @@ class _FlowSession:
         surface with no image model chip. Toggle it OFF so the generator switches
         to direct image generation (chip 'Imagen 4 / crop_16_9 / 1x' appears)."""
         try:
-            agent = page.locator('button:has-text("Tác nhân")').first
+            agent = page.locator('button:has-text("Agent"), button:has-text("Tác nhân")').first
             if agent.count() and (agent.get_attribute("aria-pressed") == "true"):
                 agent.click(timeout=5000)
                 page.wait_for_timeout(1200)
@@ -543,7 +543,7 @@ class _FlowSession:
         we're done."""
         try:
             for _ in range(3):
-                if page.locator('button:has-text("Tác nhân")').count():
+                if page.locator('button:has-text("Agent"), button:has-text("Tác nhân")').count():
                     return  # already in direct mode
                 x = page.locator('button:has-text("close")').last
                 if not x.count():
@@ -869,7 +869,7 @@ class _FlowSession:
     # releases, so we try several and then look for a file input. Best-effort:
     # a failed attach logs and generation continues with the text-DNA anchor.
     _INGREDIENT_OPENERS = (
-        'button:has-text("Thành phần")',       # "Ingredients" (vi)
+        'button:has-text("Ingredients")', 'button:has-text("Thành phần")',  # EN first, vi fallback
         'button:has-text("add_photo")',        # material icon in composer
         'button:has-text("add_photo_alternate")',
         'button:has-text("image")',            # material icon fallback
@@ -1117,7 +1117,7 @@ class _FlowSession:
                 return False
             row.last.click(timeout=4000)
             page.wait_for_timeout(700)
-            add = picker.locator('button:has-text("Thêm vào câu lệnh")')
+            add = picker.locator('button:has-text("Add to prompt"), button:has-text("Thêm vào câu lệnh")')
             if add.count() and add.first.is_enabled():
                 add.first.click(timeout=4000)
                 page.wait_for_timeout(700)
@@ -1180,7 +1180,7 @@ class _FlowSession:
                 waited += 1500
                 if self._mention_picker(page) is None:
                     return True     # picker closed itself → chip attached
-                add = picker.locator('button:has-text("Thêm vào câu lệnh")')
+                add = picker.locator('button:has-text("Add to prompt"), button:has-text("Thêm vào câu lệnh")')
                 try:
                     if add.count() and add.first.is_enabled():
                         add.first.click(timeout=4000)
@@ -1774,7 +1774,7 @@ class _FlowSession:
                     return
                 continue  # Escape wiped it (observed once) — loop re-checks
             try:
-                add = page.get_by_role("button", name="Thêm vào câu lệnh")
+                add = page.get_by_role("button", name=re.compile("Add to prompt|Thêm vào câu lệnh"))
                 if add.count() and add.first.is_enabled():
                     add.first.click()
                     page.wait_for_timeout(800)
