@@ -1058,6 +1058,26 @@ class _FlowSession:
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(resp.body())
+        self._strip_watermark_crop(out)
+
+    @staticmethod
+    def _strip_watermark_crop(path: Path, frac: float = 0.045) -> None:
+        """Crop ~4.5% off every edge and rescale to the original size.
+
+        Nano Banana burns a four-point SynthID sparkle into the bottom-right
+        corner of every image; external QC 2026-09-06 flagged it on most
+        frames AND the thumbnail as an instant AI tell that betrays the
+        channel's amateur-photo commitment. Videos are unaffected (different
+        pipeline)."""
+        try:
+            from PIL import Image
+            with Image.open(path) as im:
+                w, h = im.size
+                dx, dy = int(w * frac), int(h * frac)
+                im.crop((dx, dy, w - dx, h - dy)).resize((w, h), Image.LANCZOS)\
+                  .save(path)
+        except Exception as exc:  # a watermarked image beats a dead render
+            print(f"[flow] [warn] watermark crop skipped: {exc}", flush=True)
 
     def set_characters(self, names: list[str] | None) -> None:
         """Project CHARACTERS to @-mention into every prompt. This is how the
