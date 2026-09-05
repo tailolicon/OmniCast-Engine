@@ -4388,6 +4388,29 @@ def main() -> None:
                                "non-publish-spec audio") from e
         print(f"[master] [warn] skipped ({e})")
 
+    # Channel brand watermark — faint channel name bottom-right, the way every
+    # top channel in the corpus marks ownership (Mr. Nightmare's corner text).
+    # Doubles as cover for any provider mark residue. Video stream re-encode is
+    # unavoidable (overlay), so keep it one fast pass; audio copies through.
+    try:
+        _brand = str(channel_meta.get("brand_name") or "").strip().upper()
+        if _brand:
+            _wm_tmp = out.with_name(out.stem + "_wm.mp4")
+            _txt = _brand.replace(":", r"\:").replace("'", "")
+            run(["ffmpeg", "-y", "-i", str(out),
+                 "-vf", (f"drawtext=text='{_txt}':fontfile={FONT_BOLD}"
+                         ":fontsize=h/40:fontcolor=white@0.32"
+                         ":x=w-tw-24:y=h-th-20"),
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                 "-pix_fmt", "yuv420p", "-c:a", "copy", str(_wm_tmp)])
+            if _wm_tmp.exists() and _wm_tmp.stat().st_size > 0:
+                _replace_retry(_wm_tmp, out, label="brandwm")
+                print(f"[3w/5] Brand watermark: '{_brand}' bottom-right @32%")
+    except Exception as e:
+        if STRICT:
+            raise RuntimeError(f"Brand watermark failed ({e})") from e
+        print(f"[brandwm] [warn] skipped ({e})")
+
     # Channel intro/outro bumpers — brand-consistent, render-once, reused every
     # video. Prepended/appended to the finished body. No-op if channel declares none.
     if channel_meta.get("intro_clip") or channel_meta.get("outro_clip"):
