@@ -36,7 +36,20 @@ _PROMPT_SEL = '[contenteditable="true"]'  # the agent-chat composer ("Bạn mu�
 _GENERATE_SEL = 'button:has-text("arrow_forward")'
 _RESULT_IMG_SEL = 'img[alt="Hình ảnh được tạo"]'  # "Generated image" (vi locale)
 _MODEL_CHIP_RE = r"Nano Banana|Veo"
-_FLOW_HOME = "https://labs.google/fx/vi/tools/flow"
+# ENGLISH ONLY: every selector/mode-check in this file targets Flow's English
+# UI. The old value pinned the Vietnamese locale path (/fx/vi/) and the account
+# preference is Vietnamese too, so the composer said "Video · 8 giây" where the
+# mode check expects "Video · 8s" — image mode never engaged (live 2026-09-04).
+# ?hl=en overrides the account language per-request; browser --lang does not.
+_FLOW_HOME = "https://labs.google/fx/tools/flow?hl=en"
+
+
+def _with_hl_en(url: str) -> str:
+    """Append hl=en to a Flow/labs URL (project URLs captured from page.url
+    come back without it)."""
+    if not url or "hl=en" in url:
+        return url
+    return url + ("&hl=en" if "?" in url else "?hl=en")
 _NEW_PROJECT_SEL = 'button:has-text("Dự án mới")'  # "New project"
 
 
@@ -199,18 +212,27 @@ class _FlowSession:
             pass
 
         self._pw = sync_playwright().start()
+        # LOCALE IS PINNED TO ENGLISH. Every selector and mode-check in this
+        # file is written against Flow's English UI; a Vietnamese-locale
+        # account rendered "Video · 8 giây" where the mode check expects
+        # "Video · 8s", so the composer never left VIDEO mode and every image
+        # batch died on "composer chip not found" (live 2026-09-04, twice).
+        # Forcing Accept-Language/--lang keeps the page English regardless of
+        # the Google account's language preference.
         self._ctx = self._pw.chromium.launch_persistent_context(
             user_data_dir=self._profile,
             headless=False,
             channel="chrome",
-            args=["--disable-blink-features=AutomationControlled"],
+            locale="en-US",
+            args=["--disable-blink-features=AutomationControlled",
+                  "--lang=en-US", "--accept-lang=en-US"],
             viewport={"width": 1500, "height": 950},
         )
         self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
         if self._create_new or not self._project:
             self._new_project(self._page)
         else:
-            self._page.goto(self._project, wait_until="domcontentloaded", timeout=120_000)
+            self._page.goto(_with_hl_en(self._project), wait_until="domcontentloaded", timeout=120_000)
             self._page.wait_for_timeout(4000)
         # Editor can take a few seconds to mount the prompt box after the project
         # URL resolves; wait for it so the first _type_prompt doesn't race-fail.
@@ -591,6 +613,28 @@ class _FlowSession:
                 # Flow raises on generation 30+. Live 2026-09-04: renders died
                 # at ~shot 34 on exactly this, twice.
                 self._dismiss_welcome_popup(page)
+                # 09/2026 redesign: the composer stopped reading the legacy
+                # FLOW_MAIN_PROMPT_BOX_STATE key (its replacement has minified
+                # field names that churn per build), so the localStorage write
+                # above no longer flips the mode. Switch the way a user does:
+                # open the mode chip ("Video · 720p · 8s") and click the Image
+                # tab. English-only UI is pinned via ?hl=en, so these texts are
+                # stable.
+                video_chip = page.locator('button', has_text=re.compile(r"Video · "))
+                if video_chip.count():
+                    try:
+                        video_chip.first.click(timeout=4000)
+                        page.wait_for_timeout(1200)
+                        img_tab = page.get_by_text("Image", exact=True)
+                        if img_tab.count():
+                            img_tab.first.click(timeout=4000)
+                            page.wait_for_timeout(2000)
+                            print("      [flow] mode switched to IMAGE via chip UI", flush=True)
+                        else:
+                            print("      [flow] chip menu opened but no Image tab found", flush=True)
+                            page.keyboard.press("Escape")
+                    except Exception as exc:
+                        print(f"      [flow] chip UI switch failed: {str(exc)[:140]}", flush=True)
                 page.wait_for_timeout(1500)
                 waited += 1500
             if chip.count():
@@ -1171,7 +1215,7 @@ class _FlowSession:
         survive a reload (observed live), so this is the reliable way to drop
         stale ingredient chips before attaching a new set — chip-remove
         buttons would need per-release DOM calibration."""
-        page.goto(self._project, wait_until="domcontentloaded", timeout=120_000)
+        page.goto(_with_hl_en(self._project), wait_until="domcontentloaded", timeout=120_000)
         page.wait_for_timeout(4000)
         self._dismiss_welcome_popup(page)
         self._ingredients_attached = False
