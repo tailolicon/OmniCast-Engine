@@ -230,10 +230,16 @@ class _FlowSession:
             channel="chrome",
             locale="en-US",
             args=["--disable-blink-features=AutomationControlled",
-                  "--lang=en-US", "--accept-lang=en-US"],
+                  "--lang=en-US", "--accept-lang=en-US",
+                  # Headed Chrome must not steal the operator's focus: force
+                  # Xwayland so --class applies, and a Hyprland rule parks
+                  # class flow-render on a hidden special workspace silently
+                  # (rule lives in ~/.config/hypr/hyprland.lua).
+                  "--ozone-platform=x11", "--class=flow-render"],
             viewport={"width": 1500, "height": 950},
         )
         self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
+        self._hide_own_window()
         if self._create_new or not self._project:
             self._new_project(self._page)
         else:
@@ -247,6 +253,24 @@ class _FlowSession:
             print("[flow] warn: prompt textbox not visible after 30s", flush=True)
         self._dismiss_welcome_popup(self._page)
         return self._page
+
+    def _hide_own_window(self) -> None:
+        """Park this automation Chrome on a hidden Hyprland workspace so it
+        never steals the operator's focus (live complaint 2026-09-05). The
+        window maps a beat after launch and Chrome may re-activate itself, so
+        dispatch a few times over the first seconds. No-op off Hyprland."""
+        import shutil as _sh, subprocess as _sp, threading as _th, time as _t
+        if not _sh.which("hyprctl"):
+            return
+
+        def _park():
+            for _ in range(6):
+                _sp.run(["hyprctl", "dispatch", "movetoworkspacesilent",
+                         "special:flowrender,class:^(flow-render)$"],
+                        capture_output=True, timeout=5)
+                _t.sleep(1.5)
+
+        _th.Thread(target=_park, daemon=True).start()
 
     def _dismiss_welcome_popup(self, page) -> None:
         """Radix UI changelog/welcome popups occasionally block the UI. If detected,
