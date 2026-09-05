@@ -50,7 +50,12 @@ def _with_hl_en(url: str) -> str:
     if not url or "hl=en" in url:
         return url
     return url + ("&hl=en" if "?" in url else "?hl=en")
-_NEW_PROJECT_SEL = 'button:has-text("Dự án mới")'  # "New project"
+# UI is pinned to English via ?hl=en, but keep the Vietnamese texts as
+# fallbacks in case a page slips through with the account locale.
+_NEW_PROJECT_SEL = ('button:has-text("New project"), '
+                    'button:has-text("Start Creating"), '
+                    'a:has-text("New project"), '
+                    'button:has-text("Dự án mới")')
 
 
 class FlowBlocked(MediaError):
@@ -342,7 +347,7 @@ class _FlowSession:
             try:
                 page.locator(_NEW_PROJECT_SEL).first.click(timeout=8000)
             except Exception:
-                raise MediaError(f"Flow: could not click 'Dự án mới' (new project): {exc}")
+                raise MediaError(f"Flow: could not click the new-project button: {exc}")
         for _ in range(20):  # wait for navigation into /project/<id>
             page.wait_for_timeout(1000)
             if "/project/" in page.url and page.url != before:
@@ -399,6 +404,8 @@ class _FlowSession:
             page.mouse.click(target["x"], target["y"])
             return
         gen = page.locator(_GENERATE_SEL).last
+        if not gen.count():
+            gen = page.get_by_role("button", name="Create").last
         if not gen.count():
             gen = page.get_by_role("button", name="Tạo").last
         gen.click(timeout=10_000)
