@@ -784,6 +784,15 @@ def _insert_story_beats(out_mp4: Path, work: Path, clips: list, scenes,
          "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", str(tmp)])
     if tmp.exists() and tmp.stat().st_size > 0:
+        # A silent-truncation guard: broken input timestamps once made this
+        # re-encode drop 8 of 10 minutes with ffmpeg exit 0. A splice only
+        # ADDS card seconds — anything shorter than the input is corruption.
+        _in_dur, _out_dur = total, probe_duration(tmp)
+        if _out_dur < _in_dur * 0.8:
+            print(f"[3s/5] [warn] splice truncated ({_in_dur:.0f}s -> {_out_dur:.0f}s)"
+                  " — keeping the unspliced video")
+            tmp.unlink(missing_ok=True)
+            return
         _replace_retry(tmp, out_mp4, label="storybeats")
         print(f"[3s/5] Story beats spliced: intro + {len(segs)} cards (with pause)")
 
@@ -1666,10 +1675,19 @@ def concat_scenes(clips: list[Path], out_mp4: Path, work: Path) -> None:
     listfile.write_text(
         "\n".join(f"file '{c.resolve().as_posix()}'" for c in clips), encoding="utf-8"
     )
+    # RE-ENCODE, do not stream-copy. Copy-concat of 60+ independently encoded
+    # scene clips leaves non-monotonic PTS at some boundaries; stream-copy
+    # steps (music/SFX) survive that, but any later re-encoding filtergraph
+    # (story-card splice) silently drops every backward-PTS frame — live
+    # 2026-09-05: a 632s video came out of the splice at 119s with ffmpeg
+    # exit 0. One clean x264 pass here gives every downstream step continuous
+    # timestamps.
     run([
         "ffmpeg", "-y", "-f", "concat", "-safe", "0",
         "-i", str(listfile),
-        "-c", "copy",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-r", "30",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
         str(out_mp4),
     ])
 
