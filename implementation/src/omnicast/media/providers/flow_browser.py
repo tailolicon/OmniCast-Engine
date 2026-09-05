@@ -34,7 +34,12 @@ from omnicast.media.providers.interfaces import ModelOption
 # Confirmed selectors (calibrated from a live logged-in Flow project, 2026-05).
 _PROMPT_SEL = '[contenteditable="true"]'  # the agent-chat composer ("Bạn muốn tạo gì?")
 _GENERATE_SEL = 'button:has-text("arrow_forward")'
-_RESULT_IMG_SEL = 'img[alt*="enerated" i], img[alt="Hình ảnh được tạo"]'  # EN "Generated image" first, vi fallback
+# Result tiles: match by src host (locale-proof — the 09/2026 UI serves
+# results from flow-content.google and the alt text changed again), with
+# the old alt texts kept as fallbacks for stragglers.
+_RESULT_IMG_SEL = ('img[src*="flow-content.google/image"], '
+                   'img[alt="Tile displaying a user\'s image"], '
+                   'img[alt*="enerated" i], img[alt="Hình ảnh được tạo"]')
 _MODEL_CHIP_RE = r"Nano Banana|Veo"
 # ENGLISH ONLY: every selector/mode-check in this file targets Flow's English
 # UI. The old value pinned the Vietnamese locale path (/fx/vi/) and the account
@@ -235,7 +240,10 @@ class _FlowSession:
                   # Xwayland so --class applies, and a Hyprland rule parks
                   # class flow-render on a hidden special workspace silently
                   # (rule lives in ~/.config/hypr/hyprland.lua).
-                  "--ozone-platform=x11", "--class=flow-render"],
+                  "--ozone-platform=x11", "--class=flow-render",
+                  # Live-debug affordance: lets an operator attach a second
+                  # CDP client mid-run to see what the page actually shows.
+                  "--remote-debugging-port=9226"],
             viewport={"width": 1500, "height": 950},
         )
         self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
