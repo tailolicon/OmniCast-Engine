@@ -4163,12 +4163,27 @@ def main() -> None:
             # only fall to a text card if even that fails.
             _rescued = False
             if GRADE and talk is None:  # GRADE set => real-look channel (horror grade)
-                _rq = re.sub(r"[\[\]…]", "", (sc.heading or sc.narration or "")).strip()
-                _rq = " ".join(_rq.split()[:4]).lower() or "dark empty hallway night"
+                # ON-BRAND ATMOSPHERE ONLY. The old query was the first words of
+                # the scene HEADING — i.e. the story title — which returned
+                # whatever the stock sites associate with those words (external
+                # QC 2026-09-05: a dog walk, a landline phone, timestamped
+                # camcorder clips, one vertical TikTok). A rescue clip cannot
+                # follow the beat anyway, so it must at least stay in the
+                # story's WORLD: rotate through dark generic atmospheres.
+                _RESCUE_POOL = [
+                    "dark empty highway night", "empty parking lot night sodium light",
+                    "dark road shoulder night rain", "night sky over dark trees",
+                    "dark asphalt wet night reflection", "empty road night fog",
+                ]
+                _rq = _RESCUE_POOL[i % len(_RESCUE_POOL)]
                 _rclip = work / f"scene_{i:02d}_rescue.mp4"
                 try:
                     print(f"[rescue] scene {i}: policy/miss → dark stock '{_rq}'")
-                    if download_best_stock_video(_rq, _rclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma,
+                    if download_best_stock_video(_rq, _rclip, W, H, max_seconds=15,
+                                                       nocturnal_max_luma=_noct_luma,
+                                                       forbid_text=bool(
+                                                           _style_policy and
+                                                           _style_policy.forbid_onscreen_text),
                                                        used_hashes=_used_stock_hashes) \
                             and _rclip.exists() and _rclip.stat().st_size > 0:
                         overlay = _build_overlay()

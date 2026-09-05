@@ -135,6 +135,21 @@ def _hits_negative(candidate_text: str, negative_terms: list[str] | None) -> str
 _OCR_SCRIPT = Path(__file__).resolve().parents[4] / "scripts" / "ocr_frame.ps1"
 
 
+def _clip_dims(video_path: Path) -> tuple[int, int] | None:
+    """(width, height) of the clip's video stream; None if unreadable."""
+    import subprocess
+    try:
+        pr = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0",
+             str(video_path)],
+            capture_output=True, text=True, timeout=15)
+        w, h = pr.stdout.strip().split(",")[:2]
+        return int(w), int(h)
+    except Exception:
+        return None
+
+
 def _clip_hash(video_path: Path) -> str:
     """Content hash of a clip, for per-render dedup. Full-file md5 (clips are a
     few MB); '' if unreadable."""
@@ -657,6 +672,15 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
     # after dedup shipped, because the repeats were cache hits). Brightness/text
     # are already enforced by the cache key suffixes; only dedup is stateful.
     if cache_file.exists() and cache_file.stat().st_size > 0:
+        _cdims = _clip_dims(cache_file)
+        if _cdims and target_w >= target_h and _cdims[1] > _cdims[0]:
+            logger.info("stock_video.frame_veto", query=query, source="cache",
+                        reason="portrait_clip", detail=f"{_cdims[0]}x{_cdims[1]}")
+            try:
+                cache_file.unlink()  # cached before the orientation gate existed
+            except Exception:
+                pass
+            return False
         if used_hashes is not None:
             h = _clip_hash(cache_file)
             if h and h in used_hashes:
@@ -706,6 +730,11 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
         """Downloaded clip sits in cache_file — run the on-frame gates (OCR,
         then one Sonnet look), then hand it to dest. A rejected clip is deleted
         so the cache never pins a bad asset under this key."""
+        # Orientation gate: a portrait clip pillarboxed into a 16:9 render reads
+        # as a stolen TikTok (live QC 2026-09-05: a 9:16 rescue clip shipped).
+        _dims = _clip_dims(cache_file)
+        if _dims and target_w >= target_h and _dims[1] > _dims[0]:
+            return _reject(source, "portrait_clip", f"{_dims[0]}x{_dims[1]}")
         if nocturnal_max_luma is not None:
             luma = _frame_brightness(cache_file)
             if luma is not None and luma > nocturnal_max_luma:
