@@ -3050,6 +3050,22 @@ def main() -> None:
     # stale scene_XX files silently shift every consumer that globs the work
     # dir (visual QC once built a 160-shot timeline for a 154-shot video and
     # scored frames against the wrong narration).
+    # Per-scene STOCK/RESCUE clips are never carried across runs: they were
+    # downloaded under whatever gates existed at the time, and a failed fresh
+    # download leaves the old file in place for fallbacks to pick up — a
+    # cartoon storytime clip cached before the animated-veto existed shipped
+    # in three consecutive "final" renders this way (live 2026-09-06). The
+    # gated _video_cache makes re-resolving them cheap.
+    _pre_gate = 0
+    for _f in list(work.glob("scene_*_stock.mp4")) + list(work.glob("scene_*_rescue.mp4")):
+        try:
+            _f.unlink()
+            _pre_gate += 1
+        except Exception:
+            pass
+    if _pre_gate:
+        print(f"[0/5] Purged {_pre_gate} carried-over stock/rescue clips (re-gating)")
+
     _stale = 0
     for _f in work.glob("scene_*"):
         _m = re.match(r"scene_(\d+)", _f.name)
