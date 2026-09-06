@@ -3797,8 +3797,12 @@ def main() -> None:
             _ok_marker = (cpaths[i] if outs_i_is_src else Path(_img)).with_suffix(".ok")
             if _ok_marker.exists():
                 continue
-            _subject = ((board[i].get("image_prompt") if board and i < len(board) else "")
-                        or scenes[i].heading or "")[:160]
+            # Judge against the SUBJECT clause only (first sentence/clause of the
+            # cell prompt): the full prompt carries style, lighting and negative
+            # text that a correct image legitimately does not "depict".
+            _full = ((board[i].get("image_prompt") if board and i < len(board) else "")
+                     or scenes[i].heading or "")
+            _subject = re.split(r"[.;]|, the |, with |, lit ", _full, maxsplit=1)[0].strip()[:120]
             for _attempt in range(2):
                 _v = _media_verdict(Path(_img), _subject) if _subject else None
                 _lum = _media_luma(Path(_img)) if _noct_luma is not None else None
