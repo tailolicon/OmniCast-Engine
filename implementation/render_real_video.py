@@ -2782,6 +2782,7 @@ def main() -> None:
         # many unrelated beats. A used clip is rejected so the scene falls back
         # to a fresh generated image.
         _used_stock_hashes: set = set()
+        _g1_gaveup: set = set()   # scenes gate1 gave up on → rescue lane, never a blind regen
         print(f"[chan] {args.channel} -> style={cr['style']} voice={cr['voice']} "
               f"subtitle={cr['subtitle']} beat={cr['beat_words']} motion={cr['motion']}")
         if args.style == "editorial":
@@ -3786,6 +3787,7 @@ def main() -> None:
         # sidecar marker so later runs do not pay the judge again.
         _g1_reject, _g1_regen = 0, 0
         _g1_unjudged: list[int] = []   # verdict None = judge unavailable, NOT a pass
+        _g1_gaveup.clear()
         _g1_seen_hashes: dict[str, int] = {}
         for i in range(len(scenes)):
             # Judge whichever still will back this scene: a fresh/cached
@@ -3873,6 +3875,8 @@ def main() -> None:
                 _g1_reject += 1
                 print(f"[gate1] scene {i}: generated image rejected ({_why}) — "
                       f"{'regenerating' if _attempt == 0 else 'giving up, rescue lane'}")
+                if _attempt == 1:
+                    _g1_gaveup.add(i)
                 # Keep the reject for audit (tuning the judge needs the evidence);
                 # only the cache/scene copies are evicted.
                 try:
@@ -3969,6 +3973,12 @@ def main() -> None:
         for i in range(total):
             if i in bg_paths or i in stock_paths:
                 continue
+            if i in _g1_gaveup:
+                # Gate1 rejected two generations of this scene. v12 (06/09):
+                # this loop silently generated a THIRD, unjudged one ("MILE
+                # 129" sign + timestamp, "No Signal" phone) and gate2 had to
+                # fail the whole render. The rescue lane owns these scenes.
+                continue
             bg = work / f"scene_{i:02d}_illu.png"
             cp = _img_cache_path(img_prompts[i], args.image_model, W, H)
             if _cache_hit(cp):
@@ -3986,6 +3996,30 @@ def main() -> None:
                 # to a text card for it.
                 print(f"[1b/5] [warn] image gen failed scene {i}: {str(_ie)[:80]}")
                 continue
+            # Same judgement as gate1 — no image reaches the compose stage unjudged.
+            if bg.exists():
+                _subj = re.split(r"[.;]|, the |, with |, lit ",
+                                 ((board[i].get("image_prompt") if board and i < len(board) else "")
+                                  or scenes[i].heading or ""), maxsplit=1)[0].strip()[:120]
+                _lv = _media_verdict(bg, _subj) if _subj else None
+                if _lv is None and _subj:
+                    if _STRICT:
+                        raise RuntimeError(f"GATE1(late): vision judge unavailable for scene {i} — refusing an unjudged image")
+                    print(f"[gate1] [warn] scene {i}: late image unjudged (judge unavailable)")
+                elif _lv is not None:
+                    _lw = [str(w) for w in (_lv.get("text_words") or []) if w]
+                    _ltext = _lv.get("readable_text") and (
+                        any(len(re.sub(r"[^A-Za-z]", "", w)) >= 3 for w in _lw)
+                        or bool(re.search(r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b", " ".join(_lw))))
+                    _lwhy = ("animated" if _lv.get("animated") else
+                             f"readable_text({'/'.join(_lw)[:40]})" if _ltext else
+                             "off_subject" if not _lv.get("depicts", True) else "")
+                    if _lwhy:
+                        print(f"[gate1] scene {i}: late image rejected ({_lwhy}) — rescue lane")
+                        try: bg.unlink()
+                        except Exception: pass
+                        _g1_gaveup.add(i)
+                        continue
             if _cache_hit(bg):
                 try:
                     shutil.copyfile(bg, cp)
