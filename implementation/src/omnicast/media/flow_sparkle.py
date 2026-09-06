@@ -31,6 +31,7 @@ _REF_W, _REF_H = 1376, 768  # frame the offsets below were measured on
 _PRIMARY = (97, 97, 40)     # current Flow output star (~56px wide)
 _SECONDARY = (39, 70, 32)   # older files: smaller star nearer the corner
 _SEC_MIN = 0.60             # localised NCC threshold for the secondary spot
+_DELTA_MIN = 8.0            # star-mask luminance lift (measured: stars 15–22, clean ≤0.6)
 
 
 def _anomaly(im: Image.Image) -> np.ndarray:
@@ -72,6 +73,54 @@ def _ncc_at(A: np.ndarray, T: np.ndarray, cx: int, cy: int, win: int) -> float:
     s = W.std(axis=(-1, -2), keepdims=True) + 1e-6
     C = ((W - m) / s * Tn).mean(axis=(-1, -2))
     return float(C.max())
+
+
+def _star_mask(T: np.ndarray, scale: float) -> np.ndarray:
+    Ts = _scaled_template(T, scale)
+    return Ts > 0.35 * Ts.max()
+
+
+def _mask_delta(L: np.ndarray, T: np.ndarray, cx: int, cy: int, scales) -> float:
+    """Mean luminance inside the star shape minus the mean just outside it,
+    best over small shifts. A semi-transparent white star lifts the inside by
+    alpha*(255-base): ~15 on bright gravel where NCC on the anomaly map drops
+    below 0.3 (scene 6, v10 — the miss that motivated this)."""
+    best = -99.0
+    for f in scales:
+        m = _star_mask(T, f)
+        n = m.shape[0]; h = n // 2
+        for dx in range(-6, 7, 3):
+            for dy in range(-6, 7, 3):
+                box = L[cy + dy - h:cy + dy - h + n, cx + dx - h:cx + dx - h + n]
+                if box.shape != m.shape:
+                    continue
+                best = max(best, float(box[m].mean() - box[~m].mean()))
+    return best
+
+
+def has_sparkle(im: Image.Image, template: np.ndarray | None = None,
+                ncc_only: bool = False) -> tuple[bool, str]:
+    """Is a Flow star present at either known spot? Two independent tests:
+    template correlation on the brightness-anomaly map (dark scenes) and the
+    star-mask luminance lift (bright scenes). The lift test is only valid on
+    an UNPATCHED image — a clone patch's boundary fools it (measured 13–21 on
+    visually clean corners) — so post-patch checks pass ncc_only=True.
+    Returns (present, evidence)."""
+    T = template if template is not None else _load_template()
+    if T is None:
+        return False, "no-template"
+    A = _anomaly(im)
+    L = np.asarray(im.convert("L"), dtype=float)
+    px, py, _ = _spot(im.size, _PRIMARY)
+    sx, sy, _ = _spot(im.size, _SECONDARY)
+    ncc_p = max(_ncc_at(A, _scaled_template(T, f), px, py, 24) for f in (0.9, 1.0, 1.1))
+    ncc_s = max(_ncc_at(A, _scaled_template(T, f), sx, sy, 14) for f in (0.6, 0.7, 0.8))
+    d_p = _mask_delta(L, T, px, py, (0.9, 1.0, 1.1))
+    d_s = _mask_delta(L, T, sx, sy, (0.6, 0.7, 0.8))
+    ev = f"ncc_p={ncc_p:.2f} d_p={d_p:.1f} ncc_s={ncc_s:.2f} d_s={d_s:.1f}"
+    if ncc_only:
+        return (ncc_p >= _MIN_SCORE or ncc_s >= _SEC_MIN), ev
+    return (ncc_p >= _MIN_SCORE or d_p >= _DELTA_MIN or ncc_s >= _SEC_MIN or d_s >= _DELTA_MIN), ev
 
 
 def _spot(im_size: tuple[int, int], spec: tuple[int, int, int]) -> tuple[int, int, int]:
@@ -128,6 +177,14 @@ def _clone_patch(im: Image.Image, cx: int, cy: int, r: int) -> Image.Image:
         src = im.transform(im.size, Image.AFFINE, (1, 0, 0, 0, 1, -shift))
     else:
         src = im.transform(im.size, Image.AFFINE, (1, 0, -shift, 0, 1, 0))
+    # Match the clone's colour to the target's surroundings (a ring just
+    # outside the star): a darker/lighter source read as a visible disc.
+    a_im = np.asarray(im).astype(float); a_src = np.asarray(src).astype(float)
+    yy, xx = np.mgrid[0:h, 0:w]; d = np.hypot(xx - cx, yy - cy)
+    ring = (d > r) & (d < r + 14); disc = d <= r
+    if ring.any() and disc.any():
+        off = a_im[ring].mean(axis=0) - a_src[disc].mean(axis=0)
+        src = Image.fromarray(np.clip(a_src + off, 0, 255).astype(np.uint8))
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
     mask = mask.filter(ImageFilter.GaussianBlur(5))
@@ -153,9 +210,13 @@ def strip_sparkle(path: Path, min_score: float = _MIN_SCORE, verify: bool = True
         px, py, pr = _spot(im.size, _PRIMARY)
         sx, sy, sr = _spot(im.size, _SECONDARY)
         A = _anomaly(im) if T is not None else None
-        do_primary = force or (T is not None and _ncc_at(A, T, px, py, 24) >= min_score)
-        do_secondary = T is not None and max(
+        L = np.asarray(im.convert("L"), dtype=float)
+        do_primary = force or (T is not None and (
+            max(_ncc_at(A, _scaled_template(T, f), px, py, 24) for f in (0.9, 1.0, 1.1)) >= min_score
+            or _mask_delta(L, T, px, py, (0.9, 1.0, 1.1)) >= _DELTA_MIN))
+        do_secondary = T is not None and (max(
             _ncc_at(A, _scaled_template(T, f), sx, sy, 14) for f in (0.6, 0.7, 0.8)) >= _SEC_MIN
+            or _mask_delta(L, T, sx, sy, (0.6, 0.7, 0.8)) >= _DELTA_MIN)
         if not (do_primary or do_secondary):
             return info
         info["found"] = bool(score >= min_score or do_secondary)

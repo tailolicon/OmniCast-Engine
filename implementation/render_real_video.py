@@ -3846,13 +3846,13 @@ def main() -> None:
                     if _h: _g1_seen_hashes[_h] = i
                     # Flow's ✦ mark must be gone before the image may ship.
                     try:
-                        from omnicast.media.flow_sparkle import find_sparkle as _fsp, strip_sparkle as _ssp
+                        from omnicast.media.flow_sparkle import has_sparkle as _hsp, strip_sparkle as _ssp
                         from PIL import Image as _PILImage
                         with _PILImage.open(Path(_img)) as _pim:
-                            _sc = _fsp(_pim.convert("RGB"))[0]
-                        if _sc >= 0.6:
+                            _present, _ev = _hsp(_pim.convert("RGB"), ncc_only=True)
+                        if _present:
                             _r = _ssp(Path(_img))
-                            print(f"[gate1] scene {i}: sparkle still present ({_sc:.2f}) — stripped again → {_r.get('residual')}")
+                            print(f"[gate1] scene {i}: sparkle still present ({_ev}) — stripped again → {_r.get('residual')}")
                             if outs_i_is_src and cpaths[i].exists() and cpaths[i] != Path(_img):
                                 shutil.copyfile(Path(_img), cpaths[i])
                     except Exception as _se:
