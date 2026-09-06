@@ -256,12 +256,21 @@ def classify_scene(text: str) -> tuple[str, float, str]:
     return AI_ILLUSTRATION, 0.4, ""
 
 
+# Modes that only make sense on an explainer/desk channel. A first-person
+# real-look story (horror recollection, found-photo grammar) must never route
+# a beat here: the image model's "approximation" of an infographic is a flat
+# illustration — a cartoon woman at a dinner table opened three consecutive
+# horror renders that way (live 2026-09-06).
+GRAPHIC_MODES = frozenset({INFOGRAPHIC, SCREEN_CAPTURE, ANIMATION, TALKING_HEAD})
+
+
 def route_scene(
     index: int,
     text: str,
     *,
     capabilities: set[str] | frozenset[str] | None = None,
     depicts_real_events: bool = False,
+    real_look: bool = False,
 ) -> SceneRoute:
     """Classify one scene and route it to a mode we can actually produce."""
     available = set(capabilities or set())
@@ -269,6 +278,11 @@ def route_scene(
     requested = mode
     notes: list[str] = []
     reason = ""
+    if real_look and mode in GRAPHIC_MODES:
+        reason = (f"{requested} is a graphic/desk mode; this is a real-look story "
+                  f"channel — routed to {AI_ILLUSTRATION} in the channel's photo grammar")
+        mode = AI_ILLUSTRATION
+        notes.append("real_look channel: graphic modes disabled")
 
     missing = MODE_REQUIREMENTS[mode] - available
     if missing:
@@ -327,6 +341,7 @@ def route_storyboard(
     *,
     capabilities: set[str] | frozenset[str] | None = None,
     depicts_real_events: bool = False,
+    real_look: bool = False,
 ) -> list[SceneRoute]:
     """Route a whole board. Each scene dict may carry `narration`/`text` and
     `visual`/`image_prompt`; both are read, because the production grammar is
@@ -334,7 +349,7 @@ def route_storyboard(
     routes: list[SceneRoute] = []
     for index, scene in enumerate(scenes or []):
         if not isinstance(scene, dict):
-            routes.append(route_scene(index, "", capabilities=capabilities))
+            routes.append(route_scene(index, "", capabilities=capabilities, real_look=real_look))
             continue
         parts = [str(scene.get(key) or "") for key in
                  ("narration", "text", "voiceover", "visual", "image_prompt",
@@ -342,7 +357,8 @@ def route_storyboard(
         routes.append(route_scene(
             index, "\n".join(p for p in parts if p),
             capabilities=capabilities,
-            depicts_real_events=depicts_real_events))
+            depicts_real_events=depicts_real_events,
+            real_look=real_look))
     return routes
 
 

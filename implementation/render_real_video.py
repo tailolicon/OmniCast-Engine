@@ -3256,8 +3256,12 @@ def main() -> None:
                 _real = bool(channel_meta.get(
                     "depicts_real_events",
                     str(channel_meta.get("content_mode", "")).lower() != "fiction"))
-                _routes = route_storyboard(_scenes_for_router, capabilities=_caps,
-                                           depicts_real_events=_real)
+                _routes = route_storyboard(
+                    _scenes_for_router, capabilities=_caps,
+                    depicts_real_events=_real,
+                    # A real-look story channel (forbids on-screen text, photo
+                    # grammar) never gets desk/graphic modes routed at it.
+                    real_look=bool(_style_policy and _style_policy.forbid_onscreen_text))
                 for _route in _routes:
                     _cell = board[_route.scene_index]
                     if not isinstance(_cell, dict):
@@ -3780,16 +3784,24 @@ def main() -> None:
         # sidecar marker so later runs do not pay the judge again.
         _g1_reject, _g1_regen = 0, 0
         for i in range(len(scenes)):
-            if i in bg_paths or i in stock_paths or not outs[i].exists():
+            if i in stock_paths:
                 continue
-            _ok_marker = cpaths[i].with_suffix(".ok")
+            # Judge whichever still will back this scene: a fresh/cached
+            # generation in outs[i], or an image another lane already placed in
+            # bg_paths (infographic approximation, web image, kinetic card) —
+            # the cartoon that dodged gate 1 came in through such a lane.
+            _img = outs[i] if outs[i].exists() else bg_paths.get(i)
+            if not _img or not Path(_img).exists() or Path(_img).suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+                continue
+            outs_i_is_src = (Path(_img) == outs[i])
+            _ok_marker = (cpaths[i] if outs_i_is_src else Path(_img)).with_suffix(".ok")
             if _ok_marker.exists():
                 continue
             _subject = ((board[i].get("image_prompt") if board and i < len(board) else "")
                         or scenes[i].heading or "")[:160]
             for _attempt in range(2):
-                _v = _media_verdict(outs[i], _subject) if _subject else None
-                _lum = _media_luma(outs[i]) if _noct_luma is not None else None
+                _v = _media_verdict(Path(_img), _subject) if _subject else None
+                _lum = _media_luma(Path(_img)) if _noct_luma is not None else None
                 _why = ""
                 if _v is not None:
                     if _v.get("animated"):            _why = "animated"
@@ -3804,9 +3816,10 @@ def main() -> None:
                 _g1_reject += 1
                 print(f"[gate1] scene {i}: generated image rejected ({_why}) — "
                       f"{'regenerating' if _attempt == 0 else 'giving up, rescue lane'}")
-                for _pth in (outs[i], cpaths[i]):
+                for _pth in (outs[i], cpaths[i], Path(_img)):
                     try: _pth.unlink()
                     except Exception: pass
+                bg_paths.pop(i, None)
                 if _attempt == 0 and image_provider is not None:
                     try:
                         render_illustration(image_provider, args.image_model, outs[i],
@@ -4541,8 +4554,12 @@ def main() -> None:
         _g2_dir = work / "_gate2"; _g2_dir.mkdir(exist_ok=True)
         for _i, _tm in _g2_marks:
             _fr = _g2_dir / f"g2_{_i:02d}.jpg"
+            # Burned-in captions and the brand watermark live in the bottom
+            # ~22% — crop that band off before judging, or every frame reads
+            # as "text" (live: 60+ false hits on the first gated render).
             subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{_tm:.2f}", "-i", str(out),
-                            "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "5", str(_fr)],
+                            "-frames:v", "1", "-vf", "crop=iw:ih*0.78:0:0,scale=960:-2",
+                            "-q:v", "5", str(_fr)],
                            capture_output=True, timeout=60)
             if not _fr.exists():
                 continue

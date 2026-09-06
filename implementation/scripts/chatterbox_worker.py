@@ -31,8 +31,17 @@ def _respond(obj: dict) -> None:
 
 
 def main() -> int:
-    device = "cpu"
-    _log("loading model on CPU (first run downloads ~1-2GB)…")
+    # GPU when present (RTX 3050 4GB holds the ~1.5GB model comfortably and
+    # synthesizes ~10x faster than CPU); CBX_DEVICE=cpu forces the fallback.
+    import os as _os
+    device = _os.environ.get("CBX_DEVICE", "").strip().lower()
+    if not device:
+        try:
+            import torch as _t
+            device = "cuda" if _t.cuda.is_available() else "cpu"
+        except Exception:
+            device = "cpu"
+    _log(f"loading model on {device.upper()} (first run downloads ~1-2GB)…")
     t0 = time.time()
     # Redirect any load-time stdout prints to stderr so the protocol stays clean.
     real_stdout = sys.stdout
