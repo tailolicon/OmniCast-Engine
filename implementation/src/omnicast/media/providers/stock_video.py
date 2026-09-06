@@ -320,6 +320,7 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
             "motion-graphic or any other NON-PHOTOGRAPHIC rendering (real "
             "camera footage, however filtered or grainy, is false).")
         text = ""
+        _judge_used = "claude"
         p = subprocess.run(
             [exe, "-p", prompt, "--model", "claude-sonnet-5", "--effort", "low",
              "--output-format", "json", "--max-turns", "4",
@@ -350,6 +351,7 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
                         capture_output=True, text=True, timeout=180, cwd=str(root))
                     if a.returncode == 0 and "{" in (a.stdout or ""):
                         text = a.stdout
+                        _judge_used = "agy"
                     else:
                         logger.warn("stock_video.vision_agy_error", rc=a.returncode,
                                     err=((a.stderr or a.stdout or "")[-160:]))
@@ -371,6 +373,7 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
                     cwd=str(root), input=prompt)
                 if q.returncode == 0:
                     text = q.stdout or ""
+                    _judge_used = "codex"
                 else:
                     logger.warn("stock_video.vision_codex_error",
                                 rc=q.returncode, err=(q.stderr or "")[-160:])
@@ -382,6 +385,7 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
                 continue
             if all(k in v for k in
                    ("readable_text", "identifiable_person", "depicts")):
+                v["_judge"] = _judge_used
                 return v
         return None
     except Exception as e:

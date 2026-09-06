@@ -3904,6 +3904,11 @@ def main() -> None:
                     break
                 if not _why:
                     if _h: _g1_seen_hashes[_h] = i
+                    # Acceptance is evidence too: v17 accepted two prominent
+                    # signs and the log could not say which judge or why.
+                    print(f"[gate1] scene {i}: accepted (judge={(_v or {}).get('_judge', '?')}, "
+                          f"words={(_v or {}).get('text_words') or []}, "
+                          f"prominent={(_v or {}).get('text_prominent')}, depicts={(_v or {}).get('depicts')})")
                     # Flow's ✦ mark must be gone before the image may ship.
                     try:
                         from omnicast.media.flow_sparkle import has_sparkle as _hsp, strip_sparkle as _ssp
@@ -4419,22 +4424,35 @@ def main() -> None:
                     "dark road shoulder night rain", "night sky over dark trees",
                     "dark asphalt wet night reflection", "empty road night fog",
                 ]
-                _rq = _RESCUE_POOL[i % len(_RESCUE_POOL)]
                 _rclip = work / f"scene_{i:02d}_rescue.mp4"
-                try:
-                    print(f"[rescue] scene {i}: policy/miss → dark stock '{_rq}'")
-                    if download_best_stock_video(_rq, _rclip, W, H, max_seconds=15,
-                                                       nocturnal_max_luma=_noct_luma,
-                                                       forbid_text=bool(
-                                                           _style_policy and
-                                                           _style_policy.forbid_onscreen_text),
-                                                       used_hashes=_used_stock_hashes) \
-                            and _rclip.exists() and _rclip.stat().st_size > 0:
+                # v17 (07/09): one query, silent False → a blue TEXT CARD with
+                # the story title shipped into four scenes of a real-look
+                # video. Walk the whole pool before admitting defeat, and say
+                # so in the log every time.
+                for _k in range(len(_RESCUE_POOL)):
+                    _rq = _RESCUE_POOL[(i + _k) % len(_RESCUE_POOL)]
+                    try:
+                        print(f"[rescue] scene {i}: policy/miss → dark stock '{_rq}'"
+                              + (f" (try {_k + 1}/{len(_RESCUE_POOL)})" if _k else ""))
+                        _got = download_best_stock_video(_rq, _rclip, W, H, max_seconds=15,
+                                                         nocturnal_max_luma=_noct_luma,
+                                                         forbid_text=bool(
+                                                             _style_policy and
+                                                             _style_policy.forbid_onscreen_text),
+                                                         used_hashes=_used_stock_hashes)
+                    except Exception as _re2:
+                        print(f"[rescue] [warn] scene {i} stock rescue error: {_re2}")
+                        _got = False
+                    if _got and _rclip.exists() and _rclip.stat().st_size > 0:
                         overlay = _build_overlay()
                         veo_motion_scene(_rclip, overlay, audio, clip_dur, clip)
                         _rescued = True
-                except Exception as _re2:
-                    print(f"[rescue] [warn] scene {i} stock rescue failed: {_re2}")
+                        break
+                    print(f"[rescue] [warn] scene {i}: no usable clip for '{_rq}'")
+            if not _rescued and GRADE and talk is None and STRICT:
+                raise RuntimeError(
+                    f"RESCUE: scene {i} has no judged visual and every rescue query failed — "
+                    "STRICT refuses to ship a text card on a real-look channel")
             if not _rescued:
                 render_card(sc, i, total, png, bg_image=None)
                 if talk is not None:
