@@ -3783,15 +3783,23 @@ def main() -> None:
         # the OUTPUT closes every such path at once. Accepted images get a
         # sidecar marker so later runs do not pay the judge again.
         _g1_reject, _g1_regen = 0, 0
+        _g1_seen_hashes: dict[str, int] = {}
         for i in range(len(scenes)):
-            if i in stock_paths:
-                continue
             # Judge whichever still will back this scene: a fresh/cached
             # generation in outs[i], or an image another lane already placed in
             # bg_paths (infographic approximation, web image, kinetic card) —
             # the cartoon that dodged gate 1 came in through such a lane.
+            # Stock scenes are NOT skipped: a stale still next to a stock clip
+            # (scene 0, v9: a portrait cartoon from another project) becomes
+            # the background the moment the clip fails — judge it or drop it.
             _img = outs[i] if outs[i].exists() else bg_paths.get(i)
             if not _img or not Path(_img).exists() or Path(_img).suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+                continue
+            if i in stock_paths and Path(_img) == outs[i]:
+                try:
+                    outs[i].unlink(); bg_paths.pop(i, None)
+                    print(f"[gate1] scene {i}: stale still removed (scene is a stock clip)")
+                except Exception: pass
                 continue
             outs_i_is_src = (Path(_img) == outs[i])
             _ok_marker = (cpaths[i] if outs_i_is_src else Path(_img)).with_suffix(".ok")
@@ -3807,19 +3815,60 @@ def main() -> None:
                 _v = _media_verdict(Path(_img), _subject) if _subject else None
                 _lum = _media_luma(Path(_img)) if _noct_luma is not None else None
                 _why = ""
-                if _v is not None:
+                # One picture must not back two scenes (v9 shipped 12 scenes on
+                # one identical still): a hash already seen is a reject.
+                try:
+                    _h = hashlib.sha256(Path(_img).read_bytes()).hexdigest()
+                except Exception:
+                    _h = ""
+                if _h and _g1_seen_hashes.get(_h, i) != i:
+                    _why = f"duplicate_of_scene_{_g1_seen_hashes[_h]}"
+                if not _why and _v is not None:
+                    # readable_text needs EVIDENCE: a word of >=3 letters the judge
+                    # actually read. Dashboard digits / dial marks (scene 20, v9:
+                    # the best cab shot of the run) are not text a viewer reads.
+                    _words = [str(w) for w in (_v.get("text_words") or []) if w]
+                    # A word of >=3 letters, or a date/clock stamp ("26 '08",
+                    # "12:47", "2008") — camcorder timestamps date the footage
+                    # against the story. A lone dashboard "45" does not.
+                    _real_text = any(
+                        len(re.sub(r"[^A-Za-z]", "", w)) >= 3
+                        or re.search(r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b", w)
+                        for w in _words) or bool(re.search(
+                            r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b", " ".join(_words)))
                     if _v.get("animated"):            _why = "animated"
-                    elif _v.get("readable_text"):     _why = "readable_text"
+                    elif _v.get("readable_text") and _real_text:
+                        _why = f"readable_text({'/'.join(_words)[:40]})"
                     elif not _v.get("depicts", True): _why = "off_subject"
                 if not _why and _lum is not None and _lum > _noct_luma:
                     _why = f"too_bright({_lum:.0f})"
                 if not _why:
+                    if _h: _g1_seen_hashes[_h] = i
+                    # Flow's ✦ mark must be gone before the image may ship.
+                    try:
+                        from omnicast.media.flow_sparkle import find_sparkle as _fsp, strip_sparkle as _ssp
+                        from PIL import Image as _PILImage
+                        with _PILImage.open(Path(_img)) as _pim:
+                            _sc = _fsp(_pim.convert("RGB"))[0]
+                        if _sc >= 0.6:
+                            _r = _ssp(Path(_img))
+                            print(f"[gate1] scene {i}: sparkle still present ({_sc:.2f}) — stripped again → {_r.get('residual')}")
+                            if outs_i_is_src and cpaths[i].exists() and cpaths[i] != Path(_img):
+                                shutil.copyfile(Path(_img), cpaths[i])
+                    except Exception as _se:
+                        print(f"[gate1] scene {i}: sparkle check skipped ({_se})")
                     try: _ok_marker.write_text("ok", encoding="utf-8")
                     except Exception: pass
                     break
                 _g1_reject += 1
                 print(f"[gate1] scene {i}: generated image rejected ({_why}) — "
                       f"{'regenerating' if _attempt == 0 else 'giving up, rescue lane'}")
+                # Keep the reject for audit (tuning the judge needs the evidence);
+                # only the cache/scene copies are evicted.
+                try:
+                    _rej_dir = work / "_gate1_rejects"; _rej_dir.mkdir(exist_ok=True)
+                    shutil.copyfile(Path(_img), _rej_dir / f"scene_{i:02d}_try{_attempt}_{re.sub(r'[^a-z_]', '', _why.split('(')[0])}{Path(_img).suffix}")
+                except Exception: pass
                 for _pth in (outs[i], cpaths[i], Path(_img)):
                     try: _pth.unlink()
                     except Exception: pass

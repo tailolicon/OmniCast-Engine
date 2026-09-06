@@ -1063,26 +1063,18 @@ class _FlowSession:
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(resp.body())
-        self._strip_watermark_crop(out)
-
-    @staticmethod
-    def _strip_watermark_crop(path: Path, frac: float = 0.045) -> None:
-        """Crop ~4.5% off every edge and rescale to the original size.
-
-        Nano Banana burns a four-point SynthID sparkle into the bottom-right
-        corner of every image; external QC 2026-09-06 flagged it on most
-        frames AND the thumbnail as an instant AI tell that betrays the
-        channel's amateur-photo commitment. Videos are unaffected (different
-        pipeline)."""
+        # Remove the visible SynthID sparkle in place (detect → inpaint → verify).
+        # The earlier 4.5% edge crop never reached it (measured 06/09/2026).
         try:
-            from PIL import Image
-            with Image.open(path) as im:
-                w, h = im.size
-                dx, dy = int(w * frac), int(h * frac)
-                im.crop((dx, dy, w - dx, h - dy)).resize((w, h), Image.LANCZOS)\
-                  .save(path)
-        except Exception as exc:  # a watermarked image beats a dead render
-            print(f"[flow] [warn] watermark crop skipped: {exc}", flush=True)
+            from omnicast.media.flow_sparkle import strip_sparkle
+            _r = strip_sparkle(out)
+            if _r.get("found") and not _r.get("removed"):
+                print(f"[flow] [warn] sparkle found but not removed: {_r}", flush=True)
+            elif _r.get("found"):
+                print(f"      [flow] sparkle removed ({_r.get('score')} -> {_r.get('residual')}) "
+                      f"{out.name}", flush=True)
+        except Exception as exc:  # a marked image beats a dead render
+            print(f"[flow] [warn] sparkle strip skipped: {exc}", flush=True)
 
     def set_characters(self, names: list[str] | None) -> None:
         """Project CHARACTERS to @-mention into every prompt. This is how the
