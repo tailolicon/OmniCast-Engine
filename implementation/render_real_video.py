@@ -4040,7 +4040,14 @@ def main() -> None:
                     elif _why == "off_subject":
                         _retry_prompt = f"{_subject}. {img_prompts[i]}"
                     elif _why.startswith("contradicts_world"):
-                        _retry_prompt = f"STORY FACTS (obey all): {_world_facts}. {img_prompts[i]}"
+                        # Never hand the model a labelled fact list — it wrote
+                        # "Call client I-95 S MM 214" INTO the picture (v20).
+                        # Fold the facts in as plain scene description instead.
+                        _setting = re.sub(r"\b(narrator|the other vehicle is|entire story|never|no [a-z ]+ seen)\b", "", _world_facts, flags=re.I)
+                        _setting = re.sub(r"[;:]+", ",", _setting)
+                        _setting = re.sub(r"\s+", " ", _setting).strip(" ,.")
+                        _retry_prompt = (f"{img_prompts[i]}, consistent with this world: {_setting}. "
+                                         "No text, no signs, no numbers, no paper anywhere in frame")
                     elif _why == "not_amateur_pov":
                         _retry_prompt = (f"{img_prompts[i]}. Shot at eye level by a person standing "
                                          "in the scene with a phone camera — no aerial, no drone, "
