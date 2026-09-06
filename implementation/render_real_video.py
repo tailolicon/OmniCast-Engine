@@ -3833,7 +3833,20 @@ def main() -> None:
                 _h0 = hashlib.sha256(Path(_img).read_bytes()).hexdigest()
             except Exception:
                 _h0 = ""
-            if _ok_marker.exists() and not (_h0 and _g1_seen_hashes.get(_h0, i) != i):
+            # A marker only vouches for the file it was written for: it must be
+            # NEWER than the image. v15 (07/09): cache PNGs evicted by dedup
+            # left their .ok behind, the regenerated pictures ("124" marker,
+            # "OUT OF SERVICE" box) inherited it and skipped the judge.
+            _ok_valid = False
+            if _ok_marker.exists():
+                try:
+                    _ok_valid = _ok_marker.stat().st_mtime >= Path(_img).stat().st_mtime - 1
+                except Exception:
+                    _ok_valid = False
+                if not _ok_valid:
+                    try: _ok_marker.unlink()
+                    except Exception: pass
+            if _ok_valid and not (_h0 and _g1_seen_hashes.get(_h0, i) != i):
                 if _h0: _g1_seen_hashes[_h0] = i
                 continue
             # Judge against the SUBJECT clause only (first sentence/clause of the
@@ -3900,7 +3913,7 @@ def main() -> None:
                     _rej_dir = work / "_gate1_rejects"; _rej_dir.mkdir(exist_ok=True)
                     shutil.copyfile(Path(_img), _rej_dir / f"scene_{i:02d}_try{_attempt}_{re.sub(r'[^a-z_]', '', _why.split('(')[0])}{Path(_img).suffix}")
                 except Exception: pass
-                for _pth in (outs[i], cpaths[i], Path(_img)):
+                for _pth in (outs[i], cpaths[i], Path(_img), _ok_marker):
                     try: _pth.unlink()
                     except Exception: pass
                 bg_paths.pop(i, None)
