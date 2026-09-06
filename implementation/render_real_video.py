@@ -174,7 +174,7 @@ def _story_world_facts(scenes: list) -> str:
     up" — depicts-only judging cannot see those. Cached per script."""
     import hashlib as _hl
     blob = "\n".join(f"{getattr(sc, 'heading', '')}|{getattr(sc, 'narration', '')}" for sc in scenes)
-    key = _hl.sha256(("world_v1\n" + blob).encode("utf-8")).hexdigest()[:24]
+    key = _hl.sha256(("world_v2\n" + blob).encode("utf-8")).hexdigest()[:24]
     cp = _IMG_CACHE_DIR / f"world_{key}.txt"
     try:
         if cp.exists() and cp.stat().st_size > 20:
@@ -183,11 +183,13 @@ def _story_world_facts(scenes: list) -> str:
         pass
     text = " ".join(getattr(sc, "narration", "") for sc in scenes)[:9000]
     system = ("You extract the fixed VISUAL facts of a first-person story so an image "
-              "auditor can spot frames that contradict it. Answer with ONE line of "
-              "semicolon-separated facts, 5 to 8 items, each under 12 words, e.g. "
-              "'narrator drives a TOW TRUCK (never a semi or dump truck); the other "
-              "vehicle is a plain dark SEDAN, no markings; entire story at NIGHT on an "
-              "interstate shoulder; rural, no city; present day; no other people seen'. "
+              "auditor can spot frames that CLEARLY contradict it. Answer with ONE line "
+              "of semicolon-separated facts, 5 to 9 items, each under 14 words, covering: "
+              "the narrator's vehicle (type, never-confuse-with); every other vehicle "
+              "(type, colour, markings); time of day; era/decade; ALL settings that "
+              "appear in the story, listed together (e.g. 'settings: interstate "
+              "shoulder, dispatch office, truck-stop diner, motel corridor'); things "
+              "that never appear. Never claim a single setting for the whole story. "
               "No preamble.")
     user = f"STORY:\n{text}\n\nFACTS:"
     resp = None
@@ -3974,7 +3976,10 @@ def main() -> None:
                     # actually read. Dashboard digits / dial marks (scene 20, v9:
                     # the best cab shot of the run) are not text a viewer reads.
                     _treason = _text_reject_reason(_v)
-                    _wreason = _world_reject_reason(_v, _real_look)
+                    # POV is a retry-only criterion: a second "not amateur" verdict
+                    # (a tidy close-up, say) must not dump the scene into generic
+                    # stock; drone/cinematic framing is what the retry prompt fixes.
+                    _wreason = _world_reject_reason(_v, _real_look and _attempt == 0)
                     if _v.get("animated"):            _why = "animated"
                     elif _treason:                    _why = _treason
                     elif not _v.get("depicts", True): _why = "off_subject"
@@ -4176,7 +4181,7 @@ def main() -> None:
                     _lwhy = ("animated" if _lv.get("animated") else
                              _text_reject_reason(_lv) or
                              ("off_subject" if not _lv.get("depicts", True) else "") or
-                             _world_reject_reason(_lv, _real_look))
+                             _world_reject_reason(_lv, False))
                     if _lwhy:
                         print(f"[gate1] scene {i}: late image rejected ({_lwhy}) — rescue lane")
                         try: bg.unlink()
@@ -4852,8 +4857,8 @@ def main() -> None:
                 _g2_bad.append(f"{_tm:.0f}s animated")
             elif _v and _text_reject_reason(_v):
                 _g2_bad.append(f"{_tm:.0f}s {_text_reject_reason(_v)}")
-            elif _v and _world_reject_reason(_v, _real_look):
-                _g2_bad.append(f"{_tm:.0f}s {_world_reject_reason(_v, _real_look)}")
+            elif _v and _world_reject_reason(_v, False):
+                _g2_bad.append(f"{_tm:.0f}s {_world_reject_reason(_v, False)}")
             elif _lum is not None and _lum > _noct_luma + 20:
                 _g2_bad.append(f"{_tm:.0f}s bright({_lum:.0f})")
         if _g2_bad:
