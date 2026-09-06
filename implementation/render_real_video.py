@@ -220,12 +220,30 @@ def _story_world_facts(scenes: list) -> str:
     return facts
 
 
-def _world_reject_reason(v: dict | None, real_look: bool) -> str:
-    """Story-fact and point-of-view checks shared by every gate."""
+_HARD_CLASH_RE = re.compile(
+    r"semi|trailer|18[- ]wheeler|big rig|dump truck|garbage truck|pickup|coupe|sports car|"
+    r"\bbus\b|\bvan\b|motorcycle|\bsuv\b|convertible|hatchback|police car|ambulance|"
+    r"daylight|daytime|sunny|broad day|afternoon|morning|noon|19[3-9]0s|vintage|"
+    r"\bsnow|winter|city skyline|downtown", re.I)
+_DAY_RE = re.compile(r"daylight|daytime|sunny|broad day|afternoon|morning|noon", re.I)
+
+
+def _world_reject_reason(v: dict | None, real_look: bool, luma: float | None = None) -> str:
+    """Story-fact and point-of-view checks shared by every gate. The judge's
+    contradiction is NOISY (v21: "sedan not tow truck" on the story's own
+    sedan; "daytime" on a night road at YAVG 60; a rescue sky "not a desk"),
+    so it counts only when its explanation names a HARD clash — a wrong
+    vehicle class, daylight, wrong era, snow/city — and a daylight claim
+    must agree with the measured brightness."""
     if not v:
         return ""
     if v.get("contradicts_world"):
-        return f"contradicts_world({str(v.get('contradiction') or '')[:50]})"
+        why = str(v.get("contradiction") or "")
+        if _HARD_CLASH_RE.search(why):
+            if _DAY_RE.search(why) and luma is not None and luma <= 95:
+                pass  # "daytime" on a measured-dark frame: hallucination
+            else:
+                return f"contradicts_world({why[:50]})"
     if real_look and v.get("amateur_pov") is False:
         return "not_amateur_pov"
     return ""
@@ -2889,6 +2907,7 @@ def main() -> None:
         # to a fresh generated image.
         _used_stock_hashes: set = set()
         _g1_gaveup: set = set()   # scenes gate1 gave up on → rescue lane, never a blind regen
+        _rescued_scenes: dict = {}  # scene → rescue query (atmosphere by design; gate2 judges it as such)
         print(f"[chan] {args.channel} -> style={cr['style']} voice={cr['voice']} "
               f"subtitle={cr['subtitle']} beat={cr['beat_words']} motion={cr['motion']}")
         if args.style == "editorial":
@@ -3979,7 +3998,7 @@ def main() -> None:
                     # POV is a retry-only criterion: a second "not amateur" verdict
                     # (a tidy close-up, say) must not dump the scene into generic
                     # stock; drone/cinematic framing is what the retry prompt fixes.
-                    _wreason = _world_reject_reason(_v, _real_look and _attempt == 0)
+                    _wreason = _world_reject_reason(_v, _real_look and _attempt == 0, _lum)
                     if _v.get("animated"):            _why = "animated"
                     elif _treason:                    _why = _treason
                     elif not _v.get("depicts", True): _why = "off_subject"
@@ -4181,7 +4200,7 @@ def main() -> None:
                     _lwhy = ("animated" if _lv.get("animated") else
                              _text_reject_reason(_lv) or
                              ("off_subject" if not _lv.get("depicts", True) else "") or
-                             _world_reject_reason(_lv, False))
+                             _world_reject_reason(_lv, False, _media_luma(bg) if _noct_luma is not None else None))
                     if _lwhy:
                         print(f"[gate1] scene {i}: late image rejected ({_lwhy}) — rescue lane")
                         try: bg.unlink()
@@ -4551,6 +4570,7 @@ def main() -> None:
                         overlay = _build_overlay()
                         veo_motion_scene(_rclip, overlay, audio, clip_dur, clip)
                         _rescued = True
+                        _rescued_scenes[i] = _rq
                         break
                     print(f"[rescue] [warn] scene {i}: no usable clip for '{_rq}'")
             if not _rescued and GRADE and talk is None and STRICT:
@@ -4848,6 +4868,9 @@ def main() -> None:
             if not _fr.exists():
                 continue
             _subj = _scene_subject(board[_i] if board and _i < len(board) else None, scenes[_i])
+            _is_rescue = _i in _rescued_scenes
+            if _is_rescue:
+                _subj = f"dark atmosphere cutaway: {_rescued_scenes[_i]}"
             _v = _media_verdict(_fr, _subj, world=_world_facts)
             if _v is None:
                 _g2_bad.append(f"{_tm:.0f}s UNJUDGED(judge unavailable)")
@@ -4857,8 +4880,8 @@ def main() -> None:
                 _g2_bad.append(f"{_tm:.0f}s animated")
             elif _v and _text_reject_reason(_v):
                 _g2_bad.append(f"{_tm:.0f}s {_text_reject_reason(_v)}")
-            elif _v and _world_reject_reason(_v, False):
-                _g2_bad.append(f"{_tm:.0f}s {_world_reject_reason(_v, False)}")
+            elif _v and not _is_rescue and _world_reject_reason(_v, False, _lum):
+                _g2_bad.append(f"{_tm:.0f}s {_world_reject_reason(_v, False, _lum)}")
             elif _lum is not None and _lum > _noct_luma + 20:
                 _g2_bad.append(f"{_tm:.0f}s bright({_lum:.0f})")
         if _g2_bad:
