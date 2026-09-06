@@ -3913,6 +3913,10 @@ def main() -> None:
                             continue
                     except Exception as _ge:
                         print(f"[gate1] scene {i}: regen failed ({_ge})")
+                    # Regen did not land (quota, stale tile, provider error):
+                    # this scene belongs to the rescue lane now, not to a blind
+                    # third attempt in the late fallback.
+                    _g1_gaveup.add(i)
                 break
         if _g1_reject:
             print(f"[gate1] {_g1_reject} rejection(s), {_g1_regen} regenerated")

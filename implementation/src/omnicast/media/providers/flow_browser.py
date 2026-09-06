@@ -21,6 +21,7 @@ across generations for speed.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import random
 import re
@@ -1105,9 +1106,22 @@ class _FlowSession:
         resp = self._ctx.request.get(src, timeout=120_000)
         if not resp.ok:
             raise MediaError(f"Flow media fetch failed: HTTP {resp.status} {src}")
+        body = resp.body()
+        # A result identical to one already handed out this session is an OLD
+        # tile re-collected after a failed generation, not a new image (v14,
+        # 06/09: scene 44's picture came back for 16 more prompts once the
+        # quota tripped). Refuse it so the caller retries/falls back instead
+        # of caching the wrong picture under a new prompt.
+        _h = hashlib.sha256(body).hexdigest()
+        seen = getattr(self, "_downloaded_hashes", None)
+        if seen is None:
+            seen = self._downloaded_hashes = set()
+        if _h in seen:
+            raise MediaError("Flow returned an image already used this session (stale tile, not a new generation)")
+        seen.add(_h)
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(resp.body())
+        out.write_bytes(body)
         self._post_download(out)
 
     def set_characters(self, names: list[str] | None) -> None:
