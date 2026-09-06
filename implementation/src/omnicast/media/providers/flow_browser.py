@@ -693,6 +693,31 @@ class _FlowSession:
             raise MediaError(
                 "Flow composer chip not found after applying the prompt-box "
                 "state — the page may not have finished loading.")
+        # MODEL: the localStorage family write above is ignored by the 09/2026
+        # composer (same as the mode key), so the project default — Nano Banana
+        # Pro, quota-capped, ✦-marked — was used for every still until now: the
+        # only model-switch code lived in _set_image_mode_LEGACY_POPOVER, which
+        # nothing calls. Stills never run on Pro: coerce and pick via the UI,
+        # then READ the chip back so the log states what actually happened.
+        raw_model = self._image_model or ""
+        target_model = raw_model if raw_model and "pro" not in raw_model.lower() else "Nano Banana 2"
+        try:
+            chip_txt = (chip.first.inner_text() or "").replace("\n", " ")
+        except Exception:
+            chip_txt = ""
+        if target_model not in chip_txt:
+            try:
+                self._select_model(page, target_model)
+            except Exception as exc:
+                print(f"      [flow] [warn] model select failed: {str(exc)[:120]}", flush=True)
+            try:
+                chip_txt = (chip.first.inner_text() or "").replace("\n", " ")
+            except Exception:
+                chip_txt = ""
+        self._image_model = target_model if target_model in chip_txt else (self._image_model or "Nano Banana Pro")
+        print(f"      [flow] image model chip={chip_txt!r} target={target_model!r} "
+              f"{'OK' if target_model in chip_txt else 'NOT APPLIED — project default in use'}",
+              flush=True)
         return
 
     def _set_image_mode_LEGACY_POPOVER(self, page, resolution: tuple[int, int] | None = None) -> None:
@@ -1365,7 +1390,8 @@ class _FlowSession:
                         if (e.childElementCount === 0) {
                             const t = e.textContent || '';
                             if (t.includes('hết hạn mức')
-                                || t.includes('hạn mức về số lượt')) n++;
+                                || t.includes('hạn mức về số lượt')
+                                || t.includes('reached your usage limit')) n++;
                         }
                     }
                     return n;
@@ -1399,10 +1425,16 @@ class _FlowSession:
                   f"{(self._image_model or '').encode('ascii','ignore').decode()!r} "
                   f"running_pro={running_pro} baseline={quota_baseline}",
                   flush=True)
-        if (running_pro and "nano banana pro" in low
+        # 09/2026 English UI (hl=en): the error card reads "Failed — You've
+        # reached your usage limit. Please try again later. You have not been
+        # charged for this generation." and names NO model. Screenshot from the
+        # operator 06/09 22:13: three such cards, no fallback fired, because
+        # every phrase here was Vietnamese or said "reached your limit".
+        _en_quota = ("reached your usage limit" in low or "usage limit" in low)
+        if (running_pro and (_en_quota or ("nano banana pro" in low
                 and ("hết hạn mức" in low or "hạn mức về số lượt" in low
                      or "reached your limit" in low or "try another model" in low
-                     or "mô hình khác" in low)):
+                     or "mô hình khác" in low)))):
             if quota_baseline is None \
                     or self._quota_card_count(page) > quota_baseline:
                 try:
@@ -1430,7 +1462,7 @@ class _FlowSession:
                 )
         # Hard image-generation QUOTA reached → abort, must wait ~1h (no bypass).
         if ("giới hạn tạo ảnh" in low or "hết hạn mức" in low
-                or "reached your limit" in low
+                or "reached your limit" in low or "reached your usage limit" in low
                 or "generation limit" in low or "daily limit" in low
                 or "quota" in low or "limit for today" in low):
             raise FlowBlocked(
