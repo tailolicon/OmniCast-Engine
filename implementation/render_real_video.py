@@ -140,6 +140,25 @@ def _syncrun(fn, *args, **kwargs):
 from omnicast.media.providers.web_assets import download_best_web_image
 from omnicast.media.providers.stock_video import download_best_stock_video
 from omnicast.media.providers.stock_video import _vision_verdict as _media_verdict
+
+_DATE_RE = re.compile(r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b")
+
+
+def _text_reject_reason(v: dict | None) -> str:
+    """ONE rule for every gate (gate1, late fallback, gate2): the judge's
+    readable_text needs evidence — a word of >=3 letters, a date/clock stamp,
+    or the judge calling the text PROMINENT (a '124' mile marker, a '412'
+    tag). Bare dashboard digits stay allowed. v13 (06/09) shipped the mile
+    marker because gate1 ignored digit-only words while gate2 did not."""
+    if not v or not v.get("readable_text"):
+        return ""
+    words = [str(w) for w in (v.get("text_words") or []) if w]
+    letters = any(len(re.sub(r"[^A-Za-z]", "", w)) >= 3 for w in words)
+    dated = bool(_DATE_RE.search(" ".join(words)))
+    if letters or dated or v.get("text_prominent") or not words:
+        return f"readable_text({'/'.join(words)[:40] or 'unspecified'})"
+    return ""
+
 from omnicast.media.providers.stock_video import _frame_brightness as _media_luma
 from omnicast.media.providers.web_shot import capture_web_page
 from omnicast.media.providers.kinetic_overlay import render_kinetic_stat
@@ -3808,7 +3827,14 @@ def main() -> None:
                 continue
             outs_i_is_src = (Path(_img) == outs[i])
             _ok_marker = (cpaths[i] if outs_i_is_src else Path(_img)).with_suffix(".ok")
-            if _ok_marker.exists():
+            # Duplicate check BEFORE the .ok shortcut: two scenes can each carry
+            # a judged-OK copy of the same picture (v13: scenes 48 and 60).
+            try:
+                _h0 = hashlib.sha256(Path(_img).read_bytes()).hexdigest()
+            except Exception:
+                _h0 = ""
+            if _ok_marker.exists() and not (_h0 and _g1_seen_hashes.get(_h0, i) != i):
+                if _h0: _g1_seen_hashes[_h0] = i
                 continue
             # Judge against the SUBJECT clause only (first sentence/clause of the
             # cell prompt): the full prompt carries style, lighting and negative
@@ -3834,18 +3860,9 @@ def main() -> None:
                     # readable_text needs EVIDENCE: a word of >=3 letters the judge
                     # actually read. Dashboard digits / dial marks (scene 20, v9:
                     # the best cab shot of the run) are not text a viewer reads.
-                    _words = [str(w) for w in (_v.get("text_words") or []) if w]
-                    # A word of >=3 letters, or a date/clock stamp ("26 '08",
-                    # "12:47", "2008") — camcorder timestamps date the footage
-                    # against the story. A lone dashboard "45" does not.
-                    _real_text = any(
-                        len(re.sub(r"[^A-Za-z]", "", w)) >= 3
-                        or re.search(r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b", w)
-                        for w in _words) or bool(re.search(
-                            r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b", " ".join(_words)))
+                    _treason = _text_reject_reason(_v)
                     if _v.get("animated"):            _why = "animated"
-                    elif _v.get("readable_text") and _real_text:
-                        _why = f"readable_text({'/'.join(_words)[:40]})"
+                    elif _treason:                    _why = _treason
                     elif not _v.get("depicts", True): _why = "off_subject"
                 if not _why and _lum is not None and _lum > _noct_luma:
                     _why = f"too_bright({_lum:.0f})"
@@ -4007,13 +4024,9 @@ def main() -> None:
                         raise RuntimeError(f"GATE1(late): vision judge unavailable for scene {i} — refusing an unjudged image")
                     print(f"[gate1] [warn] scene {i}: late image unjudged (judge unavailable)")
                 elif _lv is not None:
-                    _lw = [str(w) for w in (_lv.get("text_words") or []) if w]
-                    _ltext = _lv.get("readable_text") and (
-                        any(len(re.sub(r"[^A-Za-z]", "", w)) >= 3 for w in _lw)
-                        or bool(re.search(r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b", " ".join(_lw))))
                     _lwhy = ("animated" if _lv.get("animated") else
-                             f"readable_text({'/'.join(_lw)[:40]})" if _ltext else
-                             "off_subject" if not _lv.get("depicts", True) else "")
+                             _text_reject_reason(_lv) or
+                             ("off_subject" if not _lv.get("depicts", True) else ""))
                     if _lwhy:
                         print(f"[gate1] scene {i}: late image rejected ({_lwhy}) — rescue lane")
                         try: bg.unlink()
@@ -4675,8 +4688,8 @@ def main() -> None:
             _lum = _media_luma(_fr) if _noct_luma is not None else None
             if _v and _v.get("animated"):
                 _g2_bad.append(f"{_tm:.0f}s animated")
-            elif _v and _v.get("readable_text"):
-                _g2_bad.append(f"{_tm:.0f}s text")
+            elif _v and _text_reject_reason(_v):
+                _g2_bad.append(f"{_tm:.0f}s {_text_reject_reason(_v)}")
             elif _lum is not None and _lum > _noct_luma + 20:
                 _g2_bad.append(f"{_tm:.0f}s bright({_lum:.0f})")
         if _g2_bad:
