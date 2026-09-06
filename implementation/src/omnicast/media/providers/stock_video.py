@@ -261,8 +261,15 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
     # (codex audit R8/R15: figures at 240/360/480 all survived a 1-frame check).
     jpgs = [tmpdir / f"probe_{stem}_a.jpg", tmpdir / f"probe_{stem}_b.jpg"]
     jpg = jpgs[0]
+    _is_image = Path(video_path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
     try:
         dur = 8.0
+        if _is_image:
+            # A still (generated image) is judged directly — no seeking.
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(video_path),
+                            "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "5",
+                            str(jpg)], capture_output=True, timeout=60)
+            jpgs = [jpg] if jpg.exists() and jpg.stat().st_size > 0 else []
         try:
             pr = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -271,7 +278,7 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
             dur = float((pr.stdout or "8").strip() or 8)
         except Exception:
             pass
-        for j, t in zip(jpgs, (dur * 0.2, dur * 0.8)):
+        for j, t in ([] if _is_image else zip(jpgs, (dur * 0.2, dur * 0.8))):
             r = subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}",
                  "-i", str(video_path),

@@ -32,7 +32,7 @@ from pathlib import Path
 from omnicast.media.providers.interfaces import ModelOption
 
 _IMPL_ROOT = Path(__file__).resolve().parents[4]
-_VENV_PY = _IMPL_ROOT / ".venv_chatterbox" / "Scripts" / "python.exe"
+_VENV_PY = (_IMPL_ROOT / ".venv_chatterbox" / "bin" / "python") if os.name != "nt" else (_IMPL_ROOT / ".venv_chatterbox" / "Scripts" / "python.exe")
 _WORKER = _IMPL_ROOT / "scripts" / "chatterbox_worker.py"
 _MARKER = "\x01OMNI\x01"
 

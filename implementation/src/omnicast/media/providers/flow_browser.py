@@ -443,8 +443,13 @@ class _FlowSession:
         gen.click(timeout=10_000)
 
     def _newest_result_srcs(self, page) -> list[str]:
+        # Only full-size result tiles: community/gallery/suggestion thumbnails
+        # on the project page share the flow-content.google host but are small.
+        # A cartoon dinner scene, tomatoes and a dog walk were collected as
+        # "our" results this way and cached under our prompts (live 06/09).
         return page.eval_on_selector_all(
-            _RESULT_IMG_SEL, "els => els.map(e => e.src)"
+            _RESULT_IMG_SEL,
+            "els => els.filter(e => (e.naturalWidth||0) >= 1024).map(e => e.src)"
         )
 
     def _all_media_srcs(self, page) -> list[str]:

@@ -139,6 +139,8 @@ def _syncrun(fn, *args, **kwargs):
 
 from omnicast.media.providers.web_assets import download_best_web_image
 from omnicast.media.providers.stock_video import download_best_stock_video
+from omnicast.media.providers.stock_video import _vision_verdict as _media_verdict
+from omnicast.media.providers.stock_video import _frame_brightness as _media_luma
 from omnicast.media.providers.web_shot import capture_web_page
 from omnicast.media.providers.kinetic_overlay import render_kinetic_stat
 
@@ -3766,6 +3768,57 @@ def main() -> None:
                             pass
                 if saved:
                     print(f"[1b/5] Cached {saved} completed shots (resume-safe)")
+        # GATE 1 — IMAGE ACCEPTANCE. Every generated still (fresh OR cached) is
+        # judged against its own prompt before it may become a scene background:
+        # not animated, no readable text, depicts the subject, and dark enough
+        # for a nocturnal channel. Rejects are evicted from the cache and
+        # regenerated ONCE; a second miss leaves the scene to the rescue lane.
+        # Live 06/09: three consecutive "final" renders shipped a cartoon
+        # dinner scene, tomatoes and a dog walk that no input-side gate saw,
+        # because the provider collected gallery tiles as results. Judging
+        # the OUTPUT closes every such path at once. Accepted images get a
+        # sidecar marker so later runs do not pay the judge again.
+        _g1_reject, _g1_regen = 0, 0
+        for i in range(len(scenes)):
+            if i in bg_paths or i in stock_paths or not outs[i].exists():
+                continue
+            _ok_marker = cpaths[i].with_suffix(".ok")
+            if _ok_marker.exists():
+                continue
+            _subject = ((board[i].get("image_prompt") if board and i < len(board) else "")
+                        or scenes[i].heading or "")[:160]
+            for _attempt in range(2):
+                _v = _media_verdict(outs[i], _subject) if _subject else None
+                _lum = _media_luma(outs[i]) if _noct_luma is not None else None
+                _why = ""
+                if _v is not None:
+                    if _v.get("animated"):            _why = "animated"
+                    elif _v.get("readable_text"):     _why = "readable_text"
+                    elif not _v.get("depicts", True): _why = "off_subject"
+                if not _why and _lum is not None and _lum > _noct_luma:
+                    _why = f"too_bright({_lum:.0f})"
+                if not _why:
+                    try: _ok_marker.write_text("ok", encoding="utf-8")
+                    except Exception: pass
+                    break
+                _g1_reject += 1
+                print(f"[gate1] scene {i}: generated image rejected ({_why}) — "
+                      f"{'regenerating' if _attempt == 0 else 'giving up, rescue lane'}")
+                for _pth in (outs[i], cpaths[i]):
+                    try: _pth.unlink()
+                    except Exception: pass
+                if _attempt == 0 and image_provider is not None:
+                    try:
+                        render_illustration(image_provider, args.image_model, outs[i],
+                                            img_prompts[i], img_negs[i], resolution=(W, H))
+                        if _cache_hit(outs[i]):
+                            shutil.copyfile(outs[i], cpaths[i]); _g1_regen += 1
+                            continue
+                    except Exception as _ge:
+                        print(f"[gate1] scene {i}: regen failed ({_ge})")
+                break
+        if _g1_reject:
+            print(f"[gate1] {_g1_reject} rejection(s), {_g1_regen} regenerated")
         for i in range(len(scenes)):
             if i not in bg_paths and i not in stock_paths and outs[i].exists():
                 bg_paths[i] = outs[i]
@@ -4472,6 +4525,48 @@ def main() -> None:
         status.stage("qa", "done")
     except Exception as e:
         print(f"[warn] QA self-review skipped: {e}")
+
+    # GATE 2 — FINAL FRAME AUDIT. Whatever the media's origin (stock, generated,
+    # rescue, a stale file some fallback picked up), the frames that actually
+    # got muxed are the only truth. One frame per scene is judged for the
+    # same policy (animated / readable text / daylight on a nocturnal channel);
+    # any hit FAILS the render in STRICT mode with the offending seconds listed,
+    # so a bad frame can never ship silently again.
+    try:
+        _g2_bad: list[str] = []
+        _g2_t, _g2_marks = 0.0, []
+        for _i in range(len(clips)):
+            _cd = probe_duration(clips[_i]) if (clips[_i] and clips[_i].exists()) else 0.0
+            _g2_marks.append((_i, _g2_t + _cd / 2.0)); _g2_t += _cd
+        _g2_dir = work / "_gate2"; _g2_dir.mkdir(exist_ok=True)
+        for _i, _tm in _g2_marks:
+            _fr = _g2_dir / f"g2_{_i:02d}.jpg"
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{_tm:.2f}", "-i", str(out),
+                            "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "5", str(_fr)],
+                           capture_output=True, timeout=60)
+            if not _fr.exists():
+                continue
+            _subj = ((board[_i].get("image_prompt") if board and _i < len(board) else "")
+                     or scenes[_i].heading or "night scene")[:160]
+            _v = _media_verdict(_fr, _subj)
+            _lum = _media_luma(_fr) if _noct_luma is not None else None
+            if _v and _v.get("animated"):
+                _g2_bad.append(f"{_tm:.0f}s animated")
+            elif _v and _v.get("readable_text"):
+                _g2_bad.append(f"{_tm:.0f}s text")
+            elif _lum is not None and _lum > _noct_luma + 20:
+                _g2_bad.append(f"{_tm:.0f}s bright({_lum:.0f})")
+        if _g2_bad:
+            msg = f"GATE2 frame audit failed at: {', '.join(_g2_bad)}"
+            status.error(msg); print(f"[3g/5] {msg}")
+            if STRICT:
+                raise RuntimeError(msg + " — render kept for inspection, NOT shippable")
+        else:
+            print(f"[3g/5] Frame audit: {len(_g2_marks)} scenes clean")
+    except RuntimeError:
+        raise
+    except Exception as _g2e:
+        print(f"[3g/5] [warn] frame audit skipped ({_g2e})")
 
     status.video(out.name); status.log(f"done {dur:.0f}s {size_mb:.1f}MB")
     print(f"[4/5] Rendered: {out}")
