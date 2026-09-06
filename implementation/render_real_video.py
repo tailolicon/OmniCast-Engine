@@ -153,10 +153,12 @@ def _scene_subject(cell: dict | None, sc) -> str:
     cand = (cell.get("image_prompt") or "").strip()
     if cand:
         return re.split(r"[.;]|, the |, with |, lit ", cand, maxsplit=1)[0].strip()[:120]
-    # No image_prompt → the generator built its prompt from the SCENE TEXT
-    # (build_illustration_prompt), so the judge must compare against the same
-    # thing. Never the stock_query: v16 judged narration-born images against
-    # "tow truck winch close up" and rejected good frames as off_subject.
+    # No image_prompt → the generator used the planner's visual subject
+    # (stock_query / search_query), else the scene's own words — the judge
+    # must compare against exactly that.
+    for k in ("stock_query", "search_query"):
+        if (cell.get(k) or "").strip():
+            return str(cell[k]).strip()[:120]
     head = (getattr(sc, "heading", "") or "").strip()
     if head:
         return head[:120]
@@ -3744,6 +3746,16 @@ def main() -> None:
             cell = board[i] if board else {}
             core = (cell.get("image_prompt") or "").strip()
             motion = (cell.get("video_prompt") or "").strip()
+            if not core:
+                # Stock cells carry no image_prompt. build_illustration_prompt
+                # used the HEADING, which is empty for every scene of a
+                # single-title script → one identical prompt for 20 scenes →
+                # one cache key, one .ok marker, Flow variations of one idea
+                # (v18: scenes 45–64 unjudged and near-identical). Use the
+                # planner's visual subject, else this scene's own words.
+                _sq = (cell.get("stock_query") or cell.get("search_query") or "").strip()
+                _nw = " ".join((sc.narration or "").split()[:22])
+                core = _sq or (f"the moment described: {_nw}" if _nw else "")
             img = f"{style_prefix}, {core}" if core else build_illustration_prompt(sc, style_prefix)
             if dna_block:
                 img = f"{img}. {dna_block}"
@@ -3857,10 +3869,13 @@ def main() -> None:
             # NEWER than the image. v15 (07/09): cache PNGs evicted by dedup
             # left their .ok behind, the regenerated pictures ("124" marker,
             # "OUT OF SERVICE" box) inherited it and skipped the judge.
+            # The marker vouches for ONE picture: it stores that picture's hash.
+            # (mtime rules failed twice; a shared cache key let scene B skip on
+            # scene A's marker.)
             _ok_valid = False
             if _ok_marker.exists():
                 try:
-                    _ok_valid = _ok_marker.stat().st_mtime >= Path(_img).stat().st_mtime - 1
+                    _ok_valid = bool(_h0) and _ok_marker.read_text(encoding="utf-8").strip() == _h0
                 except Exception:
                     _ok_valid = False
                 if not _ok_valid:
@@ -3922,7 +3937,8 @@ def main() -> None:
                                 shutil.copyfile(Path(_img), cpaths[i])
                     except Exception as _se:
                         print(f"[gate1] scene {i}: sparkle check skipped ({_se})")
-                    try: _ok_marker.write_text("ok", encoding="utf-8")
+                    try:
+                        _ok_marker.write_text(hashlib.sha256(Path(_img).read_bytes()).hexdigest(), encoding="utf-8")
                     except Exception: pass
                     break
                 _g1_reject += 1
