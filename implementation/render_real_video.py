@@ -153,9 +153,10 @@ def _scene_subject(cell: dict | None, sc) -> str:
     cand = (cell.get("image_prompt") or "").strip()
     if cand:
         return re.split(r"[.;]|, the |, with |, lit ", cand, maxsplit=1)[0].strip()[:120]
-    for k in ("stock_query", "search_query", "video_prompt"):
-        if (cell.get(k) or "").strip():
-            return str(cell[k]).strip()[:120]
+    # No image_prompt → the generator built its prompt from the SCENE TEXT
+    # (build_illustration_prompt), so the judge must compare against the same
+    # thing. Never the stock_query: v16 judged narration-born images against
+    # "tow truck winch close up" and rejected good frames as off_subject.
     head = (getattr(sc, "heading", "") or "").strip()
     if head:
         return head[:120]
