@@ -1056,15 +1056,15 @@ class _FlowSession:
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
 
-    def _download(self, src: str, out_path: str) -> None:
-        resp = self._ctx.request.get(src, timeout=120_000)
-        if not resp.ok:
-            raise MediaError(f"Flow media fetch failed: HTTP {resp.status} {src}")
-        out = Path(out_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(resp.body())
-        # Remove the visible SynthID sparkle in place (detect → inpaint → verify).
-        # The earlier 4.5% edge crop never reached it (measured 06/09/2026).
+    @staticmethod
+    def _post_download(out: Path) -> None:
+        """Every image that leaves this provider goes through here: remove the
+        visible SynthID sparkle in place (detect → patch → verify). Three
+        write paths exist (request.get, workflow-API bytes, media bytes) and
+        the single-image regen path skipped the strip until gate1 caught a
+        raw star at 0.99 (v12, 06/09)."""
+        if out.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            return
         try:
             from omnicast.media.flow_sparkle import strip_sparkle
             _r = strip_sparkle(out)
@@ -1075,6 +1075,15 @@ class _FlowSession:
                       f"{out.name}", flush=True)
         except Exception as exc:  # a marked image beats a dead render
             print(f"[flow] [warn] sparkle strip skipped: {exc}", flush=True)
+
+    def _download(self, src: str, out_path: str) -> None:
+        resp = self._ctx.request.get(src, timeout=120_000)
+        if not resp.ok:
+            raise MediaError(f"Flow media fetch failed: HTTP {resp.status} {src}")
+        out = Path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(resp.body())
+        self._post_download(out)
 
     def set_characters(self, names: list[str] | None) -> None:
         """Project CHARACTERS to @-mention into every prompt. This is how the
@@ -1322,6 +1331,7 @@ class _FlowSession:
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data)
+        self._post_download(out)
         return str(out.resolve())
 
     WAVE = 3  # max prompts per wave — smaller bursts are gentler on Flow's abuse limits
@@ -1841,6 +1851,7 @@ class _FlowSession:
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data)
+        self._post_download(out)
         return {"path": str(out.resolve()), "workflow": new_wf["name"],
                 "media_id": new_wf["media_id"]}
 
