@@ -251,8 +251,14 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
     try:
         from omnicast.llm.claude_cli import _clean_env
         _env = _clean_env()
-    except Exception:
-        _env = None
+    except Exception as _ce:
+        # Never hand the judge this process's env: a render launched from a
+        # Claude session inherits CLAUDE_*/ANTHROPIC_* (host auth refresh,
+        # base URL) and the child CLI then dies 'OAuth session expired'
+        # even with valid credentials on disk (live 06/09, v12).
+        logger.warn("stock_video.vision_env_fallback", error=str(_ce)[-120:])
+        _env = {k: v for k, v in os.environ.items()
+                if not k.upper().startswith(("CLAUDE", "ANTHROPIC"))}
     root = Path(__file__).resolve().parents[4]
     tmpdir = root / "output" / "_vision_tmp"
     tmpdir.mkdir(parents=True, exist_ok=True)
