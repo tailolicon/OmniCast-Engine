@@ -85,11 +85,45 @@ def _cleanup_iso_dir() -> None:
         pass
 
 
+def _freshest_credentials() -> Path | None:
+    """~/.claude/.credentials.json, unless it holds no usable token — live
+    06/09/2026: the host app left it with expiresAt=0 and empty tokens while a
+    rotated, valid pair sat in a stale per-PID dir (a killed render's atexit
+    never ran). Then the newest still-valid copy among the per-PID dirs wins
+    and is written back to ~/.claude so the standalone CLI works again."""
+    import json, time
+    main = Path.home() / ".claude" / ".credentials.json"
+    def _exp(p: Path) -> float:
+        try:
+            o = json.loads(p.read_text()).get("claudeAiOauth") or {}
+            if not o.get("accessToken") or not o.get("refreshToken"):
+                return -1.0
+            return float(o.get("expiresAt") or 0) / 1000.0
+        except Exception:
+            return -1.0
+    best, best_exp = (main if main.exists() else None), _exp(main) if main.exists() else -1.0
+    if best_exp > time.time() - 24 * 3600:   # main is usable (refresh token can renew it)
+        return best
+    for d in Path.home().glob(".claude-omnicast-cli-*"):
+        c = d / ".credentials.json"
+        e = _exp(c)
+        if e > best_exp:
+            best, best_exp = c, e
+    if best is not None and best != main and best_exp > 0:
+        try:
+            tmp = main.with_name(".credentials.json.omnicast-tmp")
+            tmp.write_bytes(best.read_bytes()); tmp.chmod(0o600); tmp.replace(main)
+            best = main
+        except Exception:
+            pass
+    return best
+
+
 def _sync_credentials(force: bool = False) -> None:
-    src = Path.home() / ".claude" / ".credentials.json"
+    src = _freshest_credentials()
     dst = _ISO_DIR / ".credentials.json"
     _ISO_DIR.mkdir(exist_ok=True)
-    if not src.exists():
+    if src is None or not src.exists():
         return
     if force or not dst.exists() or src.stat().st_mtime > dst.stat().st_mtime:
         dst.write_bytes(src.read_bytes())
