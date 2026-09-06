@@ -286,14 +286,18 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
             f"Read the image file(s) {names} (frames of ONE video clip) and "
             "answer with ONLY this JSON object, no prose: "
             "{\"readable_text\": bool, \"identifiable_person\": bool, "
-            "\"depicts\": bool}. A property is true if it holds in ANY frame.\n"
+            "\"depicts\": bool, \"animated\": bool}. "
+            "A property is true if it holds in ANY frame.\n"
             "readable_text: any legible words/numbers/signage in the frame.\n"
             "identifiable_person: a person whose face or full body is visible "
             "(an anonymous fragment like a hand or boot does NOT count).\n"
             f"depicts: the frames plausibly show this SUBJECT: \"{query}\" — "
             "judge the kind of place/object shown; ignore season, weather or "
             "time-of-day qualifiers a frame cannot prove, and accept any "
-            "lighting that is not flatly contradictory.")
+            "lighting that is not flatly contradictory.\n"
+            "animated: the frame is a cartoon, illustration, drawing, anime, "
+            "motion-graphic or any other NON-PHOTOGRAPHIC rendering (real "
+            "camera footage, however filtered or grainy, is false).")
         text = ""
         p = subprocess.run(
             [exe, "-p", prompt, "--model", "claude-sonnet-5", "--effort", "low",
@@ -658,7 +662,7 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
     if forbid_text:
         # A clip cached before the on-frame gates existed may be exactly the
         # asset the gates block — separate keyspace (bumped when gates change).
-        cache_key += " +vgate4"
+        cache_key += " +vgate5"
     if nocturnal_max_luma is not None:
         # A bright daytime clip cached before the night gate must not be served
         # from cache — separate keyspace.
@@ -760,6 +764,11 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
                     return _reject(source, "vision_person")
                 if not v.get("depicts"):
                     return _reject(source, "vision_off_subject")
+                # A real-look channel must never ship cartoon/storytime stock
+                # (live 2026-09-06: a bright animated dinner scene opened the
+                # final render). forbid_text is the real-look flag here.
+                if v.get("animated"):
+                    return _reject(source, "vision_animated")
         if used_hashes is not None:
             h = _clip_hash(cache_file)
             if h:
