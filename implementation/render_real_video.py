@@ -3785,6 +3785,7 @@ def main() -> None:
         # the OUTPUT closes every such path at once. Accepted images get a
         # sidecar marker so later runs do not pay the judge again.
         _g1_reject, _g1_regen = 0, 0
+        _g1_unjudged: list[int] = []   # verdict None = judge unavailable, NOT a pass
         _g1_seen_hashes: dict[str, int] = {}
         for i in range(len(scenes)):
             # Judge whichever still will back this scene: a fresh/cached
@@ -3815,6 +3816,8 @@ def main() -> None:
             _subject = re.split(r"[.;]|, the |, with |, lit ", _full, maxsplit=1)[0].strip()[:120]
             for _attempt in range(2):
                 _v = _media_verdict(Path(_img), _subject) if _subject else None
+                if _v is None and _subject and i not in _g1_unjudged:
+                    _g1_unjudged.append(i)
                 _lum = _media_luma(Path(_img)) if _noct_luma is not None else None
                 _why = ""
                 # One picture must not back two scenes (v9 shipped 12 scenes on
@@ -3844,6 +3847,11 @@ def main() -> None:
                     elif not _v.get("depicts", True): _why = "off_subject"
                 if not _why and _lum is not None and _lum > _noct_luma:
                     _why = f"too_bright({_lum:.0f})"
+                if not _why and _v is None and _subject:
+                    # Fail-CLOSED: no verdict means nobody looked. v11 (06/09)
+                    # "passed" 67 scenes with the judge CLI dead the whole run
+                    # (workspace-trust error) and the .ok markers said "judged".
+                    break
                 if not _why:
                     if _h: _g1_seen_hashes[_h] = i
                     # Flow's ✦ mark must be gone before the image may ship.
@@ -3887,6 +3895,12 @@ def main() -> None:
                 break
         if _g1_reject:
             print(f"[gate1] {_g1_reject} rejection(s), {_g1_regen} regenerated")
+        if _g1_unjudged:
+            _msg = (f"GATE1: vision judge unavailable for {len(_g1_unjudged)} scene(s) "
+                    f"{_g1_unjudged[:12]} — images are UNJUDGED, not approved")
+            if _STRICT:
+                raise RuntimeError(_msg + " (STRICT: refusing to render unjudged images)")
+            print(f"[gate1] [warn] {_msg}")
         for i in range(len(scenes)):
             if i not in bg_paths and i not in stock_paths and outs[i].exists():
                 bg_paths[i] = outs[i]
@@ -4621,6 +4635,9 @@ def main() -> None:
             _subj = ((board[_i].get("image_prompt") if board and _i < len(board) else "")
                      or scenes[_i].heading or "night scene")[:160]
             _v = _media_verdict(_fr, _subj)
+            if _v is None:
+                _g2_bad.append(f"{_tm:.0f}s UNJUDGED(judge unavailable)")
+                continue
             _lum = _media_luma(_fr) if _noct_luma is not None else None
             if _v and _v.get("animated"):
                 _g2_bad.append(f"{_tm:.0f}s animated")

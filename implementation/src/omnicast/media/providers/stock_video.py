@@ -326,6 +326,27 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
                         err=(p.stderr or "")[:120])
             # Claude CLI down (live: 403 org-disabled) — Codex CLI takes
             # images directly and runs on a separate quota.
+        # Fallback 2: Antigravity CLI (Gemini 3.8 Flash, subscription). Live
+        # 06/09: the Claude CLI's OAuth expired mid-day and codex was out of
+        # credits, so every verdict was None for a whole render — and None
+        # used to mean "pass". agy reads image files and answers the same JSON.
+        if not text.strip():
+            ag = _sh.which("agy")
+            if ag:
+                try:
+                    a = subprocess.run(
+                        [ag, "-p", prompt.replace("Read the image file(s)", "Read/view the image file(s)"),
+                         "--model", "gemini-3.8-flash", "--effort", "low",
+                         "--dangerously-skip-permissions"],
+                        capture_output=True, text=True, timeout=180, cwd=str(root))
+                    if a.returncode == 0 and "{" in (a.stdout or ""):
+                        text = a.stdout
+                    else:
+                        logger.warn("stock_video.vision_agy_error", rc=a.returncode,
+                                    err=((a.stderr or a.stdout or "")[-160:]))
+                except Exception as _ae:
+                    logger.warn("stock_video.vision_agy_error", err=str(_ae)[-160:])
+
             cx = _sh.which("codex")
             if cx:
                 # The positional prompt is swallowed when it follows -i (live,
@@ -674,7 +695,7 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
     if forbid_text:
         # A clip cached before the on-frame gates existed may be exactly the
         # asset the gates block — separate keyspace (bumped when gates change).
-        cache_key += " +vgate5"
+        cache_key += " +vgate6"
     if nocturnal_max_luma is not None:
         # A bright daytime clip cached before the night gate must not be served
         # from cache — separate keyspace.
@@ -769,7 +790,12 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
             if txt:
                 return _reject(source, "ocr_text", txt)
             v = _vision_verdict(cache_file, search_q)
-            if v is not None:  # None = check unavailable → fail open
+            if v is None:
+                # No verdict = nobody looked. STRICT refuses the clip (v11 shipped
+                # a DANGER sign, a 1950s radio and a fire crew this way).
+                if os.environ.get("OMNICAST_STRICT", "1") not in ("0", "false", "no"):
+                    return _reject(source, "vision_unavailable")
+            else:
                 if v.get("readable_text"):
                     return _reject(source, "vision_text")
                 if v.get("identifiable_person"):
