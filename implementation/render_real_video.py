@@ -3936,9 +3936,22 @@ def main() -> None:
                     except Exception: pass
                 bg_paths.pop(i, None)
                 if _attempt == 0 and image_provider is not None:
+                    # Retry with a prompt that removes the failure cause instead
+                    # of rolling the same dice: v17 lost scenes 4/50/53/56 to
+                    # the rescue lane after "MILE 214" → "MILE 148", ticket
+                    # → ticket. Text rejects get a text-free environment shot;
+                    # off-subject rejects get the subject restated up front.
+                    _retry_prompt = img_prompts[i]
+                    if _why.startswith("readable_text"):
+                        _retry_prompt = (f"{img_prompts[i]}. IMPORTANT: absolutely no signs, "
+                                         "no numbers, no letters, no labels, no paper, no tickets, "
+                                         "no screens, no dashboards in frame — show only the "
+                                         "environment and objects without any markings")
+                    elif _why == "off_subject":
+                        _retry_prompt = f"{_subject}. {img_prompts[i]}"
                     try:
                         render_illustration(image_provider, args.image_model, outs[i],
-                                            img_prompts[i], img_negs[i], resolution=(W, H))
+                                            _retry_prompt, img_negs[i], resolution=(W, H))
                         if _cache_hit(outs[i]):
                             shutil.copyfile(outs[i], cpaths[i]); _g1_regen += 1
                             continue
