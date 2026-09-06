@@ -168,23 +168,38 @@ def _refine_centre(A: np.ndarray, pos: tuple[int, int], win: int = 30) -> tuple[
 
 
 def _clone_patch(im: Image.Image, cx: int, cy: int, r: int) -> Image.Image:
-    """Cover a disc with the texture immediately to its LEFT (clone stamp),
-    feathered. Keeps grain and gradients that a blur would turn into a smudge."""
+    """Cover a disc with texture cloned from nearby, feathered and colour-
+    matched. The SOURCE is chosen among several offsets by how well its ring
+    matches the ring around the target — cloning blindly from the left copied
+    a door handle onto a dashboard (thumbnail, 07/09) on structured scenes."""
     im = im.convert("RGB")
     w, h = im.size
+    a_im = np.asarray(im).astype(float)
+    yy, xx = np.mgrid[0:h, 0:w]
+    d = np.hypot(xx - cx, yy - cy)
+    ring = (d > r) & (d < r + 14)
+    disc = d <= r
+    if not ring.any() or not disc.any():
+        return im
+    tgt_ring = a_im[ring]
     shift = int(r * 2.4)
-    if cx - r - shift < 0:            # no room on the left → take from above
-        src = im.transform(im.size, Image.AFFINE, (1, 0, 0, 0, 1, -shift))
-    else:
-        src = im.transform(im.size, Image.AFFINE, (1, 0, -shift, 0, 1, 0))
-    # Match the clone's colour to the target's surroundings (a ring just
-    # outside the star): a darker/lighter source read as a visible disc.
-    a_im = np.asarray(im).astype(float); a_src = np.asarray(src).astype(float)
-    yy, xx = np.mgrid[0:h, 0:w]; d = np.hypot(xx - cx, yy - cy)
-    ring = (d > r) & (d < r + 14); disc = d <= r
-    if ring.any() and disc.any():
-        off = a_im[ring].mean(axis=0) - a_src[disc].mean(axis=0)
-        src = Image.fromarray(np.clip(a_src + off, 0, 255).astype(np.uint8))
+    cands = [(-shift, 0), (0, -shift), (-int(shift * .7), -int(shift * .7)),
+             (int(shift * .7), -int(shift * .7)), (-int(shift * 1.4), 0), (0, -int(shift * 1.4))]
+    best = None
+    for dx, dy in cands:
+        sx, sy = cx + dx, cy + dy
+        if sx - r - 14 < 0 or sy - r - 14 < 0 or sx + r + 14 >= w or sy + r + 14 >= h:
+            continue
+        src = im.transform(im.size, Image.AFFINE, (1, 0, dx, 0, 1, dy))  # pixel (x,y) <- (x+dx, y+dy)
+        a_src = np.asarray(src).astype(float)
+        off = tgt_ring.mean(axis=0) - a_src[ring].mean(axis=0)
+        err = float(np.abs(a_src[ring] + off - tgt_ring).mean())
+        if best is None or err < best[0]:
+            best = (err, src, off)
+    if best is None:
+        return im
+    _, src, off = best
+    src = Image.fromarray(np.clip(np.asarray(src).astype(float) + off, 0, 255).astype(np.uint8))
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
     mask = mask.filter(ImageFilter.GaussianBlur(5))
