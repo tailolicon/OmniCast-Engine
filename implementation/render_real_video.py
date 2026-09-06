@@ -1760,7 +1760,8 @@ STYLE_PREFIXES = {
         "photo taken on an old phone camera, harsh direct flash or a single dim "
         "sodium light, heavy high-ISO grain, slight motion blur, imperfect "
         "off-center framing, mundane realistic environment with ONE unsettling "
-        "detail, no text, no words"
+        "detail, no text, no words, no date stamp, no timestamp overlay, no "
+        "camera UI, no watermark"
     ),
 }
 STYLE_PREFIX = STYLE_PREFIXES["editorial"]  # default; overridden by --style
@@ -1779,7 +1780,7 @@ STYLE_NEGATIVES = {
     "clean_educational": "photograph, photo, realistic, 3d render, cgi, volumetric lighting, dark atmosphere, shadow gradients, sketch, detailed texture",
     "vibrant_3d": "photograph, photo, realistic, watercolor, sketch, hand-drawn, flat vector, ink lines",
     "whiteboard_sketch": "photograph, photo, realistic, 3d render, cgi, colorful painting, watercolor, complex background, shadow gradient",
-    "found_photo": ("illustration, painting, digital art, concept art, 3d render, cgi, "
+    "found_photo": ("date stamp, timestamp, camcorder overlay, illustration, painting, digital art, concept art, 3d render, cgi, "
                     "cinematic lighting, dramatic rim light, volumetric light, symmetrical "
                     "composition, movie poster, film still, professional photography, "
                     "studio lighting, bokeh, color grading, posed, epic, stylized"),
@@ -1800,7 +1801,8 @@ STYLE_LOCK = {
     "vibrant_3d": "in a consistent vibrant 3d clay illustration style, smooth textures, not a photograph",
     "whiteboard_sketch": "in a consistent hand-drawn marker whiteboard sketch style, simple lines, not a photograph",
     "found_photo": ("as a real unedited amateur photograph, grainy and imperfect, "
-                    "not an illustration, not cinematic, not posed, not symmetrical"),
+                    "not an illustration, not cinematic, not posed, not symmetrical, "
+                    "with no date stamp or timestamp printed on the photo"),
 }
 
 # Per-channel LOOK applied to every shot background (channels/<id>.json
