@@ -166,6 +166,69 @@ def _scene_subject(cell: dict | None, sc) -> str:
     return ("the moment described: " + " ".join(words[:18]))[:120] if words else "a dark night scene"
 
 
+def _story_world_facts(scenes: list) -> str:
+    """5–8 hard VISUAL facts of this story for the frame judge (narrator's
+    vehicle, other vehicles, time of day, setting, era, what never appears).
+    External QC 07/09: a white sports coupe with a plate stood in for "a plain
+    dark sedan" and an aerial drone shot of a semi for "the tow truck backing
+    up" — depicts-only judging cannot see those. Cached per script."""
+    import hashlib as _hl
+    blob = "\n".join(f"{getattr(sc, 'heading', '')}|{getattr(sc, 'narration', '')}" for sc in scenes)
+    key = _hl.sha256(("world_v1\n" + blob).encode("utf-8")).hexdigest()[:24]
+    cp = _IMG_CACHE_DIR / f"world_{key}.txt"
+    try:
+        if cp.exists() and cp.stat().st_size > 20:
+            return cp.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    text = " ".join(getattr(sc, "narration", "") for sc in scenes)[:9000]
+    system = ("You extract the fixed VISUAL facts of a first-person story so an image "
+              "auditor can spot frames that contradict it. Answer with ONE line of "
+              "semicolon-separated facts, 5 to 8 items, each under 12 words, e.g. "
+              "'narrator drives a TOW TRUCK (never a semi or dump truck); the other "
+              "vehicle is a plain dark SEDAN, no markings; entire story at NIGHT on an "
+              "interstate shoulder; rural, no city; present day; no other people seen'. "
+              "No preamble.")
+    user = f"STORY:\n{text}\n\nFACTS:"
+    resp = None
+    try:
+        from omnicast.config.settings import get_settings
+        from omnicast.llm.client import LLMClient
+        s = get_settings()
+        llm = LLMClient(provider="deepseek", model=s.deepseek_flash_model)
+        resp = _aiorun(llm.complete(system=system, messages=[{"role": "user", "content": user}],
+                                    max_tokens=300, temperature=0.2))
+    except Exception as _we:
+        print(f"      [warn] world facts via DeepSeek failed ({str(_we)[:100]}); Claude CLI fallback")
+        try:
+            from omnicast.llm.claude_cli import ClaudeCLIClient
+            _claude = ClaudeCLIClient(model="claude-sonnet-5", effort="low")
+            resp = _aiorun(_claude.complete(system=system, messages=[{"role": "user", "content": user}],
+                                            max_tokens=300, temperature=0.2))
+        except Exception as _we2:
+            print(f"      [warn] world facts unavailable ({str(_we2)[:100]})")
+            return ""
+    facts = " ".join((getattr(resp, "content", "") or "").split())[:700]
+    if facts:
+        try:
+            _IMG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            cp.write_text(facts, encoding="utf-8")
+        except Exception:
+            pass
+    return facts
+
+
+def _world_reject_reason(v: dict | None, real_look: bool) -> str:
+    """Story-fact and point-of-view checks shared by every gate."""
+    if not v:
+        return ""
+    if v.get("contradicts_world"):
+        return f"contradicts_world({str(v.get('contradiction') or '')[:50]})"
+    if real_look and v.get("amateur_pov") is False:
+        return "not_amateur_pov"
+    return ""
+
+
 def _text_reject_reason(v: dict | None) -> str:
     """ONE rule for every gate (gate1, late fallback, gate2): the judge's
     readable_text needs evidence — a word of >=3 letters, a date/clock stamp,
@@ -3222,6 +3285,10 @@ def main() -> None:
     # — without this term the whole visual pipeline was silently skipped and a
     # 15-minute video rendered as nothing but text cards).
     if image_provider is not None or veo_mode or args.all_stock or _style_policy is not None:
+        _world_facts = _story_world_facts(scenes) if (_style_policy and _style_policy.forbid_onscreen_text) else ""
+        if _world_facts:
+            print(f"[1a/5] World facts for the judge: {_world_facts[:160]}")
+        _real_look = bool(_style_policy and _style_policy.forbid_onscreen_text)
         print("[1a/5] Generating storyboard (continuity-aware prompts)...")
         status.stage("storyboard", "active"); status.log("storyboard LLM...")
         board = cached_storyboard(scenes, args.style, channel_meta)
@@ -3552,7 +3619,7 @@ def main() -> None:
                                                            _style_policy and
                                                            _style_policy.forbid_onscreen_text),
                                                        nocturnal_max_luma=_noct_luma,
-                                                       used_hashes=_used_stock_hashes)
+                                                       used_hashes=_used_stock_hashes, world=_world_facts)
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}"); ok = False
                     if ok and vclip.exists() and vclip.stat().st_size > 0:
@@ -3598,7 +3665,7 @@ def main() -> None:
                         print(f"[chart] [warn] chart failed scene {i}; stock fallback '{_sq}'")
                         try:
                             if download_best_stock_video(_sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma,
-                                                       used_hashes=_used_stock_hashes) \
+                                                       used_hashes=_used_stock_hashes, world=_world_facts) \
                                     and vclip.exists() and vclip.stat().st_size > 0:
                                 stock_paths[i] = vclip
                                 # Record the downgrade — board_final must show
@@ -3637,7 +3704,7 @@ def main() -> None:
                                                            _style_policy and
                                                            _style_policy.forbid_onscreen_text),
                                                        nocturnal_max_luma=_noct_luma,
-                                                       used_hashes=_used_stock_hashes)
+                                                       used_hashes=_used_stock_hashes, world=_world_facts)
                     except Exception as e:
                         print(f"[stock-video] [warn] error scene {i}: {e}")
                         ok = False
@@ -3671,7 +3738,7 @@ def main() -> None:
                     print(f"[web-shot] [warn] failed scene {i}; falling back to stock '{sq}'")
                     try:
                         if download_best_stock_video(sq, vclip, W, H, max_seconds=15, nocturnal_max_luma=_noct_luma,
-                                                       used_hashes=_used_stock_hashes) and vclip.exists() and vclip.stat().st_size > 0:
+                                                       used_hashes=_used_stock_hashes, world=_world_facts) and vclip.exists() and vclip.stat().st_size > 0:
                             stock_paths[i] = vclip
                             continue
                     except Exception as e:
@@ -3889,7 +3956,7 @@ def main() -> None:
             # text that a correct image legitimately does not "depict".
             _subject = _scene_subject(board[i] if board and i < len(board) else None, scenes[i])
             for _attempt in range(2):
-                _v = _media_verdict(Path(_img), _subject) if _subject else None
+                _v = _media_verdict(Path(_img), _subject, world=_world_facts) if _subject else None
                 if _v is None and _subject and i not in _g1_unjudged:
                     _g1_unjudged.append(i)
                 _lum = _media_luma(Path(_img)) if _noct_luma is not None else None
@@ -3907,9 +3974,11 @@ def main() -> None:
                     # actually read. Dashboard digits / dial marks (scene 20, v9:
                     # the best cab shot of the run) are not text a viewer reads.
                     _treason = _text_reject_reason(_v)
+                    _wreason = _world_reject_reason(_v, _real_look)
                     if _v.get("animated"):            _why = "animated"
                     elif _treason:                    _why = _treason
                     elif not _v.get("depicts", True): _why = "off_subject"
+                    elif _wreason:                    _why = _wreason
                 if not _why and _lum is not None and _lum > _noct_luma:
                     _why = f"too_bright({_lum:.0f})"
                 if not _why and _v is None and _subject:
@@ -3970,6 +4039,12 @@ def main() -> None:
                                          "environment and objects without any markings")
                     elif _why == "off_subject":
                         _retry_prompt = f"{_subject}. {img_prompts[i]}"
+                    elif _why.startswith("contradicts_world"):
+                        _retry_prompt = f"STORY FACTS (obey all): {_world_facts}. {img_prompts[i]}"
+                    elif _why == "not_amateur_pov":
+                        _retry_prompt = (f"{img_prompts[i]}. Shot at eye level by a person standing "
+                                         "in the scene with a phone camera — no aerial, no drone, "
+                                         "no crane, no wide cinematic establishing shot")
                     try:
                         render_illustration(image_provider, args.image_model, outs[i],
                                             _retry_prompt, img_negs[i], resolution=(W, H))
@@ -4085,7 +4160,7 @@ def main() -> None:
             # Same judgement as gate1 — no image reaches the compose stage unjudged.
             if bg.exists():
                 _subj = _scene_subject(board[i] if board and i < len(board) else None, scenes[i])
-                _lv = _media_verdict(bg, _subj) if _subj else None
+                _lv = _media_verdict(bg, _subj, world=_world_facts) if _subj else None
                 if _lv is None and _subj:
                     if _STRICT:
                         raise RuntimeError(f"GATE1(late): vision judge unavailable for scene {i} — refusing an unjudged image")
@@ -4093,7 +4168,8 @@ def main() -> None:
                 elif _lv is not None:
                     _lwhy = ("animated" if _lv.get("animated") else
                              _text_reject_reason(_lv) or
-                             ("off_subject" if not _lv.get("depicts", True) else ""))
+                             ("off_subject" if not _lv.get("depicts", True) else "") or
+                             _world_reject_reason(_lv, _real_look))
                     if _lwhy:
                         print(f"[gate1] scene {i}: late image rejected ({_lwhy}) — rescue lane")
                         try: bg.unlink()
@@ -4455,7 +4531,7 @@ def main() -> None:
                                                          forbid_text=bool(
                                                              _style_policy and
                                                              _style_policy.forbid_onscreen_text),
-                                                         used_hashes=_used_stock_hashes)
+                                                         used_hashes=_used_stock_hashes, world=_world_facts)
                     except Exception as _re2:
                         print(f"[rescue] [warn] scene {i} stock rescue error: {_re2}")
                         _got = False
@@ -4760,7 +4836,7 @@ def main() -> None:
             if not _fr.exists():
                 continue
             _subj = _scene_subject(board[_i] if board and _i < len(board) else None, scenes[_i])
-            _v = _media_verdict(_fr, _subj)
+            _v = _media_verdict(_fr, _subj, world=_world_facts)
             if _v is None:
                 _g2_bad.append(f"{_tm:.0f}s UNJUDGED(judge unavailable)")
                 continue
@@ -4769,6 +4845,8 @@ def main() -> None:
                 _g2_bad.append(f"{_tm:.0f}s animated")
             elif _v and _text_reject_reason(_v):
                 _g2_bad.append(f"{_tm:.0f}s {_text_reject_reason(_v)}")
+            elif _v and _world_reject_reason(_v, _real_look):
+                _g2_bad.append(f"{_tm:.0f}s {_world_reject_reason(_v, _real_look)}")
             elif _lum is not None and _lum > _noct_luma + 20:
                 _g2_bad.append(f"{_tm:.0f}s bright({_lum:.0f})")
         if _g2_bad:

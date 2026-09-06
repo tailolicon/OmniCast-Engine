@@ -231,7 +231,7 @@ def _frame_text(video_path: Path) -> str:
     return combined if re.search(r"[A-Za-z0-9]{2,}", combined) else ""
 
 
-def _vision_verdict(video_path: Path, query: str) -> dict | None:
+def _vision_verdict(video_path: Path, query: str, world: str = "") -> dict | None:
     """One Sonnet look at the clip's mid frame via the Claude CLI (Read tool).
 
     Returns {'readable_text','identifiable_person','depicts'} or None when the
@@ -299,7 +299,8 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
             f"Read the image file(s) {names} (frames of ONE video clip) and "
             "answer with ONLY this JSON object, no prose: "
             "{\"readable_text\": bool, \"text_words\": [str], \"text_prominent\": bool, "
-            "\"identifiable_person\": bool, \"depicts\": bool, \"animated\": bool}. "
+            "\"identifiable_person\": bool, \"depicts\": bool, \"animated\": bool, "
+            "\"contradicts_world\": bool, \"contradiction\": str, \"amateur_pov\": bool}. "
             "A property is true if it holds in ANY frame.\n"
             "readable_text: PROMINENT legible words or numbers a viewer would actually "
             "read — signage, labels, captions, watermarks, screens showing sentences, "
@@ -318,7 +319,16 @@ def _vision_verdict(video_path: Path, query: str) -> dict | None:
             "lighting that is not flatly contradictory.\n"
             "animated: the frame is a cartoon, illustration, drawing, anime, "
             "motion-graphic or any other NON-PHOTOGRAPHIC rendering (real "
-            "camera footage, however filtered or grainy, is false).")
+            "camera footage, however filtered or grainy, is false).\n"
+            "contradicts_world: true if the frame contradicts any of these STORY "
+            "FACTS (wrong vehicle type, daylight when the story is at night, a "
+            "setting the story rules out): "
+            + (world.strip() if world and world.strip() else "(none given — answer false)")
+            + ". contradiction: one short phrase naming the clash, else \"\".\n"
+            "amateur_pov: true if the frame could be a photo/clip taken by a person "
+            "at the scene at eye level (handheld phone, dashcam, security camera); "
+            "false for aerial/drone shots, crane/cinematic camera moves, studio "
+            "product shots or obviously professional stock photography.")
         text = ""
         _judge_used = "claude"
         p = subprocess.run(
@@ -694,7 +704,8 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
                               negative_terms: list[str] | None = None,
                               forbid_text: bool = False,
                               nocturnal_max_luma: float | None = None,
-                              used_hashes: set | None = None) -> bool:
+                              used_hashes: set | None = None,
+    world: str = "") -> bool:
     """Search for query, download first match (Pexels -> Pixabay -> YouTube) and cache it.
 
     negative_terms: the storyboard cell's world-breaker words; a candidate whose
@@ -708,7 +719,7 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
     if forbid_text:
         # A clip cached before the on-frame gates existed may be exactly the
         # asset the gates block — separate keyspace (bumped when gates change).
-        cache_key += " +vgate6"
+        cache_key += " +vgate7"
     if nocturnal_max_luma is not None:
         # A bright daytime clip cached before the night gate must not be served
         # from cache — separate keyspace.
@@ -802,19 +813,29 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
             txt = _frame_text(cache_file)
             if txt:
                 return _reject(source, "ocr_text", txt)
-            v = _vision_verdict(cache_file, search_q)
+            v = _vision_verdict(cache_file, search_q, world=world)
             if v is None:
                 # No verdict = nobody looked. STRICT refuses the clip (v11 shipped
                 # a DANGER sign, a 1950s radio and a fire crew this way).
                 if os.environ.get("OMNICAST_STRICT", "1") not in ("0", "false", "no"):
                     return _reject(source, "vision_unavailable")
             else:
-                if v.get("readable_text"):
-                    return _reject(source, "vision_text")
+                _w = [str(x) for x in (v.get("text_words") or []) if x]
+                _letters = any(len(re.sub(r"[^A-Za-z]", "", x)) >= 3 for x in _w)
+                _dated = bool(re.search(r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b", " ".join(_w)))
+                if v.get("readable_text") and (v.get("text_prominent") or _letters or _dated or not _w):
+                    return _reject(source, "vision_text", "/".join(_w)[:40])
                 if v.get("identifiable_person"):
                     return _reject(source, "vision_person")
                 if not v.get("depicts"):
                     return _reject(source, "vision_off_subject")
+                # Story facts and point of view (external QC 07/09: a white
+                # sports coupe with a plate for "a plain sedan", an aerial
+                # drone shot of a semi for "the tow truck backing up").
+                if v.get("contradicts_world"):
+                    return _reject(source, "vision_contradicts", str(v.get("contradiction") or "")[:60])
+                if forbid_text and v.get("amateur_pov") is False:
+                    return _reject(source, "vision_pov")
                 # A real-look channel must never ship cartoon/storytime stock
                 # (live 2026-09-06: a bright animated dinner scene opened the
                 # final render). forbid_text is the real-look flag here.
