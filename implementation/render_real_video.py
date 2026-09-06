@@ -144,6 +144,25 @@ from omnicast.media.providers.stock_video import _vision_verdict as _media_verdi
 _DATE_RE = re.compile(r"\d{1,2}\s*[:/'.\-]\s*\d{2}|\b(?:19|20)\d{2}\b")
 
 
+def _scene_subject(cell: dict | None, sc) -> str:
+    """What the judge compares an image against. NEVER empty: an empty
+    subject used to skip the judge entirely and write a .ok — v15 (07/09)
+    accepted a '124' mile marker and an 'OUT OF SERVICE' box on stock cells
+    whose image_prompt was blank."""
+    cell = cell or {}
+    cand = (cell.get("image_prompt") or "").strip()
+    if cand:
+        return re.split(r"[.;]|, the |, with |, lit ", cand, maxsplit=1)[0].strip()[:120]
+    for k in ("stock_query", "search_query", "video_prompt"):
+        if (cell.get(k) or "").strip():
+            return str(cell[k]).strip()[:120]
+    head = (getattr(sc, "heading", "") or "").strip()
+    if head:
+        return head[:120]
+    words = (getattr(sc, "narration", "") or "").split()
+    return ("the moment described: " + " ".join(words[:18]))[:120] if words else "a dark night scene"
+
+
 def _text_reject_reason(v: dict | None) -> str:
     """ONE rule for every gate (gate1, late fallback, gate2): the judge's
     readable_text needs evidence — a word of >=3 letters, a date/clock stamp,
@@ -3852,9 +3871,7 @@ def main() -> None:
             # Judge against the SUBJECT clause only (first sentence/clause of the
             # cell prompt): the full prompt carries style, lighting and negative
             # text that a correct image legitimately does not "depict".
-            _full = ((board[i].get("image_prompt") if board and i < len(board) else "")
-                     or scenes[i].heading or "")
-            _subject = re.split(r"[.;]|, the |, with |, lit ", _full, maxsplit=1)[0].strip()[:120]
+            _subject = _scene_subject(board[i] if board and i < len(board) else None, scenes[i])
             for _attempt in range(2):
                 _v = _media_verdict(Path(_img), _subject) if _subject else None
                 if _v is None and _subject and i not in _g1_unjudged:
@@ -4032,9 +4049,7 @@ def main() -> None:
                 continue
             # Same judgement as gate1 — no image reaches the compose stage unjudged.
             if bg.exists():
-                _subj = re.split(r"[.;]|, the |, with |, lit ",
-                                 ((board[i].get("image_prompt") if board and i < len(board) else "")
-                                  or scenes[i].heading or ""), maxsplit=1)[0].strip()[:120]
+                _subj = _scene_subject(board[i] if board and i < len(board) else None, scenes[i])
                 _lv = _media_verdict(bg, _subj) if _subj else None
                 if _lv is None and _subj:
                     if _STRICT:
@@ -4696,8 +4711,7 @@ def main() -> None:
                            capture_output=True, timeout=60)
             if not _fr.exists():
                 continue
-            _subj = ((board[_i].get("image_prompt") if board and _i < len(board) else "")
-                     or scenes[_i].heading or "night scene")[:160]
+            _subj = _scene_subject(board[_i] if board and _i < len(board) else None, scenes[_i])
             _v = _media_verdict(_fr, _subj)
             if _v is None:
                 _g2_bad.append(f"{_tm:.0f}s UNJUDGED(judge unavailable)")
