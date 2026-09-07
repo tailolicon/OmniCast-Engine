@@ -289,6 +289,38 @@ def _scoped_playbook(meta: dict, artifact: str, pillar_id: str = ""):
         return "", None
 
 
+
+# Words a thumbnail hook may use without appearing in the story: short dread
+# vocabulary. Anything else must occur in the script — v24 (07/09) shipped
+# "MILER 47", a non-word the LLM invented, baked into the thumbnail.
+_HOOK_VOCAB = set("""
+it its was wasn't wasnt there here not never no don't dont do stop look behind you your
+me my we they he she who what why when where how the a an of in on at to and or but
+wrong right number ticket mile marker call caller answer dispatch radio signal night
+road truck tow shoulder gone dead alone still again back home late last first one two
+three someone nobody something nothing knock door voice light lights dark watching
+waiting following wait listen run hide open close closed inside outside under over
+came come left stayed returned real true false
+""".split())
+
+
+def _valid_hook(text: str, script_text: str) -> bool:
+    """2–4 words, each a hook-vocabulary word, a number, or a word that
+    appears in the story. Rejects invented tokens like MILER."""
+    words = [re.sub(r"[^A-Za-z0-9']", "", w).lower() for w in (text or "").split()]
+    words = [w for w in words if w]
+    if not (1 <= len(words) <= 4):
+        return False
+    script_words = set(re.findall(r"[a-z0-9']+", (script_text or "").lower()))
+    for w in words:
+        if w.isdigit() or w in _HOOK_VOCAB or w in script_words:
+            continue
+        return False
+    return True
+
+
+_HOOK_FALLBACKS = ["IT WASN'T THERE", "DON'T ANSWER", "WRONG NUMBER", "NOBODY CALLED"]
+
 def generate_clickbait(script_text: str, channel_meta: dict | None = None,
                        pillar_id: str = "") -> dict | None:
     """One DeepSeek call -> {title, thumb_text, thumb_prompt}. None on failure."""
@@ -399,9 +431,30 @@ def generate_clickbait(script_text: str, channel_meta: dict | None = None,
             return None
         m = re.search(r"\{[\s\S]*\}", resp.content)
         data = orjson.loads(m.group(0) if m else resp.content)
+        _tt = (data.get("thumb_text") or "").strip().upper()[:40]
+        if not _valid_hook(_tt, script_text):
+            # One retry with the rule spelled out, then a safe fallback —
+            # never a made-up word on the most-seen asset of the video.
+            print(f"      [warn] thumb_text {_tt!r} is not made of real story words; retrying")
+            try:
+                _fix = _run(LLMClient(provider=_prov, model=_mdl).complete(
+                    system="You write 2-4 word ALL-CAPS YouTube horror thumbnail hooks.",
+                    messages=[{"role": "user", "content":
+                        "Rewrite this hook using ONLY common English words or words that appear in the "
+                        "story below (numbers allowed). 2-4 words, ALL CAPS, no invented words, no "
+                        f"punctuation except apostrophes. Reply with the hook only.\nBAD HOOK: {_tt}\n"
+                        f"STORY:\n{script_text[:3000]}"}],
+                    max_tokens=30, temperature=0.4))
+                _cand = (getattr(_fix, "content", "") or "").strip().strip('"').upper()[:40]
+                _tt = _cand if _valid_hook(_cand, script_text) else ""
+            except Exception as _fe:
+                print(f"      [warn] hook retry failed ({_fe})"); _tt = ""
+            if not _tt:
+                _tt = next((h for h in _HOOK_FALLBACKS if _valid_hook(h, script_text)), _HOOK_FALLBACKS[0])
+                print(f"      [warn] thumb_text fallback -> {_tt!r}")
         packaged = {
             "title": (data.get("title") or "").strip()[:100],
-            "thumb_text": (data.get("thumb_text") or "").strip().upper()[:40],
+            "thumb_text": _tt,
             "thumb_prompt": (data.get("thumb_prompt") or "").strip(),
             "alternatives": [a.strip()[:100] for a in (data.get("alternatives") or [])][:3],
         }

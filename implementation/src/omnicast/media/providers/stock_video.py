@@ -303,7 +303,8 @@ def _vision_verdict(video_path: Path, query: str, world: str = "") -> dict | Non
             "answer with ONLY this JSON object, no prose: "
             "{\"readable_text\": bool, \"text_words\": [str], \"text_prominent\": bool, "
             "\"identifiable_person\": bool, \"depicts\": bool, \"animated\": bool, "
-            "\"contradicts_world\": bool, \"contradiction\": str, \"amateur_pov\": bool}. "
+            "\"contradicts_world\": bool, \"contradiction\": str, \"amateur_pov\": bool, "
+            "\"brand_logo\": bool}. "
             "A property is true if it holds in ANY frame.\n"
             "readable_text: PROMINENT legible words or numbers a viewer would actually "
             "read — signage, labels, captions, watermarks, screens showing sentences, "
@@ -337,6 +338,9 @@ def _vision_verdict(video_path: Path, query: str, world: str = "") -> dict | Non
             "contradiction. Facts: "
             + (world.strip() if world and world.strip() else "(none given — answer false)")
             + ". contradiction: one short phrase naming the clash, else \"\".\n"
+            "brand_logo: true if a recognisable trademark, emblem or brand name is "
+            "prominent in the frame (a car-maker badge centred on a steering wheel, "
+            "MOTOROLA on a radio, a store sign); false for tiny/unreadable marks.\n"
             "amateur_pov: true if the frame could be a photo/clip taken by a person "
             "at the scene at eye level (handheld phone, dashcam, security camera); "
             "false for aerial/drone shots, crane/cinematic camera moves, studio "
@@ -731,7 +735,7 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
     if forbid_text:
         # A clip cached before the on-frame gates existed may be exactly the
         # asset the gates block — separate keyspace (bumped when gates change).
-        cache_key += " +vgate8"
+        cache_key += " +vgate9"
     if nocturnal_max_luma is not None:
         # A bright daytime clip cached before the night gate must not be served
         # from cache — separate keyspace.
@@ -848,6 +852,8 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
                     return _reject(source, "vision_contradicts", str(v.get("contradiction") or "")[:60])
                 if forbid_text and v.get("amateur_pov") is False:
                     return _reject(source, "vision_pov")
+                if forbid_text and v.get("brand_logo"):
+                    return _reject(source, "vision_brand_logo")
                 # A real-look channel must never ship cartoon/storytime stock
                 # (live 2026-09-06: a bright animated dinner scene opened the
                 # final render). forbid_text is the real-look flag here.

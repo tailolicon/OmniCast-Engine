@@ -267,6 +267,13 @@ def _text_reject_reason(v: dict | None) -> str:
         return f"readable_text({'/'.join(words)[:40] or 'unspecified'})"
     return ""
 
+
+def _logo_reject_reason(v: dict | None, real_look: bool) -> str:
+    """A prominent trademark (Toyota badge centred on the wheel, MOTOROLA on
+    the radio — external QC round 4) is off-brand for a found-photo channel
+    and a rights risk; retry with a badge-free prompt."""
+    return "brand_logo" if (real_look and v and v.get("brand_logo")) else ""
+
 from omnicast.media.providers.stock_video import _frame_brightness as _media_luma
 from omnicast.media.providers.web_shot import capture_web_page
 from omnicast.media.providers.kinetic_overlay import render_kinetic_stat
@@ -4006,6 +4013,7 @@ def main() -> None:
                     elif _treason:                    _why = _treason
                     elif not _v.get("depicts", True): _why = "off_subject"
                     elif _wreason:                    _why = _wreason
+                    elif _logo_reject_reason(_v, _real_look): _why = "brand_logo"
                 if not _why and _lum is not None and _lum > _noct_luma:
                     _why = f"too_bright({_lum:.0f})"
                 if not _why and _v is None and _subject:
@@ -4075,6 +4083,9 @@ def main() -> None:
                         _setting = re.sub(r"\s+", " ", _setting).strip(" ,.")
                         _retry_prompt = (f"{img_prompts[i]}, consistent with this world: {_setting}. "
                                          "No text, no signs, no numbers, no paper anywhere in frame")
+                    elif _why == "brand_logo":
+                        _retry_prompt = (f"{img_prompts[i]}. No brand names, no logos, no maker badges "
+                                         "or emblems anywhere — plain unbranded objects")
                     elif _why == "not_amateur_pov":
                         _retry_prompt = (f"{img_prompts[i]}. Shot at eye level by a person standing "
                                          "in the scene with a phone camera — no aerial, no drone, "
@@ -4203,7 +4214,8 @@ def main() -> None:
                     _lwhy = ("animated" if _lv.get("animated") else
                              _text_reject_reason(_lv) or
                              ("off_subject" if not _lv.get("depicts", True) else "") or
-                             _world_reject_reason(_lv, False, _media_luma(bg) if _noct_luma is not None else None))
+                             _world_reject_reason(_lv, False, _media_luma(bg) if _noct_luma is not None else None) or
+                             _logo_reject_reason(_lv, _real_look))
                     if _lwhy:
                         print(f"[gate1] scene {i}: late image rejected ({_lwhy}) — rescue lane")
                         try: bg.unlink()
@@ -4883,6 +4895,8 @@ def main() -> None:
                 _g2_bad.append(f"{_tm:.0f}s animated")
             elif _v and _text_reject_reason(_v):
                 _g2_bad.append(f"{_tm:.0f}s {_text_reject_reason(_v)}")
+            elif _v and _logo_reject_reason(_v, _real_look):
+                _g2_bad.append(f"{_tm:.0f}s brand_logo")
             elif _v and not _is_rescue and _world_reject_reason(_v, False, _lum):
                 # A story clash at gate2 is a second opinion on a frame an
                 # earlier gate already passed — ask once more and keep it only
