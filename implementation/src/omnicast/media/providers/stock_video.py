@@ -265,7 +265,10 @@ def _vision_verdict(video_path: Path, query: str, world: str = "") -> dict | Non
     stem = hashlib.sha256(str(video_path).encode()).hexdigest()[:16]
     # Two frames: a single 2s probe let a person who enters mid-clip ship
     # (codex audit R8/R15: figures at 240/360/480 all survived a 1-frame check).
-    jpgs = [tmpdir / f"probe_{stem}_a.jpg", tmpdir / f"probe_{stem}_b.jpg"]
+    # Three frames (20/50/80%): gate2 judges the MIDPOINT of every scene, and
+    # a rig that only crosses the frame mid-clip (v23, scene 11) passed a
+    # 20/80 probe here and then failed the whole render there.
+    jpgs = [tmpdir / f"probe_{stem}_a.jpg", tmpdir / f"probe_{stem}_m.jpg", tmpdir / f"probe_{stem}_b.jpg"]
     jpg = jpgs[0]
     _is_image = Path(video_path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
     try:
@@ -284,7 +287,7 @@ def _vision_verdict(video_path: Path, query: str, world: str = "") -> dict | Non
             dur = float((pr.stdout or "8").strip() or 8)
         except Exception:
             pass
-        for j, t in ([] if _is_image else zip(jpgs, (dur * 0.2, dur * 0.8))):
+        for j, t in ([] if _is_image else zip(jpgs, (dur * 0.2, dur * 0.5, dur * 0.8))):
             r = subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}",
                  "-i", str(video_path),
@@ -728,7 +731,7 @@ def download_best_stock_video(query: str, dest: Path, target_w: int = 1920, targ
     if forbid_text:
         # A clip cached before the on-frame gates existed may be exactly the
         # asset the gates block — separate keyspace (bumped when gates change).
-        cache_key += " +vgate7"
+        cache_key += " +vgate8"
     if nocturnal_max_luma is not None:
         # A bright daytime clip cached before the night gate must not be served
         # from cache — separate keyspace.
