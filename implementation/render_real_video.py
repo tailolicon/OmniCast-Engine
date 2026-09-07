@@ -226,6 +226,7 @@ _HARD_CLASH_RE = re.compile(
     r"daylight|daytime|sunny|broad day|afternoon|morning|noon|19[3-9]0s|vintage|"
     r"\bsnow|winter|city skyline|downtown", re.I)
 _DAY_RE = re.compile(r"daylight|daytime|sunny|broad day|afternoon|morning|noon", re.I)
+_BACKGROUND_RE = re.compile(r"distant|in the distance|far away|background|passing|traffic|other vehicle|another vehicle|not the narrator", re.I)
 
 
 def _world_reject_reason(v: dict | None, real_look: bool, luma: float | None = None) -> str:
@@ -239,7 +240,9 @@ def _world_reject_reason(v: dict | None, real_look: bool, luma: float | None = N
         return ""
     if v.get("contradicts_world"):
         why = str(v.get("contradiction") or "")
-        if _HARD_CLASH_RE.search(why):
+        # Other vehicles exist on an interstate: a rig passing in the distance
+        # (v22, 113s: tail lights far ahead) is scenery, not a contradiction.
+        if _HARD_CLASH_RE.search(why) and not _BACKGROUND_RE.search(why):
             if _DAY_RE.search(why) and luma is not None and luma <= 95:
                 pass  # "daytime" on a measured-dark frame: hallucination
             else:
@@ -4881,7 +4884,14 @@ def main() -> None:
             elif _v and _text_reject_reason(_v):
                 _g2_bad.append(f"{_tm:.0f}s {_text_reject_reason(_v)}")
             elif _v and not _is_rescue and _world_reject_reason(_v, False, _lum):
-                _g2_bad.append(f"{_tm:.0f}s {_world_reject_reason(_v, False, _lum)}")
+                # A story clash at gate2 is a second opinion on a frame an
+                # earlier gate already passed — ask once more and keep it only
+                # if both verdicts agree (the judge flip-flops on this field).
+                _v2 = _media_verdict(_fr, _subj, world=_world_facts)
+                if _v2 is not None and _world_reject_reason(_v2, False, _lum):
+                    _g2_bad.append(f"{_tm:.0f}s {_world_reject_reason(_v, False, _lum)}")
+                else:
+                    print(f"[3g/5] {_tm:.0f}s: story clash not confirmed on re-ask — kept")
             elif _lum is not None and _lum > _noct_luma + 20:
                 _g2_bad.append(f"{_tm:.0f}s bright({_lum:.0f})")
         if _g2_bad:
