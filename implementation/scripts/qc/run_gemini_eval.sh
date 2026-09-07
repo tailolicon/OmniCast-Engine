@@ -31,5 +31,5 @@ PROMPT="$(cat "$HERE/EVAL_PROMPT.md")
 FACTS: duration=${DUR}s, integrated loudness=${LUFS} LUFS, size=${W}.
 FRAMES (view every one of them before answering): ${FRAMES}"
 
-agy -p "$PROMPT" --model gemini-3.8-flash --effort high --dangerously-skip-permissions | tee "$OUT/verdict.md"
+agy -p "$PROMPT" --model gemini-3.8-flash --effort "${QC_EFFORT:-high}" --dangerously-skip-permissions | tee "$OUT/verdict.md"
 echo "frames + verdict in $OUT"
