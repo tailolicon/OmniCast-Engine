@@ -8,11 +8,15 @@
 
 For **every Minecraft video task** — create, reup, localize, translate, dub, edit, remaster, republish, or upload — packaging is part of the video job, not an optional afterthought.
 
-Before approving a Minecraft video for preview/publish, the agent MUST read and follow:
+### FIRST-ACTION REQUIREMENT FOR MINECRAFT TASKS
+
+If the user asks for any Minecraft video task, **before planning the work, choosing a title, generating a thumbnail, running the reup pipeline, or making any creative packaging decision**, the agent MUST explicitly read the full contents of these three files from the active OmniCast workspace:
 
 - `.agents/skills/minecraft-packaging/SKILL.md`
 - `.agents/skills/minecraft-packaging/references/PLAYBOOK.md`
 - `.agents/skills/minecraft-packaging/schemas/policy.json`
+
+Do not rely on memory, a summary, a prior chat, or the fact that these paths are listed here. The three files must be read in the current session before the Minecraft task proceeds. If the active workspace does not contain these files, stop the Minecraft packaging step and report that the live OmniCast workspace is missing the required policy rather than silently falling back to generic title/thumbnail generation.
 
 This contract applies even when the active workflow is Reup, Douyin Scout, Director, Remotion editing, a channel-specific profile, or another video skill.
 
