@@ -1,0 +1,248 @@
+{
+  "name": "minecraft_packaging_policy",
+  "version": "1.0.0",
+  "status": "active",
+  "applies_to": [
+    "minecraft_create",
+    "minecraft_reup",
+    "minecraft_localize",
+    "minecraft_translate",
+    "minecraft_dub",
+    "minecraft_edit",
+    "minecraft_remaster",
+    "minecraft_publish"
+  ],
+  "universal_framework": [
+    "promise",
+    "proof",
+    "stakes",
+    "curiosity"
+  ],
+  "genre_families": {
+    "boss_horror_threat": {
+      "core_emotion": "fear_awe_impossible_confrontation",
+      "preferred_levers": ["scale_contrast", "proximity", "chase", "reversal", "vulnerability"]
+    },
+    "progression_upgrade_evolution": {
+      "core_emotion": "power_fantasy_anticipation",
+      "preferred_levers": ["before_after", "final_form", "progression_gap", "boss_requirement"]
+    },
+    "extreme_scale_swarm_hunters": {
+      "core_emotion": "impossible_odds",
+      "preferred_levers": ["numeric_scale", "one_vs_many", "crowd_density", "escape"]
+    },
+    "survival_100_days_apocalypse": {
+      "core_emotion": "journey_endurance_payoff",
+      "preferred_levers": ["day_progression", "base_transformation", "hostile_environment", "final_threat"]
+    },
+    "story_series_recurring_ip": {
+      "core_emotion": "attachment_continuation",
+      "preferred_levers": ["familiar_identity", "new_conflict", "relationship_change", "cliffhanger"]
+    },
+    "comedy_troll_chaos": {
+      "core_emotion": "reaction_anticipation",
+      "preferred_levers": ["trap", "victim_reaction", "social_conflict", "absurdity"]
+    },
+    "build_redstone_invention": {
+      "core_emotion": "wonder_competence_utility",
+      "preferred_levers": ["final_build", "scale", "function", "before_after"]
+    },
+    "exploration_secret_rare_discovery": {
+      "core_emotion": "mystery_discovery",
+      "preferred_levers": ["concealment", "rare_object", "clue", "secret_location"]
+    },
+    "collection_completion_capture": {
+      "core_emotion": "completion_scale",
+      "preferred_levers": ["every_all", "rarest_target", "collection", "gauntlet"]
+    },
+    "pvp_smp_civilization_war": {
+      "core_emotion": "social_stakes_power_story",
+      "preferred_levers": ["factions", "betrayal", "territory", "asymmetric_power"]
+    },
+    "rule_twist_minecraft_but": {
+      "core_emotion": "what_happens_if",
+      "preferred_levers": ["simple_rule", "cause_effect", "escalation", "world_change"]
+    },
+    "mod_showcase_mechanic_experiment": {
+      "core_emotion": "spectacle_curiosity",
+      "preferred_levers": ["versus", "experiment", "extreme_mechanic", "comparison"]
+    }
+  },
+  "asset_policy": {
+    "preferred_order": [
+      "staged_ingame_capture_actual_asset",
+      "actual_source_video_frame",
+      "actual_model_texture_render",
+      "composite_of_verified_assets",
+      "generative_support_only"
+    ],
+    "allowed_presentation_exaggeration": [
+      "camera_perspective",
+      "closer_framing",
+      "cinematic_lighting",
+      "depth_separation",
+      "particles",
+      "impact_effects",
+      "clean_background",
+      "pose_selection",
+      "truthful_hud_or_progression_cues",
+      "compositing_verified_assets"
+    ],
+    "forbidden_without_evidence": [
+      "invented_boss",
+      "invented_mob",
+      "invented_weapon",
+      "invented_armor",
+      "invented_power",
+      "invented_dimension",
+      "invented_structure",
+      "invented_transformation",
+      "fake_numerical_scale",
+      "fake_infinite_mechanic",
+      "fake_challenge_rule",
+      "fake_player_ownership_claim"
+    ]
+  },
+  "research_policy": {
+    "use_live_research_when_available": true,
+    "preferred_sources": [
+      "target_channel_recent",
+      "target_channel_top",
+      "vidiq_minecraft_outliers_same_family",
+      "vidiq_similar_thumbnails",
+      "recent_high_vph_comparables",
+      "title_thumbnail_change_history"
+    ],
+    "interpretation": {
+      "prefer_channel_relative_breakout": true,
+      "prefer_repeated_patterns_across_independent_channels": true,
+      "raw_view_count_is_not_sufficient": true,
+      "distinguish_series_ip_from_concept_driven_hit": true,
+      "copy_competitor_execution": false
+    }
+  },
+  "generation_policy": {
+    "normal_hook_candidates_min": 12,
+    "high_value_hook_candidates_target": 20,
+    "shortlist_distinct_concepts": 3,
+    "default_ab_package_variants": 3,
+    "variants_must_change_click_mechanism": true,
+    "generic_prompt_first_thumbnail_workflow": false,
+    "literal_source_title_translation_as_final": false
+  },
+  "title_policy": {
+    "front_load_primary_hook": true,
+    "prefer_concrete_nouns": true,
+    "prefer_supported_specific_numbers": true,
+    "single_dominant_claim": true,
+    "market_native_localization": true,
+    "must_complement_thumbnail": true,
+    "must_pay_off_in_video": true
+  },
+  "thumbnail_policy": {
+    "dominant_visual_ideas_max": 3,
+    "default_text_words_max": 3,
+    "default_text_preference": "none",
+    "mobile_readability_required": true,
+    "one_second_comprehension_target": true,
+    "must_use_verified_hero_asset": true,
+    "must_complement_title": true
+  },
+  "scores": {
+    "hook": {
+      "threshold": 78,
+      "weights": {
+        "instant_understandability": 20,
+        "visual_spectacle": 15,
+        "stakes": 15,
+        "novelty": 15,
+        "verified_interesting_asset": 10,
+        "progression_or_transformation_potential": 10,
+        "curiosity_gap": 10,
+        "emotional_polarity": 5
+      }
+    },
+    "title": {
+      "threshold": 82,
+      "weights": {
+        "clear_premise": 20,
+        "stakes_or_goal": 15,
+        "specificity": 15,
+        "curiosity_gap": 15,
+        "novelty": 10,
+        "target_market_naturalness": 10,
+        "thumbnail_complementarity": 10,
+        "truthful_payoff": 5
+      }
+    },
+    "thumbnail": {
+      "threshold": 82,
+      "weights": {
+        "mobile_readability": 20,
+        "single_focal_clarity": 15,
+        "visual_stakes": 15,
+        "actual_asset_fidelity": 15,
+        "title_complementarity": 10,
+        "contrast_and_depth": 10,
+        "curiosity": 10,
+        "uncluttered_composition": 5
+      }
+    },
+    "pair": {
+      "threshold": 84,
+      "weights": {
+        "promise_proof_alignment": 20,
+        "title_thumbnail_information_gap": 20,
+        "truth_and_evidence": 20,
+        "instant_feed_comprehension": 15,
+        "stakes": 10,
+        "curiosity": 10,
+        "market_fit": 5
+      }
+    }
+  },
+  "hard_gates": {
+    "hero_asset_verified": true,
+    "strong_claims_evidence_backed": true,
+    "numerical_claims_verified": true,
+    "genre_family_classified": true,
+    "title_thumbnail_complementary": true,
+    "mobile_readable": true,
+    "single_dominant_visual_idea": true,
+    "no_fictional_central_game_asset": true,
+    "video_pays_off_click_promise": true,
+    "ab_variants_conceptually_distinct": true
+  },
+  "reup_localization": {
+    "inspect_actual_source_content": true,
+    "source_title_is_only_a_lead": true,
+    "source_thumbnail_is_only_a_lead": true,
+    "repackage_for_target_market": true,
+    "preserve_mod_entity_identity": true,
+    "verify_source_hyperbole": true,
+    "do_not_claim_sourced_gameplay_as_own_recording": true
+  },
+  "completion": {
+    "thumbnail_render_alone_is_not_done": true,
+    "title_generation_alone_is_not_done": true,
+    "requires_selected_evidence_backed_pair": true,
+    "requires_strong_alternatives_for_testing": true
+  },
+  "output_contract": {
+    "required_fields": [
+      "primary_family",
+      "evidence_inventory",
+      "hook_candidates",
+      "shortlist",
+      "selected_package",
+      "hard_gates",
+      "ab_variants"
+    ],
+    "recommended_fields": [
+      "secondary_family",
+      "market_research",
+      "asset_manifest",
+      "learning_notes"
+    ]
+  }
+}
