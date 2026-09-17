@@ -1,0 +1,201 @@
+{
+  "name": "minecraft_editing_audio_policy",
+  "version": "1.0.0",
+  "status": "active",
+  "core_law": "semantic_event_driven_not_timer_driven",
+  "mix_priority": [
+    "target_voice",
+    "native_game_information",
+    "editorial_bgm",
+    "editorial_sfx"
+  ],
+  "source_localization": {
+    "source_speech_mask_required": true,
+    "source_speech_mask_must_not_depend_on_target_voice_activity": true,
+    "preserve_game_ambience_outside_source_speech": true,
+    "headphone_residual_speech_gate": true,
+    "separator_buzz_warble_gate": true,
+    "prefer_dynamic_contaminated_region_ducking_over_global_game_audio_attenuation": true
+  },
+  "story_states": [
+    "hook_cold_open",
+    "setup_exposition",
+    "exploration_travel",
+    "comedy_light",
+    "discovery_curiosity",
+    "reveal_big",
+    "progression_upgrade",
+    "danger_build",
+    "horror_stalker",
+    "chase_action",
+    "combat_normal",
+    "boss_reveal",
+    "boss_combat",
+    "victory_reward",
+    "failure_loss",
+    "aftermath_breathing",
+    "montage_progress"
+  ],
+  "music": {
+    "change_requires_story_state_reason": true,
+    "timer_based_track_change_forbidden": true,
+    "one_constant_loop_for_whole_video_discouraged": true,
+    "prefer_instrumental_under_dialogue": true,
+    "prefer_phrase_aligned_cuts_and_loops": true,
+    "allow_sound_bridge_prelap": true,
+    "allow_deliberate_music_stop_for_comedy_or_shock": true,
+    "stems_preferred_when_available": true,
+    "dialogue_relative_level_starting_point_db_below": {
+      "min": 15,
+      "target": 20,
+      "max": 25,
+      "note": "starting reference only; adjust by spectral density, voice, device, and state"
+    },
+    "music_should_rise_in_speech_gaps": true,
+    "bgm_must_be_perceptible_not_merely_present": true
+  },
+  "native_game_audio": {
+    "preserve_by_default": true,
+    "priority_events": [
+      "footsteps",
+      "mob_vocalization",
+      "hit",
+      "weapon",
+      "explosion",
+      "block_break_place",
+      "inventory_chest",
+      "portal",
+      "weather_environment",
+      "item_pickup",
+      "machine_redstone"
+    ],
+    "editorial_sfx_must_not_mask_critical_native_information": true
+  },
+  "editorial_sfx": {
+    "allowed_classes": [
+      "impact",
+      "whoosh",
+      "riser",
+      "sub_drop",
+      "bass_hit",
+      "ui_tick",
+      "reward_chime",
+      "comedy_sting",
+      "glitch_error",
+      "ambience_enhancement"
+    ],
+    "requires_event_type": true,
+    "requires_purpose": true,
+    "requires_source_evidence": true,
+    "periodic_sfx_forbidden": true,
+    "whoosh_on_every_cut_forbidden": true,
+    "bass_hit_on_every_reveal_forbidden": true,
+    "rare_strong_cues_should_be_reserved_for_high_importance_events": true
+  },
+  "visual_edit_events": {
+    "requires_event_type": true,
+    "requires_purpose": true,
+    "requires_source_evidence": true,
+    "default_low_confidence_behavior": "fewer_edits",
+    "allowed": [
+      "punch_in",
+      "hold",
+      "freeze",
+      "speed_ramp",
+      "replay",
+      "shake",
+      "highlight",
+      "glow",
+      "kinetic_caption",
+      "reaction_text",
+      "cutaway",
+      "meme_insert",
+      "crop_reframe",
+      "focus_isolation",
+      "host_avatar_reaction"
+    ],
+    "fixed_interval_zoom_forbidden": true,
+    "permanent_shake_forbidden": true,
+    "same_caption_animation_for_every_sentence_discouraged": true
+  },
+  "relative_edit_density": {
+    "setup_exposition": 1,
+    "exploration_travel": 2,
+    "comedy_light_baseline": 1,
+    "comedy_punchline_spike": 4,
+    "discovery_curiosity": 2,
+    "reveal_big": 4,
+    "progression_upgrade": 3,
+    "danger_build_start": 2,
+    "danger_build_end": 3,
+    "horror_stalker": 2,
+    "chase_action": 4,
+    "combat_normal": 4,
+    "boss_reveal": 4,
+    "boss_combat": 5,
+    "victory_reward": 3,
+    "failure_loss": 1,
+    "aftermath_breathing": 1,
+    "montage_progress": 3
+  },
+  "transition_policy": {
+    "scene_cut_does_not_require_audio_transition": true,
+    "clean_cut_is_valid_default": true,
+    "sound_bridge_preferred_over_repeated_transition_pop": true,
+    "global_scene_change_pop_forbidden": true,
+    "phrase_crossfade_for_adjacent_music_state": true,
+    "hard_music_stop_allowed_for_deliberate_tonal_change": true
+  },
+  "order_of_operations": [
+    "understand_story_events",
+    "align_target_dub",
+    "build_source_speech_mask",
+    "create_clean_game_background_layer",
+    "qa_source_residual_and_artifacts",
+    "build_story_state_map",
+    "choose_or_compose_bgm",
+    "music_transitions_and_ducking",
+    "preserve_restore_native_sfx",
+    "add_editorial_sfx",
+    "add_semantic_visual_edits",
+    "mix_master",
+    "headphone_qa",
+    "small_speaker_qa",
+    "persist_receipt"
+  ],
+  "hard_gates": {
+    "target_dialogue_intelligible": true,
+    "source_language_speech_not_intelligible": true,
+    "no_separator_buzz_warble": true,
+    "native_game_audio_not_needlessly_destroyed": true,
+    "bgm_perceptible_and_state_appropriate": true,
+    "bgm_does_not_mask_voice": true,
+    "music_changes_have_story_reason": true,
+    "editorial_sfx_have_semantic_reason": true,
+    "no_periodic_edit_pattern": true,
+    "edit_density_has_contrast": true,
+    "aftermath_breathing_exists_when_story_needs_it": true,
+    "no_scene_change_pop_mechanism": true
+  },
+  "qa_passes": [
+    "dialogue_first",
+    "music_state_awareness",
+    "native_game_audio",
+    "editorial_sfx_subtraction",
+    "headphone_artifact",
+    "phone_laptop_speaker"
+  ],
+  "receipt": {
+    "required_fields": [
+      "minecraft_edit_audio_policy",
+      "source_speech_mask_used",
+      "source_speech_residual_gate",
+      "game_audio_preservation_gate",
+      "bgm_state_map",
+      "editorial_sfx_events",
+      "edit_events",
+      "anti_spam_gate",
+      "headphone_artifact_gate"
+    ]
+  }
+}
